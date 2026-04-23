@@ -9,6 +9,8 @@ It is intentionally not a map app. The main screen is just:
 - distance back to the route
 - a small amount of movement/status UI
 
+![GeePee on-route screen](docs/screenshots/geepee-on-route.png)
+
 ## Status
 
 This repo contains:
