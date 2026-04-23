@@ -1,0 +1,539 @@
+:root {
+  color-scheme: light;
+  --paper: #f8f3e8;
+  --paper-strong: #fffaf0;
+  --ink: #182028;
+  --muted: #58606b;
+  --line: rgba(24, 32, 40, 0.12);
+  --accent: #1b7f83;
+  --accent-strong: #0f5a5d;
+  --signal: #f25f2c;
+  --signal-soft: rgba(242, 95, 44, 0.18);
+  --progress: #1d8f6b;
+  --danger: #c74b4b;
+  --shadow: 0 24px 60px rgba(28, 36, 42, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(27, 127, 131, 0.15), transparent 38%),
+    radial-gradient(circle at top right, rgba(242, 95, 44, 0.15), transparent 28%),
+    linear-gradient(180deg, #f3ecdf 0%, var(--paper) 38%, #f5efe3 100%);
+}
+
+.shell {
+  width: min(1080px, calc(100vw - 1.5rem));
+  margin: 0 auto;
+  padding: 1.1rem 0 2rem;
+}
+
+.hero,
+.card,
+.footer-note {
+  margin-top: 1rem;
+}
+
+.hero {
+  padding: 1rem 0.25rem 0.3rem;
+}
+
+.eyebrow,
+.section-label,
+.route-card__hint,
+.field-note,
+.progress-labels,
+.stat-label {
+  letter-spacing: 0.04em;
+}
+
+.eyebrow,
+.section-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: "IBM Plex Sans Condensed", "Franklin Gothic Medium", "Avenir Next Condensed", sans-serif;
+  font-size: clamp(2.6rem, 8vw, 4.9rem);
+  line-height: 0.93;
+}
+
+.lede {
+  max-width: 34rem;
+  margin: 0.8rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.card {
+  background: rgba(255, 250, 240, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.controls,
+.summary,
+.route-card {
+  padding: 1rem;
+}
+
+.field + .field,
+.field + .actions {
+  margin-top: 1rem;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+}
+
+.field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.field-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+input[type="file"] {
+  width: 100%;
+  margin-top: 0.45rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px dashed rgba(24, 32, 40, 0.22);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink);
+}
+
+input[type="range"] {
+  width: 100%;
+  margin-top: 0.65rem;
+  accent-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.8rem 1.15rem;
+  font: inherit;
+  font-weight: 650;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  box-shadow: 0 10px 24px rgba(15, 90, 93, 0.22);
+}
+
+button.secondary {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(24, 32, 40, 0.14);
+  box-shadow: none;
+}
+
+button.secondary.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--signal), #dc7843);
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(220, 120, 67, 0.22);
+}
+
+button:disabled {
+  opacity: 0.55;
+}
+
+.status-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.status-title {
+  margin: 0;
+  font-family: "IBM Plex Sans Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+}
+
+.status-body {
+  margin: 0.45rem 0 0;
+  max-width: 38rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.route-badge {
+  flex: none;
+  min-width: 6rem;
+  text-align: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+  font-weight: 700;
+  background: rgba(24, 32, 40, 0.08);
+}
+
+.route-badge--idle {
+  color: var(--muted);
+}
+
+.route-badge--on {
+  color: #fff;
+  background: linear-gradient(135deg, var(--progress), #2ea77d);
+}
+
+.route-badge--away {
+  color: #fff;
+  background: linear-gradient(135deg, var(--signal), #dc7843);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.stat {
+  padding: 0.9rem 0.95rem;
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.55)),
+    var(--paper-strong);
+  border: 1px solid rgba(24, 32, 40, 0.08);
+}
+
+.stat-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.stat-value {
+  margin: 0.3rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.progress-shell {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem 0.4rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(24, 32, 40, 0.08);
+}
+
+.progress-shell--hidden {
+  display: none;
+}
+
+.progress-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.progress-track {
+  position: relative;
+  height: 0.82rem;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  background: rgba(24, 32, 40, 0.09);
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, var(--progress), #43be8b);
+}
+
+.progress-marker {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--signal);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 4px rgba(242, 95, 44, 0.18);
+}
+
+.route-card__header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.route-card__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.route-card__hint {
+  margin: 0;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.route-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin-top: 0.95rem;
+}
+
+.route-toolbar__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.scale-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.scale-button {
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.scale-button.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(15, 90, 93, 0.22);
+}
+
+.scale-caption {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.route-shell {
+  border-radius: 1.2rem;
+  border: 1px solid rgba(24, 32, 40, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.65)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(24, 32, 40, 0.028),
+      rgba(24, 32, 40, 0.028) 1px,
+      transparent 1px,
+      transparent 48px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(24, 32, 40, 0.028),
+      rgba(24, 32, 40, 0.028) 1px,
+      transparent 1px,
+      transparent 48px
+    );
+  overflow: hidden;
+}
+
+#route-panel:fullscreen {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#route-panel:fullscreen .route-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+#route-view {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1000 / 760;
+}
+
+#route-panel:fullscreen #route-view {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+#route-view .route-line {
+  fill: none;
+  stroke: rgba(27, 127, 131, 0.92);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#route-view .route-line--ghost {
+  stroke: rgba(27, 127, 131, 0.28);
+  stroke-width: 12;
+}
+
+#route-view .connector {
+  stroke: rgba(242, 95, 44, 0.95);
+  stroke-width: 5;
+  stroke-dasharray: 14 12;
+  stroke-linecap: round;
+}
+
+#route-view .connector--offset {
+  stroke-dasharray: 10 10;
+}
+
+#route-view .marker {
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 4;
+}
+
+#route-view .marker--start {
+  fill: var(--progress);
+}
+
+#route-view .marker--finish {
+  fill: var(--danger);
+}
+
+#route-view .marker--nearest {
+  fill: #fff;
+  stroke: var(--signal);
+  stroke-width: 4;
+}
+
+#route-view .marker--user {
+  fill: var(--signal);
+}
+
+#route-view .marker--edge {
+  fill: rgba(242, 95, 44, 0.2);
+  stroke: var(--signal);
+  stroke-width: 4;
+}
+
+#route-view .marker-label,
+#route-view .placeholder-title,
+#route-view .placeholder-copy {
+  fill: var(--ink);
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+#route-view .marker-label {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+#route-view .marker-label--user {
+  fill: var(--signal);
+}
+
+#route-view .marker-label--edge {
+  fill: var(--signal);
+  font-size: 21px;
+}
+
+#route-view .placeholder-title {
+  font-family: "IBM Plex Sans Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 52px;
+  font-weight: 700;
+}
+
+#route-view .placeholder-copy {
+  font-size: 28px;
+}
+
+#route-view .scale-tag {
+  fill: rgba(24, 32, 40, 0.72);
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+#route-view .window-frame {
+  fill: none;
+  stroke: rgba(24, 32, 40, 0.08);
+  stroke-width: 2;
+}
+
+.footer-note {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.footer-note code {
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.45rem;
+  background: rgba(24, 32, 40, 0.08);
+  color: var(--ink);
+}
+
+@media (min-width: 760px) {
+  .controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 1rem 1.15rem;
+    align-items: end;
+  }
+
+  .field + .field,
+  .field + .actions {
+    margin-top: 0;
+  }
+
+  .actions {
+    align-self: end;
+    justify-content: flex-start;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

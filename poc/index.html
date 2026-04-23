@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GeePee</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">GPX without the map</p>
+        <h1>GeePee</h1>
+        <p class="lede">
+          Load a route, simplify it, and see where you are relative to the line.
+        </p>
+      </section>
+
+      <section class="card controls">
+        <div class="field file-field">
+          <label for="gpx-file">GPX file</label>
+          <input id="gpx-file" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+          <p id="file-name" class="field-note">No GPX loaded yet.</p>
+        </div>
+
+        <div class="field">
+          <div class="field-header">
+            <label for="simplify-tolerance">Simplify tolerance</label>
+            <output id="tolerance-readout" for="simplify-tolerance">20 m</output>
+          </div>
+          <input id="simplify-tolerance" type="range" min="0" max="120" step="2" value="20">
+          <p class="field-note">Higher values keep fewer points and straighten the route.</p>
+        </div>
+
+        <div class="field">
+          <div class="field-header">
+            <label for="location-interval">Auto-update timer</label>
+            <output id="location-interval-readout" for="location-interval">5 s</output>
+          </div>
+          <input id="location-interval" type="range" min="2" max="30" step="1" value="5">
+          <p class="field-note">Polling interval for repeated GPS updates.</p>
+        </div>
+
+        <div class="actions">
+          <button id="locate-button" type="button">Start auto-update</button>
+          <button id="center-button" type="button" class="secondary">Locate once</button>
+          <button id="reverse-button" type="button" class="secondary">Reverse route</button>
+        </div>
+      </section>
+
+      <section class="card summary">
+        <div class="status-row">
+          <div>
+            <p class="section-label">Status</p>
+            <p id="status-title" class="status-title">Waiting for a GPX file</p>
+            <p id="status-body" class="status-body">
+              Load a route first. Then start location tracking.
+            </p>
+          </div>
+          <div id="route-badge" class="route-badge route-badge--idle">Idle</div>
+        </div>
+
+        <div id="stats-grid" class="stats-grid">
+          <article class="stat">
+            <p class="stat-label">Route length</p>
+            <p id="stat-length" class="stat-value">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Points kept</p>
+            <p id="stat-points" class="stat-value">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Along route</p>
+            <p id="stat-progress" class="stat-value">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Off route</p>
+            <p id="stat-offset" class="stat-value">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Remaining</p>
+            <p id="stat-remaining" class="stat-value">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">GPS accuracy</p>
+            <p id="stat-accuracy" class="stat-value">-</p>
+          </article>
+        </div>
+
+        <div id="progress-shell" class="progress-shell progress-shell--hidden" aria-hidden="true">
+          <div class="progress-labels">
+            <span>Start</span>
+            <span id="progress-caption">Waiting for location</span>
+            <span>Finish</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+            <div id="progress-marker" class="progress-marker"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="route-panel" class="card route-card">
+        <div class="route-card__header">
+          <div>
+            <p class="section-label">Route view</p>
+            <h2 class="route-card__title">Line, projection, and current fix</h2>
+          </div>
+          <p class="route-card__hint">No tiles. No map. Just geometry.</p>
+        </div>
+
+        <div class="route-toolbar">
+          <div class="scale-group" role="group" aria-label="Route view scale">
+            <button type="button" class="scale-button secondary" data-scale="120">120 m</button>
+            <button type="button" class="scale-button secondary" data-scale="250">250 m</button>
+            <button type="button" class="scale-button secondary" data-scale="500">500 m</button>
+            <button type="button" class="scale-button secondary" data-scale="1000">1 km</button>
+            <button type="button" class="scale-button secondary" data-scale="fit">Fit</button>
+          </div>
+          <div class="route-toolbar__meta">
+            <p id="scale-caption" class="scale-caption">Scale: full route</p>
+            <button id="fullscreen-button" type="button" class="secondary">Full screen</button>
+          </div>
+        </div>
+
+        <div id="route-shell" class="route-shell">
+          <svg
+            id="route-view"
+            viewBox="0 0 1000 760"
+            role="img"
+            aria-label="Simplified route and current location"
+          ></svg>
+        </div>
+      </section>
+
+      <section class="footer-note">
+        Serve this over <code>localhost</code> on the phone if you want browser geolocation.
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
