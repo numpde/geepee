@@ -51,6 +51,12 @@ From the repo root:
 ./gradlew assembleDebug
 ```
 
+APK output:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
 Install on a connected phone:
 
 ```bash
@@ -81,6 +87,34 @@ Replay a checked-in GPX route to a real phone over ADB:
 ```
 
 More examples are in [scripts/REPLAY.md](scripts/REPLAY.md).
+
+## Publish On GitHub
+
+The simplest publish path in this repo is a GitHub Release with the debug APK attached.
+
+Two ways to do it:
+
+1. Push a tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+2. Or run the `Release APK` workflow manually in GitHub Actions and provide a tag like `v0.1.0`.
+
+That workflow will:
+
+- build `app-debug.apk`
+- rename it to `geepee-vX.Y.Z-debug.apk`
+- create or update the matching GitHub Release
+- upload the APK as a release asset
+
+Important:
+
+- this is a debug build, not a Play-ready signed release build
+- it is fine for simple GitHub distribution / sideloading
+- if you later want a proper distributable release APK, add a signing key and a release build workflow
 
 ## Repo Layout
 
