@@ -84,6 +84,12 @@ data class Bounds(
     val maxY: Double,
 )
 
+data class RouteViewport(
+    val centerX: Double,
+    val centerY: Double,
+    val widthMeters: Double,
+)
+
 data class ScreenPoint(
     val x: Float,
     val y: Float,
@@ -91,6 +97,7 @@ data class ScreenPoint(
 
 data class RouteRenderModel(
     val polylines: List<List<ScreenPoint>>,
+    val gradientPolylines: List<RouteGradientPolyline>,
     val nearestPoint: ScreenPoint?,
     val userPoint: ScreenPoint?,
     val edgePoint: ScreenPoint?,
@@ -100,6 +107,14 @@ data class RouteRenderModel(
 data class RouteRenderChunk(
     val points: List<ProjectedPoint>,
     val bounds: Bounds,
+    val startRouteMeters: Double,
+    val endRouteMeters: Double,
+)
+
+data class RouteGradientPolyline(
+    val points: List<ScreenPoint>,
+    val startProgressRatio: Float,
+    val endProgressRatio: Float,
 )
 
 data class RouteEdge(
@@ -164,7 +179,10 @@ fun buildRouteModel(rawSegments: List<List<GeoPoint>>): RouteModel {
             cumulativeMeters = cumulativeMeters,
             lengthMeters = lengthMeters,
             offsetMeters = offsetMeters,
-            renderChunks = buildRouteRenderChunks(projectedPoints),
+            renderChunks = buildRouteRenderChunks(
+                points = projectedPoints,
+                routeMeters = cumulativeMeters.map { offsetMeters + it },
+            ),
         )
     }
 
@@ -251,12 +269,13 @@ fun buildRouteRenderModel(
     canvasHeight: Float,
     lookAheadFraction: Double = 0.0,
     rotationDegrees: Float = 0f,
+    boundsOverride: Bounds? = null,
 ): RouteRenderModel {
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
-        return RouteRenderModel(emptyList(), null, null, null, emptyList())
+        return RouteRenderModel(emptyList(), emptyList(), null, null, null, emptyList())
     }
 
-    val bounds = if (analysis == null) {
+    val bounds = boundsOverride ?: if (analysis == null) {
         routeModel.bounds
     } else {
         createLocalBounds(
@@ -301,6 +320,31 @@ fun buildRouteRenderModel(
                 }
                 .toList()
         }
+    val gradientPolylines = routeModel.segments
+        .flatMap { segment ->
+            segment.renderChunks
+                .asSequence()
+                .filter { chunk -> boundsIntersect(chunk.bounds, bounds) }
+                .flatMap { chunk ->
+                    clipScreenPolylineToBounds(
+                        points = chunk.points.map { point ->
+                            rotateScreenPoint(
+                                point = toScreenPoint(point, projector),
+                                center = screenCenter,
+                                rotationDegrees = rotationDegrees.toDouble(),
+                            )
+                        },
+                        bounds = screenBounds,
+                    ).asSequence().map { polyline ->
+                        RouteGradientPolyline(
+                            points = polyline,
+                            startProgressRatio = (chunk.startRouteMeters / routeModel.totalLengthMeters.coerceAtLeast(1.0)).toFloat(),
+                            endProgressRatio = (chunk.endRouteMeters / routeModel.totalLengthMeters.coerceAtLeast(1.0)).toFloat(),
+                        )
+                    }
+                }
+                .toList()
+        }
 
     val nearestProjected = analysis?.nearestPoint?.let { point ->
         rotateScreenPoint(
@@ -337,10 +381,90 @@ fun buildRouteRenderModel(
 
     return RouteRenderModel(
         polylines = polylines,
+        gradientPolylines = gradientPolylines,
         nearestPoint = nearestPoint,
         userPoint = userPoint,
         edgePoint = edgePoint,
         historyPoints = projectedHistoryPoints,
+    )
+}
+
+internal fun createRouteViewport(
+    contentBounds: Bounds,
+    canvasWidth: Double,
+    canvasHeight: Double,
+): RouteViewport {
+    return RouteViewport(
+        centerX = contentBounds.centerX(),
+        centerY = contentBounds.centerY(),
+        widthMeters = fittedViewportWidthMeters(
+            contentBounds = contentBounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+        ),
+    )
+}
+
+internal fun routeViewportBounds(
+    viewport: RouteViewport,
+    canvasWidth: Double,
+    canvasHeight: Double,
+): Bounds {
+    val heightMeters = viewport.widthMeters * (canvasHeight / canvasWidth)
+    return Bounds(
+        minX = viewport.centerX - viewport.widthMeters / 2.0,
+        maxX = viewport.centerX + viewport.widthMeters / 2.0,
+        minY = viewport.centerY - heightMeters / 2.0,
+        maxY = viewport.centerY + heightMeters / 2.0,
+    )
+}
+
+internal fun transformRouteViewport(
+    viewport: RouteViewport,
+    contentBounds: Bounds,
+    canvasWidth: Double,
+    canvasHeight: Double,
+    centroid: ScreenPoint,
+    pan: ScreenPoint,
+    zoomChange: Float,
+): RouteViewport {
+    val currentBounds = routeViewportBounds(
+        viewport = viewport,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+    )
+    val minWidthMeters = minimumViewportWidthMeters(contentBounds)
+    val maxWidthMeters = fittedViewportWidthMeters(
+        contentBounds = contentBounds,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+    )
+    val nextWidthMeters = clamp(
+        value = viewport.widthMeters / zoomChange.coerceAtLeast(0.01f).toDouble(),
+        minValue = minWidthMeters,
+        maxValue = maxWidthMeters,
+    )
+    val nextHeightMeters = nextWidthMeters * (canvasHeight / canvasWidth)
+    val centroidWorld = projectedPointFromScreenPoint(
+        point = centroid,
+        bounds = currentBounds,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+    )
+    val centroidXFraction = (centroid.x / canvasWidth.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    val centroidYFraction = (centroid.y / canvasHeight.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    val panXMeters = pan.x.toDouble() / canvasWidth * nextWidthMeters
+    val panYMeters = pan.y.toDouble() / canvasHeight * nextHeightMeters
+    val unclamped = RouteViewport(
+        centerX = centroidWorld.x - (centroidXFraction - 0.5) * nextWidthMeters - panXMeters,
+        centerY = centroidWorld.y - (0.5 - centroidYFraction) * nextHeightMeters + panYMeters,
+        widthMeters = nextWidthMeters,
+    )
+    return clampRouteViewport(
+        viewport = unclamped,
+        contentBounds = contentBounds,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
     )
 }
 
@@ -481,7 +605,10 @@ private fun gridCellForCoordinates(x: Double, y: Double, cellSizeMeters: Double)
     )
 }
 
-private fun buildRouteRenderChunks(points: List<ProjectedPoint>): List<RouteRenderChunk> {
+private fun buildRouteRenderChunks(
+    points: List<ProjectedPoint>,
+    routeMeters: List<Double>,
+): List<RouteRenderChunk> {
     if (points.size < 2) {
         return emptyList()
     }
@@ -494,6 +621,8 @@ private fun buildRouteRenderChunks(points: List<ProjectedPoint>): List<RouteRend
         chunks += RouteRenderChunk(
             points = chunkPoints,
             bounds = computeBounds(chunkPoints, paddingMeters = 0.0),
+            startRouteMeters = routeMeters[startIndex],
+            endRouteMeters = routeMeters[endIndex],
         )
         startIndex = endIndex
     }
@@ -505,6 +634,74 @@ private fun boundsIntersect(left: Bounds, right: Bounds): Boolean {
         left.minX <= right.maxX &&
         left.maxY >= right.minY &&
         left.minY <= right.maxY
+}
+
+private fun Bounds.width(): Double = maxX - minX
+
+private fun Bounds.height(): Double = maxY - minY
+
+private fun Bounds.centerX(): Double = (minX + maxX) / 2.0
+
+private fun Bounds.centerY(): Double = (minY + maxY) / 2.0
+
+private fun fittedViewportWidthMeters(
+    contentBounds: Bounds,
+    canvasWidth: Double,
+    canvasHeight: Double,
+): Double {
+    val aspectRatio = canvasWidth / canvasHeight
+    return max(
+        contentBounds.width(),
+        contentBounds.height() * aspectRatio,
+    )
+}
+
+private fun minimumViewportWidthMeters(contentBounds: Bounds): Double {
+    return max(
+        24.0,
+        min(contentBounds.width(), contentBounds.height()).coerceAtLeast(1.0) * 0.08,
+    )
+}
+
+private fun clampRouteViewport(
+    viewport: RouteViewport,
+    contentBounds: Bounds,
+    canvasWidth: Double,
+    canvasHeight: Double,
+): RouteViewport {
+    val clampedWidth = clamp(
+        value = viewport.widthMeters,
+        minValue = minimumViewportWidthMeters(contentBounds),
+        maxValue = fittedViewportWidthMeters(contentBounds, canvasWidth, canvasHeight),
+    )
+    val visibleHeight = clampedWidth * (canvasHeight / canvasWidth)
+    val halfWidth = clampedWidth / 2.0
+    val halfHeight = visibleHeight / 2.0
+    val minCenterX = if (clampedWidth >= contentBounds.width()) {
+        contentBounds.centerX()
+    } else {
+        contentBounds.minX + halfWidth
+    }
+    val maxCenterX = if (clampedWidth >= contentBounds.width()) {
+        contentBounds.centerX()
+    } else {
+        contentBounds.maxX - halfWidth
+    }
+    val minCenterY = if (visibleHeight >= contentBounds.height()) {
+        contentBounds.centerY()
+    } else {
+        contentBounds.minY + halfHeight
+    }
+    val maxCenterY = if (visibleHeight >= contentBounds.height()) {
+        contentBounds.centerY()
+    } else {
+        contentBounds.maxY - halfHeight
+    }
+    return RouteViewport(
+        centerX = clamp(viewport.centerX, minCenterX, maxCenterX),
+        centerY = clamp(viewport.centerY, minCenterY, maxCenterY),
+        widthMeters = clampedWidth,
+    )
 }
 
 private fun computeBounds(
@@ -755,6 +952,22 @@ private fun createScreenProjector(bounds: Bounds, canvasWidth: Double, canvasHei
         offsetX = (canvasWidth - usedWidth) / 2.0,
         offsetY = (canvasHeight - usedHeight) / 2.0,
         canvasHeight = canvasHeight,
+    )
+}
+
+private fun projectedPointFromScreenPoint(
+    point: ScreenPoint,
+    bounds: Bounds,
+    canvasWidth: Double,
+    canvasHeight: Double,
+): ProjectedPoint {
+    val widthMeters = bounds.width().coerceAtLeast(1.0)
+    val heightMeters = bounds.height().coerceAtLeast(1.0)
+    val xFraction = (point.x / canvasWidth.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    val yFraction = (point.y / canvasHeight.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    return ProjectedPoint(
+        x = bounds.minX + xFraction * widthMeters,
+        y = bounds.maxY - yFraction * heightMeters,
     )
 }
 

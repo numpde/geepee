@@ -4,6 +4,8 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -17,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -124,14 +127,69 @@ private fun GeePeeScreen(
             .fillMaxSize()
             .background(colors.paper),
     ) {
-        val viewportWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        val density = LocalDensity.current
+        val viewportWidthPx = with(density) { maxWidth.toPx() }
+        val viewportHeightPx = with(density) { maxHeight.toPx() }
+        val routeModel = state.routeModel
+        val hasViewport = viewportWidthPx > 0f && viewportHeightPx > 0f
+        fun fittedSetupViewport(): RouteViewport? {
+            return routeModel?.takeIf { hasViewport }?.let {
+                createRouteViewport(
+                    contentBounds = it.bounds,
+                    canvasWidth = viewportWidthPx.toDouble(),
+                    canvasHeight = viewportHeightPx.toDouble(),
+                )
+            }
+        }
+        var setupViewport by remember(routeModel, viewportWidthPx, viewportHeightPx) {
+            mutableStateOf(
+                fittedSetupViewport(),
+            )
+        }
+        val setupBoundsOverride = if (!movementMode && routeModel != null && hasViewport && setupViewport != null) {
+            routeViewportBounds(
+                viewport = setupViewport!!,
+                canvasWidth = viewportWidthPx.toDouble(),
+                canvasHeight = viewportHeightPx.toDouble(),
+            )
+        } else {
+            null
+        }
+        val routeCanvasModifier = if (!movementMode && routeModel != null && hasViewport) {
+            Modifier
+                .fillMaxSize()
+                .pointerInput(routeModel, viewportWidthPx, viewportHeightPx) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            setupViewport = fittedSetupViewport()
+                        },
+                    )
+                }
+                .pointerInput(routeModel, viewportWidthPx, viewportHeightPx) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        val currentViewport = setupViewport ?: fittedSetupViewport() ?: return@detectTransformGestures
+                        setupViewport = transformRouteViewport(
+                            viewport = currentViewport,
+                            contentBounds = routeModel.bounds,
+                            canvasWidth = viewportWidthPx.toDouble(),
+                            canvasHeight = viewportHeightPx.toDouble(),
+                            centroid = ScreenPoint(centroid.x, centroid.y),
+                            pan = ScreenPoint(pan.x, pan.y),
+                            zoomChange = zoom,
+                        )
+                    }
+                }
+        } else {
+            Modifier.fillMaxSize()
+        }
 
         RouteCanvas(
             state = state,
             toneColor = toneColor,
             orientationMode = orientationMode,
             routeScale = routeScale,
-            modifier = Modifier.fillMaxSize(),
+            boundsOverride = setupBoundsOverride,
+            modifier = routeCanvasModifier,
         )
 
         if (movementMode) {

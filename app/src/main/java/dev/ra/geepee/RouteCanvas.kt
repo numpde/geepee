@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -34,6 +35,7 @@ internal fun RouteCanvas(
     toneColor: Color,
     orientationMode: OrientationMode,
     routeScale: RouteScale,
+    boundsOverride: Bounds? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
@@ -63,6 +65,7 @@ internal fun RouteCanvas(
             canvasHeight = size.height,
             lookAheadFraction = 0.0,
             rotationDegrees = routeRotationDegrees,
+            boundsOverride = boundsOverride,
         )
 
         val routeHaloWidth = 16.dp.toPx()
@@ -83,28 +86,63 @@ internal fun RouteCanvas(
             edge = edge,
             offsetPixels = 18.dp.toPx(),
         )
-        renderModel.polylines.forEach { polyline ->
-            if (polyline.size < 2) {
-                return@forEach
-            }
-
-            val path = Path().apply {
-                moveTo(polyline.first().x, polyline.first().y)
-                polyline.drop(1).forEach { point ->
-                    lineTo(point.x, point.y)
+        val setupGradientMode = !state.sessionRunning
+        if (setupGradientMode) {
+            renderModel.gradientPolylines.forEach { polyline ->
+                if (polyline.points.size < 2) {
+                    return@forEach
                 }
-            }
 
-            drawPath(
-                path = path,
-                color = colors.line.copy(alpha = 0.12f),
-                style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = path,
-                color = colors.line,
-                style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+                val path = Path().apply {
+                    moveTo(polyline.points.first().x, polyline.points.first().y)
+                    polyline.points.drop(1).forEach { point ->
+                        lineTo(point.x, point.y)
+                    }
+                }
+                val startPoint = polyline.points.first()
+                val endPoint = polyline.points.last()
+                val startColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, polyline.startProgressRatio.coerceIn(0f, 1f))
+                val endColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, polyline.endProgressRatio.coerceIn(0f, 1f))
+
+                drawPath(
+                    path = path,
+                    color = colors.line.copy(alpha = 0.08f),
+                    style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+                drawPath(
+                    path = path,
+                    brush = Brush.linearGradient(
+                        colors = listOf(startColor, endColor),
+                        start = Offset(startPoint.x, startPoint.y),
+                        end = Offset(endPoint.x, endPoint.y),
+                    ),
+                    style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
+        } else {
+            renderModel.polylines.forEach { polyline ->
+                if (polyline.size < 2) {
+                    return@forEach
+                }
+
+                val path = Path().apply {
+                    moveTo(polyline.first().x, polyline.first().y)
+                    polyline.drop(1).forEach { point ->
+                        lineTo(point.x, point.y)
+                    }
+                }
+
+                drawPath(
+                    path = path,
+                    color = colors.line.copy(alpha = 0.12f),
+                    style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+                drawPath(
+                    path = path,
+                    color = colors.line,
+                    style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
         }
 
         if (nearest != null) {
@@ -172,6 +210,9 @@ internal fun RouteCanvas(
         }
     }
 }
+
+private val ROUTE_START_COLOR = Color(0xFF2962FF)
+private val ROUTE_FINISH_COLOR = Color(0xFFD32F2F)
 
 private fun DrawScope.drawHistoryTrail(
     history: List<ScreenPoint>,

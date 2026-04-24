@@ -197,6 +197,7 @@ class RouteMathTest {
         )
 
         assertTrue(render.polylines.isNotEmpty())
+        assertTrue(render.gradientPolylines.isNotEmpty())
     }
 
     @Test
@@ -234,6 +235,105 @@ class RouteMathTest {
         assertNotNull(render.nearestPoint)
         assertNull(render.userPoint)
         assertNotNull(render.edgePoint)
+    }
+
+    @Test
+    fun createRouteViewportFitsContentBoundsToCanvasAspect() {
+        val contentBounds = Bounds(
+            minX = -40.0,
+            maxX = 60.0,
+            minY = -20.0,
+            maxY = 180.0,
+        )
+
+        val viewport = createRouteViewport(
+            contentBounds = contentBounds,
+            canvasWidth = 1080.0,
+            canvasHeight = 1920.0,
+        )
+        val viewportBounds = routeViewportBounds(
+            viewport = viewport,
+            canvasWidth = 1080.0,
+            canvasHeight = 1920.0,
+        )
+
+        assertTrue(viewportBounds.minX <= contentBounds.minX)
+        assertTrue(viewportBounds.maxX >= contentBounds.maxX)
+        assertTrue(viewportBounds.minY <= contentBounds.minY)
+        assertTrue(viewportBounds.maxY >= contentBounds.maxY)
+        assertEquals(
+            1080.0 / 1920.0,
+            (viewportBounds.maxX - viewportBounds.minX) / (viewportBounds.maxY - viewportBounds.minY),
+            0.0001,
+        )
+    }
+
+    @Test
+    fun transformRouteViewportZoomsAroundCenteredCentroid() {
+        val contentBounds = Bounds(
+            minX = -100.0,
+            maxX = 100.0,
+            minY = -80.0,
+            maxY = 80.0,
+        )
+        val viewport = createRouteViewport(
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+        )
+
+        val transformed = transformRouteViewport(
+            viewport = viewport,
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+            centroid = ScreenPoint(500f, 500f),
+            pan = ScreenPoint(0f, 0f),
+            zoomChange = 2f,
+        )
+
+        assertEquals(viewport.centerX, transformed.centerX, 0.001)
+        assertEquals(viewport.centerY, transformed.centerY, 0.001)
+        assertEquals(viewport.widthMeters / 2.0, transformed.widthMeters, 0.001)
+    }
+
+    @Test
+    fun transformRouteViewportPansWithFingerAndClampsInsideContent() {
+        val contentBounds = Bounds(
+            minX = 0.0,
+            maxX = 400.0,
+            minY = 0.0,
+            maxY = 400.0,
+        )
+        val zoomedViewport = RouteViewport(
+            centerX = 200.0,
+            centerY = 200.0,
+            widthMeters = 160.0,
+        )
+
+        val panned = transformRouteViewport(
+            viewport = zoomedViewport,
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+            centroid = ScreenPoint(500f, 500f),
+            pan = ScreenPoint(150f, 120f),
+            zoomChange = 1f,
+        )
+        val clamped = transformRouteViewport(
+            viewport = zoomedViewport,
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+            centroid = ScreenPoint(500f, 500f),
+            pan = ScreenPoint(-4_000f, -4_000f),
+            zoomChange = 1f,
+        )
+
+        assertTrue(panned.centerX < zoomedViewport.centerX)
+        assertTrue(panned.centerY > zoomedViewport.centerY)
+        assertEquals(320.0, clamped.centerX, 0.001)
+        assertEquals(80.0, clamped.centerY, 0.001)
     }
 
     @Test
