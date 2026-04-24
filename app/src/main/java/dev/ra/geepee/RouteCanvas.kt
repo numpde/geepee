@@ -65,6 +65,7 @@ internal fun RouteCanvas(
             canvasHeight = size.height,
             lookAheadFraction = 0.0,
             rotationDegrees = routeRotationDegrees,
+            includeGradientPolylines = !state.sessionRunning,
             boundsOverride = boundsOverride,
         )
 
@@ -92,32 +93,30 @@ internal fun RouteCanvas(
                 if (polyline.points.size < 2) {
                     return@forEach
                 }
-
-                val path = Path().apply {
-                    moveTo(polyline.points.first().x, polyline.points.first().y)
-                    polyline.points.drop(1).forEach { point ->
-                        lineTo(point.x, point.y)
-                    }
-                }
-                val startPoint = polyline.points.first()
-                val endPoint = polyline.points.last()
-                val startColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, polyline.startProgressRatio.coerceIn(0f, 1f))
-                val endColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, polyline.endProgressRatio.coerceIn(0f, 1f))
-
+                val polylinePath = buildPolylinePath(polyline.points.map(RouteGradientPoint::point))
                 drawPath(
-                    path = path,
+                    path = polylinePath,
                     color = colors.line.copy(alpha = 0.08f),
                     style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
-                drawPath(
-                    path = path,
-                    brush = Brush.linearGradient(
-                        colors = listOf(startColor, endColor),
-                        start = Offset(startPoint.x, startPoint.y),
-                        end = Offset(endPoint.x, endPoint.y),
-                    ),
-                    style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                )
+                polyline.points.zipWithNext().forEach { (start, end) ->
+                    val startOffset = Offset(start.point.x, start.point.y)
+                    val endOffset = Offset(end.point.x, end.point.y)
+                    val startColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, start.progressRatio.coerceIn(0f, 1f))
+                    val endColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, end.progressRatio.coerceIn(0f, 1f))
+
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(startColor, endColor),
+                            start = startOffset,
+                            end = endOffset,
+                        ),
+                        start = startOffset,
+                        end = endOffset,
+                        strokeWidth = routeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
             }
         } else {
             renderModel.polylines.forEach { polyline ->
@@ -125,12 +124,7 @@ internal fun RouteCanvas(
                     return@forEach
                 }
 
-                val path = Path().apply {
-                    moveTo(polyline.first().x, polyline.first().y)
-                    polyline.drop(1).forEach { point ->
-                        lineTo(point.x, point.y)
-                    }
-                }
+                val path = buildPolylinePath(polyline)
 
                 drawPath(
                     path = path,
@@ -284,6 +278,16 @@ private fun buildSmoothHistoryPath(history: List<ScreenPoint>): Path {
     val last = history.last()
     path.quadraticTo(penultimate.x, penultimate.y, last.x, last.y)
     return path
+}
+
+private fun buildPolylinePath(points: List<ScreenPoint>): Path {
+    return Path().apply {
+        val first = points.first()
+        moveTo(first.x, first.y)
+        points.drop(1).forEach { point ->
+            lineTo(point.x, point.y)
+        }
+    }
 }
 
 private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {

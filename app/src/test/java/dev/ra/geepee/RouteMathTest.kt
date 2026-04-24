@@ -194,10 +194,56 @@ class RouteMathTest {
             localWindowWidthMeters = 100.0,
             canvasWidth = 1000f,
             canvasHeight = 1000f,
+            includeGradientPolylines = true,
         )
 
-        assertTrue(render.polylines.isNotEmpty())
+        assertTrue(render.polylines.isEmpty())
         assertTrue(render.gradientPolylines.isNotEmpty())
+    }
+
+    @Test
+    fun gradientPolylineUsesExactProgressForClippedVisibleSection() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.001),
+                    GeoPoint(lat = 0.0, lon = 0.002),
+                    GeoPoint(lat = 0.0, lon = 0.003),
+                    GeoPoint(lat = 0.0, lon = 0.004),
+                ),
+            ),
+        )
+
+        val render = buildRouteRenderModel(
+            routeModel = route,
+            analysis = null,
+            localWindowWidthMeters = 100.0,
+            canvasWidth = 1000f,
+            canvasHeight = 1000f,
+            includeGradientPolylines = true,
+            boundsOverride = route.segments.single().points.let { points ->
+                val minX = points.minOf { it.x }
+                val maxX = points.maxOf { it.x }
+                val minY = points.minOf { it.y }
+                val maxY = points.maxOf { it.y }
+                Bounds(
+                    minX = minX + (maxX - minX) * 0.25,
+                    maxX = minX + (maxX - minX) * 0.75,
+                    minY = minY - 1.0,
+                    maxY = maxY + 1.0,
+                )
+            },
+        )
+
+        val polyline = render.gradientPolylines.single()
+        val first = polyline.points.first()
+        val last = polyline.points.last()
+
+        assertTrue(first.progressRatio > 0.2f)
+        assertTrue(first.progressRatio < 0.4f)
+        assertTrue(last.progressRatio > 0.6f)
+        assertTrue(last.progressRatio < 0.8f)
     }
 
     @Test

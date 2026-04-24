@@ -11,10 +11,30 @@ Read these files first:
 - [RouteCanvas.kt](app/src/main/java/dev/ra/geepee/RouteCanvas.kt)
 - [GeePeeTheme.kt](app/src/main/java/dev/ra/geepee/GeePeeTheme.kt)
 - [UiModels.kt](app/src/main/java/dev/ra/geepee/UiModels.kt)
+- [AppPreferences.kt](app/src/main/java/dev/ra/geepee/AppPreferences.kt)
+- [RouteLoadState.kt](app/src/main/java/dev/ra/geepee/RouteLoadState.kt)
+- [SetupViewportState.kt](app/src/main/java/dev/ra/geepee/SetupViewportState.kt)
 - [GeePeeViewModel.kt](app/src/main/java/dev/ra/geepee/GeePeeViewModel.kt)
+- [SessionState.kt](app/src/main/java/dev/ra/geepee/SessionState.kt)
+- [RouteRepository.kt](app/src/main/java/dev/ra/geepee/RouteRepository.kt)
+- [RouteLoadCoordinator.kt](app/src/main/java/dev/ra/geepee/RouteLoadCoordinator.kt)
+- [RouteRuntimeState.kt](app/src/main/java/dev/ra/geepee/RouteRuntimeState.kt)
+- [LiveTrackingController.kt](app/src/main/java/dev/ra/geepee/LiveTrackingController.kt)
+- [LiveTrackingPolicy.kt](app/src/main/java/dev/ra/geepee/LiveTrackingPolicy.kt)
+- [UiProjection.kt](app/src/main/java/dev/ra/geepee/UiProjection.kt)
+- [HeadingSelection.kt](app/src/main/java/dev/ra/geepee/HeadingSelection.kt)
+- [RouteStatusFormatter.kt](app/src/main/java/dev/ra/geepee/RouteStatusFormatter.kt)
 - [RouteMatching.kt](app/src/main/java/dev/ra/geepee/RouteMatching.kt)
 - [RouteMath.kt](app/src/main/java/dev/ra/geepee/RouteMath.kt)
 - [GpxParser.kt](app/src/main/java/dev/ra/geepee/GpxParser.kt)
+- [HeadingSelectionTest.kt](app/src/test/java/dev/ra/geepee/HeadingSelectionTest.kt)
+- [LiveTrackingPolicyTest.kt](app/src/test/java/dev/ra/geepee/LiveTrackingPolicyTest.kt)
+- [RouteLoadStateTest.kt](app/src/test/java/dev/ra/geepee/RouteLoadStateTest.kt)
+- [RouteLoadCoordinatorTest.kt](app/src/test/java/dev/ra/geepee/RouteLoadCoordinatorTest.kt)
+- [RouteRuntimeStateTest.kt](app/src/test/java/dev/ra/geepee/RouteRuntimeStateTest.kt)
+- [RouteStatusFormatterTest.kt](app/src/test/java/dev/ra/geepee/RouteStatusFormatterTest.kt)
+- [SessionStateTest.kt](app/src/test/java/dev/ra/geepee/SessionStateTest.kt)
+- [UiProjectionTest.kt](app/src/test/java/dev/ra/geepee/UiProjectionTest.kt)
 - [RouteMatcherTest.kt](app/src/test/java/dev/ra/geepee/RouteMatcherTest.kt)
 
 Behavior summary:
@@ -52,9 +72,16 @@ Storage:
 Side-effect boundaries:
 - File I/O happens only in `GeePeeViewModel.loadRoute()`.
 - Tiny persistent app-state writes happen only in `AppStateStore.kt`.
-- URI grant retention/release happens only in `GeePeeViewModel.rememberSelectedRoute()` / `clearRememberedRoute()`.
-- Location subscription happens only in `GeePeeViewModel.startLocationUpdatesIfPossible()`.
-- One-shot location refresh happens only in `GeePeeViewModel.requestImmediateLocationRefresh()`.
+- Persisted presentation/tracking preferences live only in `AppPreferences.kt`.
+- Route-load workflow state lives only in `RouteLoadState.kt`.
+- GPX parsing and persisted route-grant retention/release happen only in `RouteRepository.kt`.
+- Async route-load workflow lives only in `RouteLoadCoordinator.kt`.
+- Location and heading subscription happen only in `LiveTrackingController.kt`.
+- Live tracking cadence policy lives only in `LiveTrackingPolicy.kt`.
+- One-shot location refresh happens only in `LiveTrackingController.requestImmediateLocationRefresh()`.
+- Live route/session projection state lives only in `RouteRuntimeState.kt`.
+- Session/permission transition rules live only in `SessionState.kt`.
+- Final UI-state projection lives only in `UiProjection.kt`.
 - Route matching and route math are pure Kotlin in `RouteMatching.kt` and `RouteMath.kt`.
 
 Fast grep checks:

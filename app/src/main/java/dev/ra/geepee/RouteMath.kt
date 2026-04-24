@@ -106,15 +106,17 @@ data class RouteRenderModel(
 
 data class RouteRenderChunk(
     val points: List<ProjectedPoint>,
+    val progressRatios: List<Float>,
     val bounds: Bounds,
-    val startRouteMeters: Double,
-    val endRouteMeters: Double,
 )
 
 data class RouteGradientPolyline(
-    val points: List<ScreenPoint>,
-    val startProgressRatio: Float,
-    val endProgressRatio: Float,
+    val points: List<RouteGradientPoint>,
+)
+
+data class RouteGradientPoint(
+    val point: ScreenPoint,
+    val progressRatio: Float,
 )
 
 data class RouteEdge(
@@ -269,6 +271,7 @@ fun buildRouteRenderModel(
     canvasHeight: Float,
     lookAheadFraction: Double = 0.0,
     rotationDegrees: Float = 0f,
+    includeGradientPolylines: Boolean = false,
     boundsOverride: Bounds? = null,
 ): RouteRenderModel {
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
@@ -301,50 +304,57 @@ fun buildRouteRenderModel(
         y = canvasHeight / 2f,
     )
 
-    val polylines = routeModel.segments
-        .flatMap { segment ->
-            segment.renderChunks
-                .asSequence()
-                .filter { chunk -> boundsIntersect(chunk.bounds, bounds) }
-                .flatMap { chunk ->
-                    clipScreenPolylineToBounds(
-                        points = chunk.points.map { point ->
-                            rotateScreenPoint(
-                                point = toScreenPoint(point, projector),
-                                center = screenCenter,
-                                rotationDegrees = rotationDegrees.toDouble(),
-                            )
-                        },
-                        bounds = screenBounds,
-                    ).asSequence()
-                }
-                .toList()
-        }
-    val gradientPolylines = routeModel.segments
-        .flatMap { segment ->
-            segment.renderChunks
-                .asSequence()
-                .filter { chunk -> boundsIntersect(chunk.bounds, bounds) }
-                .flatMap { chunk ->
-                    clipScreenPolylineToBounds(
-                        points = chunk.points.map { point ->
-                            rotateScreenPoint(
-                                point = toScreenPoint(point, projector),
-                                center = screenCenter,
-                                rotationDegrees = rotationDegrees.toDouble(),
-                            )
-                        },
-                        bounds = screenBounds,
-                    ).asSequence().map { polyline ->
-                        RouteGradientPolyline(
-                            points = polyline,
-                            startProgressRatio = (chunk.startRouteMeters / routeModel.totalLengthMeters.coerceAtLeast(1.0)).toFloat(),
-                            endProgressRatio = (chunk.endRouteMeters / routeModel.totalLengthMeters.coerceAtLeast(1.0)).toFloat(),
-                        )
+    val polylines = if (includeGradientPolylines) {
+        emptyList()
+    } else {
+        routeModel.segments
+            .flatMap { segment ->
+                segment.renderChunks
+                    .asSequence()
+                    .filter { chunk -> boundsIntersect(chunk.bounds, bounds) }
+                    .flatMap { chunk ->
+                        clipScreenPolylineToBounds(
+                            points = chunk.points.map { point ->
+                                rotateScreenPoint(
+                                    point = toScreenPoint(point, projector),
+                                    center = screenCenter,
+                                    rotationDegrees = rotationDegrees.toDouble(),
+                                )
+                            },
+                            bounds = screenBounds,
+                        ).asSequence()
                     }
+                    .toList()
+            }
+    }
+    val gradientPolylines = if (includeGradientPolylines) {
+        routeModel.segments
+            .flatMap { segment ->
+                segment.renderChunks
+                    .asSequence()
+                    .filter { chunk -> boundsIntersect(chunk.bounds, bounds) }
+                    .flatMap { chunk ->
+                        clipGradientPolylineToBounds(
+                            points = chunk.points.map { point ->
+                                rotateScreenPoint(
+                                    point = toScreenPoint(point, projector),
+                                    center = screenCenter,
+                                    rotationDegrees = rotationDegrees.toDouble(),
+                                )
+                            },
+                            progressRatios = chunk.progressRatios,
+                            bounds = screenBounds,
+                        ).asSequence().map { polyline ->
+                            RouteGradientPolyline(
+                                points = polyline,
+                            )
+                        }
                 }
                 .toList()
-        }
+            }
+    } else {
+        emptyList()
+    }
 
     val nearestProjected = analysis?.nearestPoint?.let { point ->
         rotateScreenPoint(
@@ -618,11 +628,11 @@ private fun buildRouteRenderChunks(
     while (startIndex < points.lastIndex) {
         val endIndex = min(points.lastIndex, startIndex + ROUTE_RENDER_CHUNK_SIZE)
         val chunkPoints = points.subList(startIndex, endIndex + 1)
+        val totalLengthMeters = routeMeters.last().coerceAtLeast(1.0)
         chunks += RouteRenderChunk(
             points = chunkPoints,
+            progressRatios = routeMeters.subList(startIndex, endIndex + 1).map { (it / totalLengthMeters).toFloat() },
             bounds = computeBounds(chunkPoints, paddingMeters = 0.0),
-            startRouteMeters = routeMeters[startIndex],
-            endRouteMeters = routeMeters[endIndex],
         )
         startIndex = endIndex
     }
@@ -855,9 +865,65 @@ private fun clipScreenPolylineToBounds(points: List<ScreenPoint>, bounds: Screen
     return polylines
 }
 
+private fun clipGradientPolylineToBounds(
+    points: List<ScreenPoint>,
+    progressRatios: List<Float>,
+    bounds: ScreenBounds,
+): List<List<RouteGradientPoint>> {
+    if (points.isEmpty() || points.size != progressRatios.size) {
+        return emptyList()
+    }
+
+    val polylines = mutableListOf<List<RouteGradientPoint>>()
+    var current = mutableListOf<RouteGradientPoint>()
+
+    for (index in 0 until points.lastIndex) {
+        val clipped = clipScreenSegmentToBounds(points[index], points[index + 1], bounds)
+        if (clipped == null) {
+            if (current.size >= 2) {
+                polylines += current.toList()
+            }
+            current = mutableListOf()
+            continue
+        }
+
+        val startProgress = lerpFloat(
+            start = progressRatios[index],
+            stop = progressRatios[index + 1],
+            fraction = clipped.startT.toFloat(),
+        )
+        val endProgress = lerpFloat(
+            start = progressRatios[index],
+            stop = progressRatios[index + 1],
+            fraction = clipped.endT.toFloat(),
+        )
+        val startPoint = RouteGradientPoint(clipped.start, startProgress)
+        val endPoint = RouteGradientPoint(clipped.end, endProgress)
+
+        if (current.isEmpty()) {
+            current += startPoint
+        } else if (!sameScreenPoint(current.last().point, startPoint.point)) {
+            current += startPoint
+        }
+        current += endPoint
+    }
+
+    if (current.size >= 2) {
+        polylines += current.toList()
+    }
+
+    return polylines
+}
+
+private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
+    return start + (stop - start) * fraction
+}
+
 private data class ClippedScreenSegment(
     val start: ScreenPoint,
     val end: ScreenPoint,
+    val startT: Double,
+    val endT: Double,
 )
 
 private fun clipScreenSegmentToBounds(
@@ -905,6 +971,8 @@ private fun clipScreenSegmentToBounds(
     return ClippedScreenSegment(
         start = interpolateScreenPoint(start, end, t0),
         end = interpolateScreenPoint(start, end, t1),
+        startT = t0,
+        endT = t1,
     )
 }
 

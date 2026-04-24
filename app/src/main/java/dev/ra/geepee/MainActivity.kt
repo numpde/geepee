@@ -8,31 +8,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeePeeViewModel by viewModels()
-    private lateinit var appStateStore: AppStateStore
-    private var routeScale by mutableStateOf(RouteScale.TwoHundred)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        appStateStore = AppStateStore(applicationContext)
-        routeScale = appStateStore.load().routeScale
         enableEdgeToEdge()
         syncPermissions()
 
         setContent {
-            GeePeeApp(
-                viewModel = viewModel,
-                routeScale = routeScale,
-                onCycleScale = {
-                    updateRouteScale(routeScale.next())
-                },
-            )
+            GeePeeApp(viewModel = viewModel)
         }
     }
 
@@ -56,22 +43,17 @@ class MainActivity : ComponentActivity() {
         if (event.repeatCount == 0 && uiState.sessionRunning && uiState.routeModel != null) {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
-                    updateRouteScale(routeScale.zoomIn())
+                    viewModel.zoomInRouteScale()
                     return true
                 }
 
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    updateRouteScale(routeScale.zoomOut())
+                    viewModel.zoomOutRouteScale()
                     return true
                 }
             }
         }
         return super.onKeyDown(keyCode, event)
-    }
-
-    private fun updateRouteScale(scale: RouteScale) {
-        routeScale = scale
-        appStateStore.setRouteScale(scale)
     }
 
     private fun syncPermissions() {

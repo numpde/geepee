@@ -16,10 +16,7 @@ internal data class RestorableAppState(
     val routeUri: Uri?,
     val routeName: String?,
     val sessionActive: Boolean,
-    val batterySaverEnabled: Boolean,
-    val darkModeEnabled: Boolean,
-    val orientationMode: OrientationMode,
-    val routeScale: RouteScale,
+    val preferences: AppPreferences,
 )
 
 internal class AppStateStore(context: Context) {
@@ -31,15 +28,17 @@ internal class AppStateStore(context: Context) {
             routeUri = routeUri,
             routeName = preferences.getString(KEY_ROUTE_NAME, null),
             sessionActive = preferences.getBoolean(KEY_SESSION_ACTIVE, false),
-            batterySaverEnabled = preferences.getBoolean(KEY_BATTERY_SAVER, true),
-            darkModeEnabled = preferences.getBoolean(KEY_DARK_MODE, true),
-            orientationMode = enumValueOrDefault(
-                rawValue = preferences.getString(KEY_ORIENTATION_MODE, null),
-                defaultValue = OrientationMode.CourseUp,
-            ),
-            routeScale = enumValueOrDefault(
-                rawValue = preferences.getString(KEY_ROUTE_SCALE, null),
-                defaultValue = RouteScale.TwoHundred,
+            preferences = AppPreferences(
+                batterySaverEnabled = preferences.getBoolean(KEY_BATTERY_SAVER, true),
+                darkModeEnabled = preferences.getBoolean(KEY_DARK_MODE, true),
+                orientationMode = enumValueOrDefault(
+                    rawValue = preferences.getString(KEY_ORIENTATION_MODE, null),
+                    defaultValue = OrientationMode.CourseUp,
+                ),
+                routeScale = enumValueOrDefault(
+                    rawValue = preferences.getString(KEY_ROUTE_SCALE, null),
+                    defaultValue = RouteScale.TwoHundred,
+                ),
             ),
         )
     }
@@ -65,27 +64,12 @@ internal class AppStateStore(context: Context) {
             .apply()
     }
 
-    fun setBatterySaverEnabled(enabled: Boolean) {
+    fun savePreferences(appPreferences: AppPreferences) {
         preferences.edit()
-            .putBoolean(KEY_BATTERY_SAVER, enabled)
-            .apply()
-    }
-
-    fun setDarkModeEnabled(enabled: Boolean) {
-        preferences.edit()
-            .putBoolean(KEY_DARK_MODE, enabled)
-            .apply()
-    }
-
-    fun setOrientationMode(mode: OrientationMode) {
-        preferences.edit()
-            .putString(KEY_ORIENTATION_MODE, mode.name)
-            .apply()
-    }
-
-    fun setRouteScale(scale: RouteScale) {
-        preferences.edit()
-            .putString(KEY_ROUTE_SCALE, scale.name)
+            .putBoolean(KEY_BATTERY_SAVER, appPreferences.batterySaverEnabled)
+            .putBoolean(KEY_DARK_MODE, appPreferences.darkModeEnabled)
+            .putString(KEY_ORIENTATION_MODE, appPreferences.orientationMode.name)
+            .putString(KEY_ROUTE_SCALE, appPreferences.routeScale.name)
             .apply()
     }
 

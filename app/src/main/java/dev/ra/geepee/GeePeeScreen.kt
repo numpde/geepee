@@ -12,11 +12,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -27,20 +22,14 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun GeePeeApp(
     viewModel: GeePeeViewModel,
-    routeScale: RouteScale,
-    onCycleScale: () -> Unit,
 ) {
     val state = viewModel.uiState
     val context = LocalContext.current
-    val appStateStore = remember(context) { AppStateStore(context.applicationContext) }
-    val restoredState = remember(appStateStore) { appStateStore.load() }
-    var orientationMode by rememberSaveable { mutableStateOf(restoredState.orientationMode) }
-    var darkModeEnabled by rememberSaveable { mutableStateOf(restoredState.darkModeEnabled) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
-        viewModel.updateLocationPermissions(
+        viewModel.onPermissionRequestResult(
             coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true,
             fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true,
         )
@@ -56,24 +45,12 @@ internal fun GeePeeApp(
         viewModel.loadRoute(uri, queryDisplayName(context, uri))
     }
 
-    GeePeeTheme(darkThemeEnabled = darkModeEnabled) {
+    GeePeeTheme(darkThemeEnabled = state.darkModeEnabled) {
         GeePeeScreen(
             state = state,
-            darkModeEnabled = darkModeEnabled,
-            orientationMode = orientationMode,
-            routeScale = routeScale,
-            onCycleScale = onCycleScale,
-            onToggleOrientationMode = {
-                orientationMode = when (orientationMode) {
-                    OrientationMode.CourseUp -> OrientationMode.NorthUp
-                    OrientationMode.NorthUp -> OrientationMode.CourseUp
-                }
-                appStateStore.setOrientationMode(orientationMode)
-            },
-            onToggleDarkMode = {
-                darkModeEnabled = !darkModeEnabled
-                appStateStore.setDarkModeEnabled(darkModeEnabled)
-            },
+            onCycleScale = viewModel::cycleRouteScale,
+            onToggleOrientationMode = viewModel::toggleOrientationMode,
+            onToggleDarkMode = viewModel::toggleDarkMode,
             onPickRoute = {
                 routeLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*"))
             },
@@ -81,7 +58,7 @@ internal fun GeePeeApp(
                 if (state.hasLocationPermission) {
                     viewModel.startMonitoring()
                 } else {
-                    viewModel.startMonitoring()
+                    viewModel.requestSessionStart()
                     permissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -105,9 +82,6 @@ internal fun GeePeeApp(
 @Composable
 private fun GeePeeScreen(
     state: GeePeeUiState,
-    darkModeEnabled: Boolean,
-    orientationMode: OrientationMode,
-    routeScale: RouteScale,
     onCycleScale: () -> Unit,
     onToggleOrientationMode: () -> Unit,
     onToggleDarkMode: () -> Unit,
@@ -130,49 +104,24 @@ private fun GeePeeScreen(
         val density = LocalDensity.current
         val viewportWidthPx = with(density) { maxWidth.toPx() }
         val viewportHeightPx = with(density) { maxHeight.toPx() }
-        val routeModel = state.routeModel
-        val hasViewport = viewportWidthPx > 0f && viewportHeightPx > 0f
-        fun fittedSetupViewport(): RouteViewport? {
-            return routeModel?.takeIf { hasViewport }?.let {
-                createRouteViewport(
-                    contentBounds = it.bounds,
-                    canvasWidth = viewportWidthPx.toDouble(),
-                    canvasHeight = viewportHeightPx.toDouble(),
-                )
-            }
-        }
-        var setupViewport by remember(routeModel, viewportWidthPx, viewportHeightPx) {
-            mutableStateOf(
-                fittedSetupViewport(),
-            )
-        }
-        val setupBoundsOverride = if (!movementMode && routeModel != null && hasViewport && setupViewport != null) {
-            routeViewportBounds(
-                viewport = setupViewport!!,
-                canvasWidth = viewportWidthPx.toDouble(),
-                canvasHeight = viewportHeightPx.toDouble(),
-            )
-        } else {
-            null
-        }
-        val routeCanvasModifier = if (!movementMode && routeModel != null && hasViewport) {
+        val setupViewportState = rememberSetupViewportState(
+            routeModel = state.routeModel,
+            viewportWidthPx = viewportWidthPx,
+            viewportHeightPx = viewportHeightPx,
+        )
+        val routeCanvasModifier = if (!movementMode && setupViewportState.isReady) {
             Modifier
                 .fillMaxSize()
-                .pointerInput(routeModel, viewportWidthPx, viewportHeightPx) {
+                .pointerInput(setupViewportState) {
                     detectTapGestures(
                         onDoubleTap = {
-                            setupViewport = fittedSetupViewport()
+                            setupViewportState.reset()
                         },
                     )
                 }
-                .pointerInput(routeModel, viewportWidthPx, viewportHeightPx) {
+                .pointerInput(setupViewportState) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
-                        val currentViewport = setupViewport ?: fittedSetupViewport() ?: return@detectTransformGestures
-                        setupViewport = transformRouteViewport(
-                            viewport = currentViewport,
-                            contentBounds = routeModel.bounds,
-                            canvasWidth = viewportWidthPx.toDouble(),
-                            canvasHeight = viewportHeightPx.toDouble(),
+                        setupViewportState.transform(
                             centroid = ScreenPoint(centroid.x, centroid.y),
                             pan = ScreenPoint(pan.x, pan.y),
                             zoomChange = zoom,
@@ -186,9 +135,9 @@ private fun GeePeeScreen(
         RouteCanvas(
             state = state,
             toneColor = toneColor,
-            orientationMode = orientationMode,
-            routeScale = routeScale,
-            boundsOverride = setupBoundsOverride,
+            orientationMode = state.orientationMode,
+            routeScale = state.routeScale,
+            boundsOverride = if (movementMode) null else setupViewportState.boundsOverride,
             modifier = routeCanvasModifier,
         )
 
@@ -203,7 +152,7 @@ private fun GeePeeScreen(
             )
             MovementMenu(
                 routeName = state.routeName,
-                darkModeEnabled = darkModeEnabled,
+                darkModeEnabled = state.darkModeEnabled,
                 batterySaverEnabled = state.batterySaverEnabled,
                 onPickRoute = onPickRoute,
                 onStartMonitoring = onStartMonitoring,
@@ -221,7 +170,7 @@ private fun GeePeeScreen(
                 HeadingCompass(
                     compass = compass,
                     toneColor = toneColor,
-                    orientationMode = orientationMode,
+                    orientationMode = state.orientationMode,
                     onToggleOrientationMode = onToggleOrientationMode,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -230,7 +179,7 @@ private fun GeePeeScreen(
                 )
             }
             ScaleBar(
-                routeScale = routeScale,
+                routeScale = state.routeScale,
                 viewportWidthPx = viewportWidthPx,
                 onCycleScale = onCycleScale,
                 modifier = Modifier
