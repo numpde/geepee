@@ -15,7 +15,6 @@ private const val LOCAL_EDGE_WINDOW = 192
 private const val LOCAL_EDGE_MARGIN = 24
 private const val LOCAL_EDGE_FALLBACK_DISTANCE_METERS = 150.0
 private const val ROUTE_EDGE_GRID_METERS = 160.0
-private const val ROUTE_EDGE_GRID_SEARCH_RADIUS_CELLS = 3
 
 data class GeoPoint(
     val lat: Double,
@@ -132,6 +131,10 @@ data class RouteEdge(
 data class RouteSpatialIndex(
     val cellSizeMeters: Double,
     val cells: Map<GridCell, IntArray>,
+    val minCellX: Int,
+    val maxCellX: Int,
+    val minCellY: Int,
+    val maxCellY: Int,
 )
 
 data class GridCell(
@@ -205,7 +208,11 @@ fun analyzeLocationAgainstModel(
     previousNearestEdgeIndex: Int? = null,
 ): RouteAnalysis {
     val projectedFix = projectLocationFix(model, fix)
-    val nearest = collectRouteCandidates(model, projectedFix, previousNearestEdgeIndex)
+    val nearest = collectRouteCandidates(
+        model = model,
+        projectedFix = projectedFix,
+        previousNearestEdgeIndexes = previousNearestEdgeIndex?.let(::listOf).orEmpty(),
+    )
         .minByOrNull { it.offRouteMeters }
         ?: emptyRouteAnalysis(projectedFix)
     return nearest.copy(
@@ -227,26 +234,30 @@ internal fun projectLocationFix(model: RouteModel, fix: LocationFix): ProjectedP
 internal fun collectRouteCandidates(
     model: RouteModel,
     projectedFix: ProjectedPoint,
-    previousNearestEdgeIndex: Int? = null,
+    previousNearestEdgeIndexes: List<Int> = emptyList(),
 ): List<RouteAnalysis> {
     if (model.edges.isEmpty()) {
         return emptyList()
     }
 
     var localCandidates = emptyList<RouteAnalysis>()
-    var localSearchStart = 0
-    var localSearchEnd = -1
+    val validPreviousEdgeIndexes = previousNearestEdgeIndexes.filter { it in 0..model.edges.lastIndex }
 
-    previousNearestEdgeIndex?.let { nearestEdgeIndex ->
-        localSearchStart = max(0, nearestEdgeIndex - LOCAL_EDGE_WINDOW)
-        localSearchEnd = min(model.edges.lastIndex, nearestEdgeIndex + LOCAL_EDGE_WINDOW)
-        localCandidates = analyzeProjectedPointRange(model, projectedFix, localSearchStart, localSearchEnd)
+    if (validPreviousEdgeIndexes.isNotEmpty()) {
+        localCandidates = analyzeProjectedPointCandidates(
+            model = model,
+            projectedFix = projectedFix,
+            edgeIndexes = localWindowEdgeIndexes(model, validPreviousEdgeIndexes),
+        )
     }
 
-    val indexedCandidates = candidateEdgeIndexes(model.spatialIndex, projectedFix)
+    val indexedCandidates = collectIndexedCandidates(
+        model = model,
+        projectedFix = projectedFix,
+    )
     if (indexedCandidates.isNotEmpty()) {
         val combinedIndexes = LinkedHashSet<Int>().apply {
-            indexedCandidates.forEach { add(it) }
+            indexedCandidates.forEach { add(it.nearestEdgeIndex) }
             localCandidates.forEach { add(it.nearestEdgeIndex) }
         }.toIntArray()
         return analyzeProjectedPointCandidates(model, projectedFix, combinedIndexes)
@@ -254,7 +265,7 @@ internal fun collectRouteCandidates(
 
     if (localCandidates.isNotEmpty()) {
         val localBest = localCandidates.minByOrNull { it.offRouteMeters }
-        if (localBest != null && isLocalEdgeMatchReliable(localBest, localSearchStart, localSearchEnd, model.edges.lastIndex)) {
+        if (localBest != null && isLocalEdgeMatchReliable(localBest, validPreviousEdgeIndexes, model.edges.lastIndex)) {
             return localCandidates
         }
     }
@@ -553,16 +564,38 @@ internal fun emptyRouteAnalysis(projectedFix: ProjectedPoint): RouteAnalysis {
 
 private fun isLocalEdgeMatchReliable(
     analysis: RouteAnalysis,
-    searchStart: Int,
-    searchEnd: Int,
+    hintEdgeIndexes: List<Int>,
     lastEdgeIndex: Int,
 ): Boolean {
     if (analysis.offRouteMeters > LOCAL_EDGE_FALLBACK_DISTANCE_METERS) {
         return false
     }
-    val nearLeftBoundary = searchStart > 0 && analysis.nearestEdgeIndex - searchStart <= LOCAL_EDGE_MARGIN
-    val nearRightBoundary = searchEnd < lastEdgeIndex && searchEnd - analysis.nearestEdgeIndex <= LOCAL_EDGE_MARGIN
-    return !nearLeftBoundary && !nearRightBoundary
+    return hintEdgeIndexes.any { hintEdgeIndex ->
+        val searchStart = max(0, hintEdgeIndex - LOCAL_EDGE_WINDOW)
+        val searchEnd = min(lastEdgeIndex, hintEdgeIndex + LOCAL_EDGE_WINDOW)
+        if (analysis.nearestEdgeIndex !in searchStart..searchEnd) {
+            false
+        } else {
+            val nearLeftBoundary = searchStart > 0 && analysis.nearestEdgeIndex - searchStart <= LOCAL_EDGE_MARGIN
+            val nearRightBoundary = searchEnd < lastEdgeIndex && searchEnd - analysis.nearestEdgeIndex <= LOCAL_EDGE_MARGIN
+            !nearLeftBoundary && !nearRightBoundary
+        }
+    }
+}
+
+private fun localWindowEdgeIndexes(
+    model: RouteModel,
+    hintEdgeIndexes: List<Int>,
+): IntArray {
+    return LinkedHashSet<Int>().apply {
+        hintEdgeIndexes.forEach { hintEdgeIndex ->
+            val searchStart = max(0, hintEdgeIndex - LOCAL_EDGE_WINDOW)
+            val searchEnd = min(model.edges.lastIndex, hintEdgeIndex + LOCAL_EDGE_WINDOW)
+            for (edgeIndex in searchStart..searchEnd) {
+                add(edgeIndex)
+            }
+        }
+    }.toIntArray()
 }
 
 internal fun candidateEdgeIndexes(
@@ -570,18 +603,15 @@ internal fun candidateEdgeIndexes(
     point: ProjectedPoint,
 ): IntArray {
     val centerCell = gridCellForPoint(point, spatialIndex.cellSizeMeters)
-    for (radius in 0..ROUTE_EDGE_GRID_SEARCH_RADIUS_CELLS) {
-        val collected = LinkedHashSet<Int>()
-        for (x in (centerCell.x - radius)..(centerCell.x + radius)) {
-            for (y in (centerCell.y - radius)..(centerCell.y + radius)) {
-                spatialIndex.cells[GridCell(x, y)]?.forEach { collected += it }
-            }
-        }
-        if (collected.isNotEmpty()) {
-            return collected.toIntArray()
-        }
+    val collected = LinkedHashSet<Int>()
+    val maxRadius = max(
+        max(abs(centerCell.x - spatialIndex.minCellX), abs(centerCell.x - spatialIndex.maxCellX)),
+        max(abs(centerCell.y - spatialIndex.minCellY), abs(centerCell.y - spatialIndex.maxCellY)),
+    )
+    for (radius in 0..maxRadius) {
+        collectCellRingEdgeIndexes(spatialIndex, centerCell, radius, collected)
     }
-    return IntArray(0)
+    return collected.toIntArray()
 }
 
 private fun buildRouteSpatialIndex(
@@ -598,9 +628,109 @@ private fun buildRouteSpatialIndex(
             }
         }
     }
+    val cellKeys = cells.keys
     return RouteSpatialIndex(
         cellSizeMeters = cellSizeMeters,
         cells = cells.mapValues { (_, value) -> value.toIntArray() },
+        minCellX = cellKeys.minOfOrNull { it.x } ?: 0,
+        maxCellX = cellKeys.maxOfOrNull { it.x } ?: 0,
+        minCellY = cellKeys.minOfOrNull { it.y } ?: 0,
+        maxCellY = cellKeys.maxOfOrNull { it.y } ?: 0,
+    )
+}
+
+private fun collectIndexedCandidates(
+    model: RouteModel,
+    projectedFix: ProjectedPoint,
+): List<RouteAnalysis> {
+    val spatialIndex = model.spatialIndex
+    if (spatialIndex.cells.isEmpty()) {
+        return emptyList()
+    }
+
+    val centerCell = gridCellForPoint(projectedFix, spatialIndex.cellSizeMeters)
+    val maxRadius = max(
+        max(abs(centerCell.x - spatialIndex.minCellX), abs(centerCell.x - spatialIndex.maxCellX)),
+        max(abs(centerCell.y - spatialIndex.minCellY), abs(centerCell.y - spatialIndex.maxCellY)),
+    )
+    val collectedEdgeIndexes = LinkedHashSet<Int>()
+    val analyzedCandidates = LinkedHashMap<Int, RouteAnalysis>()
+
+    for (radius in 0..maxRadius) {
+        val ringEdgeIndexes = LinkedHashSet<Int>()
+        collectCellRingEdgeIndexes(spatialIndex, centerCell, radius, ringEdgeIndexes)
+        ringEdgeIndexes.forEach { edgeIndex ->
+            if (collectedEdgeIndexes.add(edgeIndex)) {
+                analyzedCandidates[edgeIndex] = analyzeRouteEdge(model.edges[edgeIndex], projectedFix, edgeIndex)
+            }
+        }
+
+        val bestCandidate = analyzedCandidates.values.minByOrNull { it.offRouteMeters } ?: continue
+        if (searchExhausted(spatialIndex, centerCell, radius) ||
+            bestCandidate.offRouteMeters < lowerBoundToUnsearchedCells(
+                point = projectedFix,
+                centerCell = centerCell,
+                radius = radius,
+                cellSizeMeters = spatialIndex.cellSizeMeters,
+            )
+        ) {
+            return analyzedCandidates.values.toList()
+        }
+    }
+
+    return analyzedCandidates.values.toList()
+}
+
+private fun collectCellRingEdgeIndexes(
+    spatialIndex: RouteSpatialIndex,
+    centerCell: GridCell,
+    radius: Int,
+    collected: MutableSet<Int>,
+) {
+    if (radius == 0) {
+        spatialIndex.cells[centerCell]?.forEach { collected += it }
+        return
+    }
+
+    val minX = centerCell.x - radius
+    val maxX = centerCell.x + radius
+    val minY = centerCell.y - radius
+    val maxY = centerCell.y + radius
+
+    for (x in minX..maxX) {
+        spatialIndex.cells[GridCell(x, minY)]?.forEach { collected += it }
+        spatialIndex.cells[GridCell(x, maxY)]?.forEach { collected += it }
+    }
+    for (y in (minY + 1) until maxY) {
+        spatialIndex.cells[GridCell(minX, y)]?.forEach { collected += it }
+        spatialIndex.cells[GridCell(maxX, y)]?.forEach { collected += it }
+    }
+}
+
+private fun searchExhausted(
+    spatialIndex: RouteSpatialIndex,
+    centerCell: GridCell,
+    radius: Int,
+): Boolean {
+    return centerCell.x - radius <= spatialIndex.minCellX &&
+        centerCell.x + radius >= spatialIndex.maxCellX &&
+        centerCell.y - radius <= spatialIndex.minCellY &&
+        centerCell.y + radius >= spatialIndex.maxCellY
+}
+
+private fun lowerBoundToUnsearchedCells(
+    point: ProjectedPoint,
+    centerCell: GridCell,
+    radius: Int,
+    cellSizeMeters: Double,
+): Double {
+    val searchedMinX = (centerCell.x - radius) * cellSizeMeters
+    val searchedMaxX = (centerCell.x + radius + 1) * cellSizeMeters
+    val searchedMinY = (centerCell.y - radius) * cellSizeMeters
+    val searchedMaxY = (centerCell.y + radius + 1) * cellSizeMeters
+    return min(
+        min(point.x - searchedMinX, searchedMaxX - point.x),
+        min(point.y - searchedMinY, searchedMaxY - point.y),
     )
 }
 

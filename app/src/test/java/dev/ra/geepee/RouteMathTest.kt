@@ -166,6 +166,108 @@ class RouteMathTest {
     }
 
     @Test
+    fun multiHintLocalSearchUsesWindowUnionInsteadOfSpanningWholeRoute() {
+        val routePoints = (0..2200).map { index ->
+            GeoPoint(
+                lat = 0.0,
+                lon = index * 0.00001,
+            )
+        }
+        val route = buildRouteModel(listOf(routePoints))
+        val projectedFix = projectLocationFix(
+            model = route,
+            fix = LocationFix(
+                lat = 0.0,
+                lon = routePoints[25].lon,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+
+        val candidates = collectRouteCandidates(
+            model = route,
+            projectedFix = projectedFix,
+            previousNearestEdgeIndexes = listOf(25, route.edges.lastIndex - 25),
+        )
+
+        assertTrue(candidates.isNotEmpty())
+        assertTrue(candidates.size < 600)
+        assertTrue(candidates.any { it.nearestEdgeIndex < 250 })
+        assertTrue(candidates.any { it.nearestEdgeIndex > route.edges.lastIndex - 250 })
+        assertFalse(candidates.any { it.nearestEdgeIndex in 800..1400 })
+    }
+
+    @Test
+    fun spatialIndexSearchDoesNotStopAtFirstOccupiedRingWhenCloserEdgeIsNextCellOver() {
+        val meterToDegrees = 1.0 / 111_111.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 20.0 * meterToDegrees),
+                    GeoPoint(lat = 120.0 * meterToDegrees, lon = 20.0 * meterToDegrees),
+                ),
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 161.0 * meterToDegrees),
+                    GeoPoint(lat = 120.0 * meterToDegrees, lon = 161.0 * meterToDegrees),
+                ),
+            ),
+        )
+
+        val analysis = analyzeLocationAgainstModel(
+            model = route,
+            fix = LocationFix(
+                lat = 60.0 * meterToDegrees,
+                lon = 159.0 * meterToDegrees,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+
+        assertEquals(1, analysis.nearestEdgeIndex)
+        assertTrue(analysis.offRouteMeters < 5.0)
+    }
+
+    @Test
+    fun spatialIndexSearchKeepsEqualDistanceAdjacentCellCandidatesAlive() {
+        val meterToDegrees = 1.0 / 111_111.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 158.0 * meterToDegrees),
+                    GeoPoint(lat = 120.0 * meterToDegrees, lon = 158.0 * meterToDegrees),
+                ),
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 160.0 * meterToDegrees),
+                    GeoPoint(lat = 120.0 * meterToDegrees, lon = 160.0 * meterToDegrees),
+                ),
+            ),
+        )
+        val projectedFix = projectLocationFix(
+            model = route,
+            fix = LocationFix(
+                lat = 60.0 * meterToDegrees,
+                lon = 159.0 * meterToDegrees,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+
+        val candidates = collectRouteCandidates(
+            model = route,
+            projectedFix = projectedFix,
+        )
+
+        assertTrue(candidates.any { it.nearestEdgeIndex == 0 && it.offRouteMeters < 2.0 })
+        assertTrue(candidates.any { it.nearestEdgeIndex == 1 && it.offRouteMeters < 2.0 })
+    }
+
+    @Test
     fun buildRouteModelChunksLongSegmentsForRenderCulling() {
         val routePoints = (0..400).map { index ->
             GeoPoint(

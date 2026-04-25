@@ -8,6 +8,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.random.Random
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -114,6 +115,209 @@ class RouteMatcherTest {
         assertTrue(match2.routeMeters > match1.routeMeters)
         assertTrue(match3.routeMeters > match2.routeMeters)
         assertTrue(match3.nearestEdgeIndex > match1.nearestEdgeIndex)
+    }
+
+    @Test
+    fun matcherBreaksContinuityWhenMatchedPointFallsFarOffFix() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0015, lon = 0.0),
+                    GeoPoint(lat = 0.0015, lon = 0.00036),
+                    GeoPoint(lat = 0.0, lon = 0.00036),
+                ),
+            ),
+        )
+        val matcher = RouteMatcher(route)
+
+        val firstFix = LocationFix(
+            lat = 0.00030,
+            lon = 0.0,
+            accuracyMeters = 5f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 3f,
+            timestampMillis = 1_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+        val secondFix = LocationFix(
+            lat = 0.00032,
+            lon = 0.00036,
+            accuracyMeters = 5f,
+            headingDegrees = 180f,
+            speedMetersPerSecond = 3f,
+            timestampMillis = 3_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+
+        val firstMatch = matcher.match(firstFix)
+        val rawNearest = analyzeLocationAgainstModel(
+            model = route,
+            fix = secondFix,
+            previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
+        )
+        val secondMatch = matcher.match(secondFix)
+
+        assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
+        assertTrue(secondMatch.offRouteMeters <= rawNearest.offRouteMeters + 0.5)
+        assertTrue(secondMatch.nearestEdgeIndex > firstMatch.nearestEdgeIndex)
+    }
+
+    @Test
+    fun matcherSwitchesToNearbyParallelBranchWhenContinuityLagsBehind() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0040, lon = 0.0),
+                    GeoPoint(lat = 0.0040, lon = 0.00025),
+                    GeoPoint(lat = 0.0, lon = 0.00025),
+                ),
+            ),
+        )
+        val matcher = RouteMatcher(route)
+
+        val firstFix = LocationFix(
+            lat = 0.0022,
+            lon = 0.0,
+            accuracyMeters = 4f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 2.2f,
+            timestampMillis = 1_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+        val secondFix = LocationFix(
+            lat = 0.0021,
+            lon = 0.00025,
+            accuracyMeters = 4f,
+            headingDegrees = 180f,
+            speedMetersPerSecond = 2.2f,
+            timestampMillis = 2_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+
+        val firstMatch = matcher.match(firstFix)
+        val rawNearest = analyzeLocationAgainstModel(
+            model = route,
+            fix = secondFix,
+            previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
+        )
+        val secondMatch = matcher.match(secondFix)
+
+        assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
+        assertTrue(secondMatch.offRouteMeters < 8.0)
+        assertTrue(secondMatch.routeMeters > firstMatch.routeMeters + 300.0)
+    }
+
+    @Test
+    fun trimmingStillKeepsRawNearestCandidateAvailableForContinuityBreak() {
+        val meterToLon = 1.0 / 111_111.0
+        val segments = (0..14).map { index ->
+            val lon = index * 0.5 * meterToLon
+            listOf(
+                GeoPoint(lat = 0.0, lon = lon),
+                GeoPoint(lat = 0.00018, lon = lon),
+            )
+        }
+        val route = buildRouteModel(segments)
+        val matcher = RouteMatcher(
+            route,
+            config = RouteMatcherConfig(
+                maxCandidatesPerFix = 3,
+                minSigmaMeters = 1.0,
+                preliminaryContinuityScaleMeters = 1.0,
+                continuityBreakDistanceMeters = 2.5,
+                continuityBreakGapMeters = 0.3,
+                continuityBreakNearestMeters = 0.8,
+                continuityBreakAccuracyMultiplier = 1.0,
+            ),
+        )
+
+        val firstFix = LocationFix(
+            lat = 0.00009,
+            lon = 0.0,
+            accuracyMeters = 3f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 1.5f,
+            timestampMillis = 1_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+        val secondFix = LocationFix(
+            lat = 0.00009,
+            lon = 14 * 0.5 * meterToLon,
+            accuracyMeters = 3f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 1.5f,
+            timestampMillis = 2_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+
+        val firstMatch = matcher.match(firstFix)
+        val rawNearest = analyzeLocationAgainstModel(
+            model = route,
+            fix = secondFix,
+            previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
+        )
+        val secondMatch = matcher.match(secondFix)
+
+        assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
+        assertTrue(secondMatch.offRouteMeters < 0.5)
+        assertTrue(secondMatch.routeMeters > firstMatch.routeMeters + 50.0)
+    }
+
+    @Test
+    fun matcherKeepsEquivalentLoopStartMatchesAliveUntilDirectionDisambiguates() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0015, lon = 0.0),
+                    GeoPoint(lat = 0.0015, lon = 0.0015),
+                    GeoPoint(lat = 0.0, lon = 0.0015),
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                ),
+            ),
+        )
+        val matcher = RouteMatcher(route)
+
+        val ambiguousStartFix = LocationFix(
+            lat = 0.0,
+            lon = 0.0,
+            accuracyMeters = 4f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 2.5f,
+            timestampMillis = 1_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+        val firstForwardFix = LocationFix(
+            lat = 0.00035,
+            lon = 0.0,
+            accuracyMeters = 4f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 2.5f,
+            timestampMillis = 3_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+        val secondForwardFix = LocationFix(
+            lat = 0.00070,
+            lon = 0.0,
+            accuracyMeters = 4f,
+            headingDegrees = 0f,
+            speedMetersPerSecond = 2.5f,
+            timestampMillis = 5_000L,
+            bearingAccuracyDegrees = 8f,
+        )
+
+        val startMatch = matcher.match(ambiguousStartFix)
+        val firstForwardMatch = matcher.match(firstForwardFix)
+        val secondForwardMatch = matcher.match(secondForwardFix)
+
+        assertTrue(startMatch.offRouteMeters < 1.0)
+        assertTrue(firstForwardMatch.offRouteMeters < 2.0)
+        assertTrue(secondForwardMatch.offRouteMeters < 2.0)
+        assertTrue(firstForwardMatch.routeMeters < route.totalLengthMeters / 2.0)
+        assertTrue(secondForwardMatch.routeMeters < route.totalLengthMeters / 2.0)
+        assertTrue(secondForwardMatch.routeMeters > firstForwardMatch.routeMeters)
     }
 
     @Test

@@ -8,6 +8,7 @@ import kotlin.math.max
 internal data class RouteMatcherConfig(
     val observationWindowSize: Int = 4,
     val maxCandidatesPerFix: Int = 12,
+    val maxStateHypotheses: Int = 4,
     val minSigmaMeters: Double = 8.0,
     val backwardAllowanceMeters: Double = 10.0,
     val emissionWeight: Double = 1.0,
@@ -22,6 +23,12 @@ internal data class RouteMatcherConfig(
     val baseTransitionToleranceMeters: Double = 6.0,
     val transitionToleranceAccuracyMultiplier: Double = 1.5,
     val transitionPenaltyOffsetMeters: Double = 12.0,
+    val continuityBreakDistanceMeters: Double = 24.0,
+    val continuityBreakGapMeters: Double = 12.0,
+    val continuityBreakNearestMeters: Double = 12.0,
+    val continuityBreakAccuracyMultiplier: Double = 2.5,
+    val hypothesisScoreMargin: Double = 1.2,
+    val hypothesisRouteSeparationMeters: Double = 20.0,
 )
 
 private data class RouteMatchObservation(
@@ -31,8 +38,18 @@ private data class RouteMatchObservation(
 )
 
 private data class RouteMatcherState(
+    val hypotheses: List<RouteMatchHypothesis>,
+)
+
+private data class RouteMatchHypothesis(
     val nearestEdgeIndex: Int?,
-    val routeMeters: Double?,
+    val routeMeters: Double,
+    val score: Double,
+)
+
+private data class ScoredRouteCandidate(
+    val analysis: RouteAnalysis,
+    val score: Double,
 )
 
 internal class RouteMatcher(
@@ -40,11 +57,11 @@ internal class RouteMatcher(
     private val config: RouteMatcherConfig = RouteMatcherConfig(),
 ) {
     private val observations = ArrayDeque<RouteMatchObservation>()
-    private var state = RouteMatcherState(nearestEdgeIndex = null, routeMeters = null)
+    private var state = RouteMatcherState(hypotheses = emptyList())
 
     fun reset() {
         observations.clear()
-        state = RouteMatcherState(nearestEdgeIndex = null, routeMeters = null)
+        state = RouteMatcherState(hypotheses = emptyList())
     }
 
     fun match(fix: LocationFix): RouteAnalysis {
@@ -54,14 +71,19 @@ internal class RouteMatcher(
         }
 
         val projectedFix = projectLocationFix(routeModel, fix)
+        val allCandidates = collectRouteCandidates(
+            model = routeModel,
+            projectedFix = projectedFix,
+            previousNearestEdgeIndexes = state.hypotheses.mapNotNull { hypothesis ->
+                hypothesis.nearestEdgeIndex?.takeIf { it >= 0 }
+            },
+        )
+        val nearestCandidate = allCandidates.minByOrNull { it.offRouteMeters }
         val candidates = trimCandidates(
-            candidates = collectRouteCandidates(
-                model = routeModel,
-                projectedFix = projectedFix,
-                previousNearestEdgeIndex = state.nearestEdgeIndex,
-            ),
+            candidates = allCandidates,
             fix = fix,
-            previousRouteMeters = state.routeMeters,
+            previousHypotheses = state.hypotheses,
+            alwaysKeepNearest = nearestCandidate,
         )
 
         if (candidates.isEmpty()) {
@@ -77,47 +99,76 @@ internal class RouteMatcher(
             observations.removeFirst()
         }
 
-        val matched = solveBestCurrentMatch(observations.toList()) ?: candidates.minBy { it.offRouteMeters }
+        val rankedCandidates = solveBestCurrentMatches(observations.toList())
+        val matched = rankedCandidates.firstOrNull()?.analysis ?: candidates.minBy { it.offRouteMeters }
+        val nearest = nearestCandidate ?: candidates.minBy { it.offRouteMeters }
+        val finalRankedCandidates = if (shouldBreakContinuity(matched, nearest, fix)) {
+            observations.clear()
+            observations += RouteMatchObservation(
+                fix = fix,
+                projectedFix = projectedFix,
+                candidates = candidates,
+            )
+            solveBestCurrentMatches(observations.toList())
+                .ifEmpty { listOf(ScoredRouteCandidate(analysis = nearest, score = 0.0)) }
+        } else {
+            rankedCandidates.ifEmpty { listOf(ScoredRouteCandidate(analysis = matched, score = 0.0)) }
+        }
+        val finalMatch = finalRankedCandidates.first().analysis
         state = RouteMatcherState(
-            nearestEdgeIndex = matched.nearestEdgeIndex.takeIf { it >= 0 },
-            routeMeters = matched.routeMeters,
+            hypotheses = selectStateHypotheses(finalRankedCandidates),
         )
-        return matched.withProgress(routeModel, fix)
+        return finalMatch.withProgress(routeModel, fix)
     }
 
     private fun trimCandidates(
         candidates: List<RouteAnalysis>,
         fix: LocationFix,
-        previousRouteMeters: Double?,
+        previousHypotheses: List<RouteMatchHypothesis>,
+        alwaysKeepNearest: RouteAnalysis?,
     ): List<RouteAnalysis> {
         if (candidates.size <= config.maxCandidatesPerFix) {
             return candidates
         }
 
-        return candidates
+        val trimmed = candidates
             .sortedBy { candidate ->
-                preliminaryCandidateScore(candidate, fix, previousRouteMeters)
+                preliminaryCandidateScore(candidate, fix, previousHypotheses)
             }
             .take(config.maxCandidatesPerFix)
+            .toMutableList()
+
+        if (alwaysKeepNearest != null && trimmed.none { it.nearestEdgeIndex == alwaysKeepNearest.nearestEdgeIndex }) {
+            if (trimmed.size >= config.maxCandidatesPerFix) {
+                trimmed.removeAt(trimmed.lastIndex)
+            }
+            trimmed += alwaysKeepNearest
+        }
+
+        return trimmed
     }
 
     private fun preliminaryCandidateScore(
         candidate: RouteAnalysis,
         fix: LocationFix,
-        previousRouteMeters: Double?,
+        previousHypotheses: List<RouteMatchHypothesis>,
     ): Double {
         val emission = (candidate.offRouteMeters / effectiveSigmaMeters(fix)) * config.emissionWeight
-        val continuity = if (previousRouteMeters == null) {
+        val continuity = if (previousHypotheses.isEmpty()) {
             0.0
         } else {
-            abs(candidate.routeMeters - previousRouteMeters) / config.preliminaryContinuityScaleMeters
+            val bestHypothesisScore = previousHypotheses.minOf { it.score }
+            previousHypotheses.minOf { hypothesis ->
+                abs(candidate.routeMeters - hypothesis.routeMeters) / config.preliminaryContinuityScaleMeters +
+                    max(0.0, hypothesis.score - bestHypothesisScore)
+            }
         }
         return emission + continuity
     }
 
-    private fun solveBestCurrentMatch(observations: List<RouteMatchObservation>): RouteAnalysis? {
+    private fun solveBestCurrentMatches(observations: List<RouteMatchObservation>): List<ScoredRouteCandidate> {
         if (observations.isEmpty()) {
-            return null
+            return emptyList()
         }
 
         var previousScores = DoubleArray(observations.first().candidates.size) { candidateIndex ->
@@ -150,8 +201,53 @@ internal class RouteMatcher(
         }
 
         val finalObservation = observations.last()
-        val bestIndex = previousScores.indices.minByOrNull { previousScores[it] } ?: return null
-        return finalObservation.candidates[bestIndex]
+        return previousScores.indices
+            .map { candidateIndex ->
+                ScoredRouteCandidate(
+                    analysis = finalObservation.candidates[candidateIndex],
+                    score = previousScores[candidateIndex],
+                )
+            }
+            .sortedBy { it.score }
+    }
+
+    private fun selectStateHypotheses(
+        rankedCandidates: List<ScoredRouteCandidate>,
+    ): List<RouteMatchHypothesis> {
+        if (rankedCandidates.isEmpty()) {
+            return emptyList()
+        }
+
+        val bestScore = rankedCandidates.first().score
+        val selected = mutableListOf<RouteMatchHypothesis>()
+        for (candidate in rankedCandidates) {
+            if (candidate.score - bestScore > config.hypothesisScoreMargin) {
+                break
+            }
+            if (selected.any { existing ->
+                    abs(existing.routeMeters - candidate.analysis.routeMeters) < config.hypothesisRouteSeparationMeters
+                }
+            ) {
+                continue
+            }
+            selected += RouteMatchHypothesis(
+                nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
+                routeMeters = candidate.analysis.routeMeters,
+                score = candidate.score,
+            )
+            if (selected.size >= config.maxStateHypotheses) {
+                break
+            }
+        }
+        return selected.ifEmpty {
+            listOf(
+                RouteMatchHypothesis(
+                    nearestEdgeIndex = rankedCandidates.first().analysis.nearestEdgeIndex.takeIf { it >= 0 },
+                    routeMeters = rankedCandidates.first().analysis.routeMeters,
+                    score = rankedCandidates.first().score,
+                ),
+            )
+        }
     }
 
     private fun candidateCost(
@@ -223,6 +319,28 @@ internal class RouteMatcher(
 
     private fun effectiveSigmaMeters(fix: LocationFix): Double {
         return max(config.minSigmaMeters, fix.accuracyMeters?.toDouble() ?: config.minSigmaMeters)
+    }
+
+    private fun shouldBreakContinuity(
+        matched: RouteAnalysis,
+        nearest: RouteAnalysis,
+        fix: LocationFix,
+    ): Boolean {
+        if (matched.nearestEdgeIndex == nearest.nearestEdgeIndex) {
+            return false
+        }
+
+        val breakDistanceThreshold = max(
+            config.continuityBreakDistanceMeters,
+            effectiveSigmaMeters(fix) * config.continuityBreakAccuracyMultiplier,
+        )
+        if (matched.offRouteMeters < breakDistanceThreshold) {
+            return false
+        }
+        if (nearest.offRouteMeters > config.continuityBreakNearestMeters) {
+            return false
+        }
+        return matched.offRouteMeters - nearest.offRouteMeters >= config.continuityBreakGapMeters
     }
 }
 

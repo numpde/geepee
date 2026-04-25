@@ -2,9 +2,13 @@ package dev.ra.geepee
 
 import android.location.Location
 import kotlin.math.hypot
+import kotlin.math.max
 
 private const val LOCATION_HISTORY_LIMIT = 12
 private const val LOCATION_HISTORY_MIN_DISTANCE_METERS = 2.5
+private const val IMPROBABLE_JUMP_BASE_METERS = 120.0
+private const val IMPROBABLE_JUMP_SPEED_MULTIPLIER = 3.0
+private const val IMPROBABLE_JUMP_ACCURACY_MULTIPLIER = 4.0
 
 internal class RouteRuntimeState {
     var routeModel: RouteModel? = null
@@ -42,6 +46,10 @@ internal class RouteRuntimeState {
         sessionActive: Boolean,
         batterySaverEnabled: Boolean,
     ) {
+        if (shouldResetForImprobableJump(currentFix, fix)) {
+            routeMatcher?.reset()
+            clearRouteProjection()
+        }
         currentFix = fix
         recomputeAnalysis()
         appendLocationHistory(sessionActive)
@@ -151,5 +159,52 @@ internal class RouteRuntimeState {
 
     private fun projectedDistanceMeters(left: ProjectedPoint, right: ProjectedPoint): Double {
         return hypot(right.x - left.x, right.y - left.y)
+    }
+
+    private fun shouldResetForImprobableJump(
+        previousFix: LocationFix?,
+        currentFix: LocationFix,
+    ): Boolean {
+        if (previousFix == null) {
+            return false
+        }
+
+        val elapsedSeconds = max(
+            1.0,
+            (currentFix.timestampMillis - previousFix.timestampMillis).toDouble() / 1_000.0,
+        )
+        val averageSpeedMetersPerSecond = listOfNotNull(
+            previousFix.speedMetersPerSecond?.toDouble(),
+            currentFix.speedMetersPerSecond?.toDouble(),
+        ).let { speeds ->
+            if (speeds.isEmpty()) {
+                0.0
+            } else {
+                speeds.average()
+            }
+        }
+        val accuracyAllowanceMeters = max(
+            previousFix.accuracyMeters?.toDouble() ?: 0.0,
+            currentFix.accuracyMeters?.toDouble() ?: 0.0,
+        ) * IMPROBABLE_JUMP_ACCURACY_MULTIPLIER
+        val improbableJumpThresholdMeters = max(
+            IMPROBABLE_JUMP_BASE_METERS,
+            averageSpeedMetersPerSecond * elapsedSeconds * IMPROBABLE_JUMP_SPEED_MULTIPLIER + accuracyAllowanceMeters,
+        )
+        return geoDistanceMeters(
+            start = GeoPoint(lat = previousFix.lat, lon = previousFix.lon),
+            end = GeoPoint(lat = currentFix.lat, lon = currentFix.lon),
+        ) > improbableJumpThresholdMeters
+    }
+
+    private fun geoDistanceMeters(
+        start: GeoPoint,
+        end: GeoPoint,
+    ): Double {
+        val startLatRadians = Math.toRadians(start.lat)
+        val endLatRadians = Math.toRadians(end.lat)
+        val deltaX = Math.toRadians(end.lon - start.lon) * kotlin.math.cos((startLatRadians + endLatRadians) / 2.0)
+        val deltaY = endLatRadians - startLatRadians
+        return hypot(deltaX, deltaY) * 6_371_000.0
     }
 }
