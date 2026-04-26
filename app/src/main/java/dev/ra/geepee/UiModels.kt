@@ -26,6 +26,12 @@ internal data class CompassState(
     val headingDegrees: Double?,
 )
 
+internal data class RouteMapInfoUiState(
+    val pois: List<RoutePoi> = emptyList(),
+    val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
+    val availabilityText: String? = null,
+)
+
 internal data class GeePeeUiState(
     val routeName: String? = null,
     val routeModel: RouteModel? = null,
@@ -40,9 +46,7 @@ internal data class GeePeeUiState(
     val routeScale: RouteScale = RouteScale.TwoHundred,
     val tileContextConfig: TileContextConfig = DefaultTileContextConfig,
     val tileDownloads: Map<DownloadTileId, TileDownloadSnapshot> = emptyMap(),
-    val routePois: List<RoutePoi> = emptyList(),
-    val routeContextDebugText: String? = null,
-    val routeNearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
+    val mapInfo: RouteMapInfoUiState = RouteMapInfoUiState(),
     val debugGpsEnabled: Boolean = false,
     val sessionRunning: Boolean = false,
     val routeLoading: Boolean = false,

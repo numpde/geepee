@@ -147,4 +147,62 @@ class UiProjectionTest {
             ),
         )
     }
+
+    @Test
+    fun projectionGroupsRouteMapInfoIntoSingleUiStateObject() {
+        val routeModel = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.01),
+                ),
+            ),
+        )
+        val poi = RoutePoi(
+            featureId = "node/water",
+            kind = RoutePoiKind.DrinkingWater,
+            name = "Pump",
+            geoPoint = GeoPoint(0.0, 0.003),
+            projectedPoint = ProjectedPoint(0.0, 0.0),
+        )
+        val nearbyWay = RouteNearbyWaySnippet(
+            featureId = "way/branch",
+            points = listOf(ProjectedPoint(0.0, 0.0), ProjectedPoint(10.0, 0.0)),
+            bounds = Bounds(0.0, 10.0, 0.0, 0.0),
+        )
+
+        val uiState = buildGeePeeUiState(
+            GeePeeUiProjectionInputs(
+                routeLoadState = RouteLoadState(routeName = "Tisza"),
+                routeModel = routeModel,
+                currentFix = null,
+                analysis = null,
+                routeMatchHypotheses = emptyList(),
+                locationHistoryPoints = emptyList(),
+                compass = null,
+                sessionState = SessionState(sessionActive = true),
+                appPreferences = AppPreferences(),
+                tileContextConfig = DefaultTileContextConfig,
+                tileDownloads = emptyMap(),
+                routeContextState = RouteContextState(
+                    pois = listOf(poi),
+                    mapInfo = RouteMapInfoState(
+                        localNearbyWays = LocalNearbyWayDebugStatus(
+                            localTileCount = 1,
+                            loadedLocalTileCount = 1,
+                            hasVisibleTileData = true,
+                        ),
+                        nearbyWays = listOf(nearbyWay),
+                    ),
+                ),
+                debugGpsEnabled = false,
+                locationProvidersEnabled = true,
+                headingDegrees = null,
+            ),
+        )
+
+        assertEquals(listOf(poi), uiState.mapInfo.pois)
+        assertEquals(listOf(nearbyWay), uiState.mapInfo.nearbyWays)
+        assertEquals("Map info for this view: available", uiState.mapInfo.availabilityText)
+    }
 }

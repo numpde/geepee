@@ -432,7 +432,7 @@ private fun tappedPoiSelections(
         analysis = state.analysis,
         matchHypotheses = emptyList(),
         historyPoints = emptyList(),
-        pois = state.routePois,
+        pois = state.mapInfo.pois,
         nearbyWays = emptyList(),
         localWindowWidthMeters = windowWidthMeters,
         canvasWidth = canvasWidth,
