@@ -5,15 +5,6 @@ import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-internal data class RouteContextRebuildResult(
-    val pois: List<RoutePoi>,
-)
-
-internal data class NearbyWayRebuildResult(
-    val nearbyWays: List<RouteNearbyWaySnippet>,
-    val localNearbyWays: LocalNearbyWayDebugStatus,
-)
-
 internal data class ResolvedMapInfoFocus(
     val centerGeoPoint: GeoPoint,
     val windowWidthMeters: Double,
@@ -56,7 +47,7 @@ internal class RouteContextCoordinator(
     private var nearbyWayRequestId = 0L
     private var nearbyWayQueryKey: NearbyWayQueryCacheKey? = null
     private val nearbyWayResultCache =
-        accessOrderCache<NearbyWayQueryCacheKey, NearbyWayRebuildResult>(NEARBY_WAY_RESULT_CACHE_LIMIT)
+        accessOrderCache<NearbyWayQueryCacheKey, RouteMapInfoState>(NEARBY_WAY_RESULT_CACHE_LIMIT)
 
     fun clear() {
         routeContextRequestId++
@@ -71,7 +62,7 @@ internal class RouteContextCoordinator(
 
     fun rebuildRouteContext(
         routeModel: RouteModel,
-        onResult: (RouteContextRebuildResult) -> Unit,
+        onResult: (List<RoutePoi>) -> Unit,
     ) {
         val requestId = ++routeContextRequestId
         routeContextExecutor.execute {
@@ -86,10 +77,10 @@ internal class RouteContextCoordinator(
                     routeModel = routeModel,
                     overlays = bundles.map(RouteTileOverlayBundle::overlay),
                 )
-                RouteContextRebuildResult(pois = pois)
+                pois
             } catch (error: Throwable) {
                 Log.e(logTag, "Route context rebuild failed", error)
-                RouteContextRebuildResult(pois = emptyList())
+                emptyList()
             }
             callbackExecutor.execute {
                 if (requestId == routeContextRequestId) {
@@ -108,7 +99,7 @@ internal class RouteContextCoordinator(
         defaultFocusWindowWidthMeters: Double,
         force: Boolean = false,
         onStarted: (LocalNearbyWayDebugStatus) -> Unit,
-        onResult: (NearbyWayRebuildResult) -> Unit,
+        onResult: (RouteMapInfoState) -> Unit,
     ) {
         val queryFocus = resolveNearbyWayQueryFocus(
             routeModel = routeModel,
@@ -179,19 +170,18 @@ internal class RouteContextCoordinator(
                         }
                     }
                     .sortedBy(RouteNearbyWaySnippet::featureId)
-                NearbyWayRebuildResult(
-                    nearbyWays = nearbyWays,
+                RouteMapInfoState(
                     localNearbyWays = LocalNearbyWayDebugStatus(
                         localTileCount = localTileIds.size,
                         loadedLocalTileCount = runtimePacks.size,
                         hasVisibleTileData = runtimePacks.isNotEmpty(),
                         nearbyWayCount = nearbyWays.size,
                     ),
+                    nearbyWays = nearbyWays,
                 )
             } catch (error: Throwable) {
                 Log.e(logTag, "Nearby-way rebuild failed", error)
-                NearbyWayRebuildResult(
-                    nearbyWays = emptyList(),
+                RouteMapInfoState(
                     localNearbyWays = LocalNearbyWayDebugStatus(
                         localTileCount = localTileIds.size,
                         loadedLocalTileCount = loadedLocalTileCount,
@@ -199,11 +189,12 @@ internal class RouteContextCoordinator(
                         nearbyWayCount = 0,
                         errorMessage = error.javaClass.simpleName,
                     ),
+                    nearbyWays = emptyList(),
                 )
             }
             callbackExecutor.execute {
                 if (requestId == nearbyWayRequestId && nearbyWayQueryKey == cacheKey) {
-                    if (result.localNearbyWays.errorMessage == null) {
+                    if (result.localNearbyWays?.errorMessage == null) {
                         nearbyWayResultCache[cacheKey] = result
                     }
                     onResult(result)

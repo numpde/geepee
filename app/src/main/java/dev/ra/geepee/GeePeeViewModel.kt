@@ -521,8 +521,8 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             routeContextState = routeContextState.withPois(emptyList())
             return
         }
-        routeContextCoordinator.rebuildRouteContext(routeModel) { result ->
-            routeContextState = routeContextState.withPois(result.pois)
+        routeContextCoordinator.rebuildRouteContext(routeModel) { pois ->
+            routeContextState = routeContextState.withPois(pois)
             recomputeUiState()
         }
     }
@@ -561,9 +561,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             onResult = { result ->
                 routeContextState = routeContextState.withMapInfo(
                     nearbyWays = result.nearbyWays,
-                    status = result.localNearbyWays.copy(
-                        nearbyWaysLoading = false,
-                    ),
+                    status = result.localNearbyWays?.copy(nearbyWaysLoading = false),
                 )
                 recomputeUiState()
             },

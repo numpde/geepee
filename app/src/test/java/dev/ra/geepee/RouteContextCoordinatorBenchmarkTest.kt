@@ -175,9 +175,9 @@ private fun formatCoordinatorMillis(nanos: Long): String {
 private fun awaitRouteContextRebuild(
     coordinator: RouteContextCoordinator,
     routeModel: RouteModel,
-): RouteContextRebuildResult {
+): List<RoutePoi> {
     val latch = CountDownLatch(1)
-    var result: RouteContextRebuildResult? = null
+    var result: List<RoutePoi>? = null
     coordinator.rebuildRouteContext(routeModel) { rebuilt ->
         result = rebuilt
         latch.countDown()
@@ -193,9 +193,9 @@ private fun awaitNearbyWayRebuild(
     tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
     focusWindowWidthMeters: Double,
     force: Boolean = true,
-): NearbyWayRebuildResult {
+): RouteMapInfoState {
     val latch = CountDownLatch(1)
-    var result: NearbyWayRebuildResult? = null
+    var result: RouteMapInfoState? = null
     coordinator.rebuildNearbyWays(
         routeModel = routeModel,
         analysis = analysis,
