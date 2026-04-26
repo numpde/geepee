@@ -513,20 +513,20 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     private fun rebuildNearbyWaysAsync(force: Boolean = false) {
         val routeModel = routeRuntimeState.routeModel ?: run {
-            routeContextState = routeContextState.withMapInfo(
-                nearbyWays = emptyList(),
-                status = null,
-            )
+            routeContextState = routeContextState.withMapInfo(RouteMapInfoState())
             return
         }
         val analysis = routeRuntimeState.currentAnalysis ?: run {
             routeContextState = routeContextState.withMapInfo(
-                nearbyWays = emptyList(),
-                status = routeContextState.mapInfo.localNearbyWays?.copy(
-                    nearbyWayCount = 0,
-                    nearbyWaysLoading = false,
-                    errorMessage = null,
-                ),
+                routeContextState.mapInfo
+                    .withNearbyWays(emptyList())
+                    .withStatus(
+                        routeContextState.mapInfo.localNearbyWays?.copy(
+                            nearbyWayCount = 0,
+                            nearbyWaysLoading = false,
+                            errorMessage = null,
+                        ),
+                    ),
             )
             return
         }
@@ -539,13 +539,14 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             defaultFocusWindowWidthMeters = appPreferences.routeScale.windowWidthMeters,
             force = force,
             onStarted = { startedStatus ->
-                routeContextState = routeContextState.withNearbyWayStatus(startedStatus)
+                routeContextState = routeContextState.withMapInfo(
+                    routeContextState.mapInfo.withStatus(startedStatus),
+                )
                 recomputeUiState()
             },
             onResult = { result ->
                 routeContextState = routeContextState.withMapInfo(
-                    nearbyWays = result.nearbyWays,
-                    status = result.localNearbyWays?.copy(nearbyWaysLoading = false),
+                    result.withStatus(result.localNearbyWays?.copy(nearbyWaysLoading = false)),
                 )
                 recomputeUiState()
             },

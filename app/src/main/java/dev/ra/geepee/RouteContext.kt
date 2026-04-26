@@ -45,6 +45,14 @@ internal data class RouteMapInfoState(
     val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
 )
 
+internal fun RouteMapInfoState.withStatus(status: LocalNearbyWayDebugStatus?): RouteMapInfoState {
+    return copy(localNearbyWays = status)
+}
+
+internal fun RouteMapInfoState.withNearbyWays(nearbyWays: List<RouteNearbyWaySnippet>): RouteMapInfoState {
+    return copy(nearbyWays = nearbyWays)
+}
+
 internal data class RouteContextState(
     val pois: List<RoutePoi> = emptyList(),
     val mapInfo: RouteMapInfoState = RouteMapInfoState(),
@@ -54,30 +62,8 @@ internal fun RouteContextState.withPois(pois: List<RoutePoi>): RouteContextState
     return copy(pois = pois)
 }
 
-internal fun RouteContextState.withNearbyWayStatus(status: LocalNearbyWayDebugStatus?): RouteContextState {
-    return copy(
-        mapInfo = mapInfo.copy(
-            localNearbyWays = status,
-        ),
-    )
-}
-
-internal fun RouteContextState.withNearbyWays(nearbyWays: List<RouteNearbyWaySnippet>): RouteContextState {
-    return copy(
-        mapInfo = mapInfo.copy(nearbyWays = nearbyWays),
-    )
-}
-
-internal fun RouteContextState.withMapInfo(
-    nearbyWays: List<RouteNearbyWaySnippet>,
-    status: LocalNearbyWayDebugStatus?,
-): RouteContextState {
-    return copy(
-        mapInfo = RouteMapInfoState(
-            localNearbyWays = status,
-            nearbyWays = nearbyWays,
-        ),
-    )
+internal fun RouteContextState.withMapInfo(mapInfo: RouteMapInfoState): RouteContextState {
+    return copy(mapInfo = mapInfo)
 }
 
 private data class RoutePoiCandidate(
