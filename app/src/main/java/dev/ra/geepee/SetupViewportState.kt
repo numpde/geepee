@@ -43,7 +43,6 @@ internal fun rememberSetupViewportState(
 
 internal data class MovementViewportController(
     val activeViewportState: RouteViewportState,
-    val boundsOverride: Bounds?,
     val viewportFocus: MapInfoFocus?,
     val fallbackWindowWidthMeters: Double,
     val handleTransform: (ScreenPoint, ScreenPoint, Float) -> Unit,
@@ -52,9 +51,6 @@ internal data class MovementViewportController(
 ) {
     val currentWindowWidthMeters: Double
         get() = viewportFocus?.windowWidthMeters ?: fallbackWindowWidthMeters
-
-    val viewportCenterGeoPoint: GeoPoint?
-        get() = viewportFocus?.centerGeoPoint
 }
 
 @Composable
@@ -135,7 +131,6 @@ internal fun rememberMovementViewportController(
     }
 
     val activeViewportState = if (debugGpsEnabled) debugViewportState else liveViewportState
-    val boundsOverride = activeViewportState.boundsOverride
     val viewportFocus = if (routeModel != null) {
         activeViewportState.viewport?.let { viewport ->
             MapInfoFocus(
@@ -144,7 +139,7 @@ internal fun rememberMovementViewportController(
                     projection = routeModel.projection,
                 ),
                 windowWidthMeters = viewport.widthMeters,
-                projectedBounds = boundsOverride,
+                projectedBounds = activeViewportState.boundsOverride,
             )
         }
     } else {
@@ -153,7 +148,6 @@ internal fun rememberMovementViewportController(
 
     return MovementViewportController(
         activeViewportState = activeViewportState,
-        boundsOverride = boundsOverride,
         viewportFocus = viewportFocus,
         fallbackWindowWidthMeters = routeScale.windowWidthMeters,
         handleTransform = { centroid, pan, zoomChange ->

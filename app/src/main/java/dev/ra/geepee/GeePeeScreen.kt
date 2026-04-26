@@ -159,13 +159,13 @@ private fun GeePeeScreen(
         }
         val showTileOverview = !movementMode
         val tileGridRouteModel = state.routeModel
+        val movementViewportFocus = movementViewportController?.viewportFocus
         val tileGridBounds = if (movementMode) {
-            movementViewportController?.boundsOverride
+            movementViewportFocus?.projectedBounds
         } else {
             setupViewportState.boundsOverride
         }
-        val movementViewportFocus = movementViewportController?.viewportFocus
-        val currentWindowWidthMeters = movementViewportFocus?.windowWidthMeters ?: state.routeScale.windowWidthMeters
+        val currentWindowWidthMeters = movementViewportController?.currentWindowWidthMeters ?: state.routeScale.windowWidthMeters
         val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentLocationGeoPoint
         val poiTapRadiusPx = with(density) { 28.dp.toPx() }
         var selectedPois by remember(state.routeName, movementMode) {
@@ -246,7 +246,7 @@ private fun GeePeeScreen(
                                     windowWidthMeters = currentWindowWidthMeters,
                                     canvasWidth = viewportWidthPx,
                                     canvasHeight = viewportHeightPx,
-                                    boundsOverride = movementViewportController?.boundsOverride,
+                                    boundsOverride = movementViewportFocus?.projectedBounds,
                                 )
                             }
                         },
@@ -285,7 +285,7 @@ private fun GeePeeScreen(
             toneColor = toneColor,
             orientationMode = state.orientationMode,
             windowWidthMeters = currentWindowWidthMeters,
-            boundsOverride = movementViewportController?.boundsOverride ?: setupViewportState.boundsOverride,
+            boundsOverride = movementViewportFocus?.projectedBounds ?: setupViewportState.boundsOverride,
             modifier = routeCanvasModifier,
         )
         if (visibleTileGridModel != null) {
