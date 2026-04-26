@@ -7,6 +7,50 @@ import org.junit.Test
 
 class RouteCanvasTest {
     @Test
+    fun mergedDisplayGradientPolylinesCoalescesTouchingChunks() {
+        val merged = mergedDisplayGradientPolylines(
+            polylines = listOf(
+                RouteGradientPolyline(
+                    points = listOf(
+                        RouteGradientPoint(ScreenPoint(0f, 0f), 0f),
+                        RouteGradientPoint(ScreenPoint(10f, 0f), 0.1f),
+                    ),
+                ),
+                RouteGradientPolyline(
+                    points = listOf(
+                        RouteGradientPoint(ScreenPoint(10f, 0f), 0.1f),
+                        RouteGradientPoint(ScreenPoint(20f, 0f), 0.2f),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(1, merged.size)
+        assertEquals(3, merged.single().size)
+    }
+
+    @Test
+    fun mergedDisplayGradientPolylinesCanPruneShortSharpSpike() {
+        val merged = mergedDisplayGradientPolylines(
+            polylines = listOf(
+                RouteGradientPolyline(
+                    points = listOf(
+                        RouteGradientPoint(ScreenPoint(0f, 0f), 0f),
+                        RouteGradientPoint(ScreenPoint(20f, 0f), 0.25f),
+                        RouteGradientPoint(ScreenPoint(22f, 10f), 0.5f),
+                        RouteGradientPoint(ScreenPoint(40f, 1f), 0.75f),
+                    ),
+                ),
+            ),
+            pruneSharpSpikes = true,
+        )
+
+        assertEquals(1, merged.size)
+        assertEquals(3, merged.single().size)
+        assertEquals(ScreenPoint(20f, 0f), merged.single()[1].point)
+    }
+
+    @Test
     fun routeSegmentEmphasisStaysFullWithoutMatchedRoutePosition() {
         assertEquals(
             1f,

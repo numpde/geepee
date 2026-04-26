@@ -2,6 +2,8 @@ package dev.ra.geepee
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.abs
+import kotlin.math.ln
 
 internal enum class RouteTone {
     Idle,
@@ -28,6 +30,7 @@ internal data class GeePeeUiState(
     val routeName: String? = null,
     val routeModel: RouteModel? = null,
     val analysis: RouteAnalysis? = null,
+    val currentLocationGeoPoint: GeoPoint? = null,
     val routeMatchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList(),
     val locationHistoryPoints: List<ProjectedPoint> = emptyList(),
     val compass: CompassState? = null,
@@ -35,9 +38,12 @@ internal data class GeePeeUiState(
     val darkModeEnabled: Boolean = true,
     val orientationMode: OrientationMode = OrientationMode.CourseUp,
     val routeScale: RouteScale = RouteScale.TwoHundred,
-    val setupOverviewMode: SetupOverviewMode = SetupOverviewMode.Route,
     val tileContextConfig: TileContextConfig = DefaultTileContextConfig,
     val tileDownloads: Map<DownloadTileId, TileDownloadSnapshot> = emptyMap(),
+    val routePois: List<RoutePoi> = emptyList(),
+    val routeContextDebugText: String? = null,
+    val routeNearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
+    val debugGpsEnabled: Boolean = false,
     val sessionRunning: Boolean = false,
     val routeLoading: Boolean = false,
     val hasCoarsePermission: Boolean = false,
@@ -91,6 +97,17 @@ internal fun RouteScale.scaleBarDistanceMeters(): Double {
     val target = windowWidthMeters * 0.28
     val candidates = listOf(2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0)
     return candidates.lastOrNull { it <= target } ?: candidates.first()
+}
+
+internal fun closestRouteScale(windowWidthMeters: Double): RouteScale {
+    return RouteScale.entries.minBy { scale ->
+        abs(ln(scale.windowWidthMeters / windowWidthMeters.coerceAtLeast(1.0)))
+    }
+}
+
+internal fun nextRouteScaleFrom(windowWidthMeters: Double): RouteScale {
+    val current = closestRouteScale(windowWidthMeters)
+    return current.next()
 }
 
 internal fun formatAge(ageMillis: Long): String {

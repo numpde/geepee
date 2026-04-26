@@ -12,13 +12,18 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun GeePeeApp(
@@ -55,7 +60,7 @@ internal fun GeePeeApp(
             onPickRoute = {
                 routeLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*"))
             },
-            onToggleSetupOverviewMode = viewModel::toggleSetupOverviewMode,
+            onReverseRoute = viewModel::reverseRoute,
             onStartMonitoring = {
                 if (state.hasLocationPermission) {
                     viewModel.startMonitoring()
@@ -77,6 +82,25 @@ internal fun GeePeeApp(
                 requestScreenPinning(context)
             },
             onRequestLocationRefresh = viewModel::requestImmediateLocationRefresh,
+            onToggleDebugGps = viewModel::toggleDebugGps,
+            onSetDebugGpsLocation = viewModel::setDebugGpsLocation,
+            onUpdateLiveContextFocus = viewModel::updateLiveContextFocus,
+            onSetRouteScale = viewModel::setRouteScale,
+            onOpenInExternalMap = { point, label, windowWidthMeters ->
+                openLocationInExternalMap(
+                    context = context,
+                    point = point,
+                    label = label,
+                    windowWidthMeters = windowWidthMeters,
+                )
+            },
+            onOpenInOsmBrowser = { point, windowWidthMeters ->
+                openLocationInOsmBrowser(
+                    context = context,
+                    point = point,
+                    windowWidthMeters = windowWidthMeters,
+                )
+            },
             onStopMonitoring = viewModel::stopMonitoring,
         )
     }
@@ -89,12 +113,18 @@ private fun GeePeeScreen(
     onToggleOrientationMode: () -> Unit,
     onToggleDarkMode: () -> Unit,
     onPickRoute: () -> Unit,
-    onToggleSetupOverviewMode: () -> Unit,
+    onReverseRoute: () -> Unit,
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onDownloadTile: (DownloadTileId, Long) -> Unit,
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
+    onToggleDebugGps: () -> Unit,
+    onSetDebugGpsLocation: (GeoPoint, Double) -> Unit,
+    onUpdateLiveContextFocus: (MapInfoFocus) -> Unit,
+    onSetRouteScale: (RouteScale) -> Unit,
+    onOpenInExternalMap: (GeoPoint, String, Double?) -> Unit,
+    onOpenInOsmBrowser: (GeoPoint, Double?) -> Unit,
     onStopMonitoring: () -> Unit,
 ) {
     val colors = geePeeColors()
@@ -114,21 +144,69 @@ private fun GeePeeScreen(
             viewportWidthPx = viewportWidthPx,
             viewportHeightPx = viewportHeightPx,
         )
-        val showTileOverview = !movementMode && state.setupOverviewMode == SetupOverviewMode.Tiles
-        val overviewRouteModel = state.routeModel
-        val overviewBounds = setupViewportState.boundsOverride
-        val tileGridModel = if (showTileOverview && overviewRouteModel != null && overviewBounds != null) {
+        val movementViewportController = if (movementMode) {
+            rememberMovementViewportController(
+                routeModel = state.routeModel,
+                analysis = state.analysis,
+                routeScale = state.routeScale,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx,
+                debugGpsEnabled = state.debugGpsEnabled,
+                minimumWidthMetersOverride = 6.0,
+            )
+        } else {
+            null
+        }
+        val showTileOverview = !movementMode
+        val tileGridRouteModel = state.routeModel
+        val tileGridBounds = if (movementMode) {
+            movementViewportController?.boundsOverride
+        } else {
+            setupViewportState.boundsOverride
+        }
+        val movementViewportFocus = movementViewportController?.viewportFocus
+        val currentWindowWidthMeters = movementViewportFocus?.windowWidthMeters ?: state.routeScale.windowWidthMeters
+        val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentLocationGeoPoint
+        val poiTapRadiusPx = with(density) { 28.dp.toPx() }
+        var selectedPois by remember(state.routeName, movementMode) {
+            mutableStateOf(emptyList<RoutePoiSelectionInfo>())
+        }
+        val hasMovementAnalysis = movementMode && state.analysis != null
+        val movementContextFocus = if (movementMode && hasMovementAnalysis) {
+            movementViewportFocus
+        } else {
+            null
+        }
+        LaunchedEffect(movementContextFocus) {
+            movementContextFocus?.let { focus ->
+                delay(250)
+                onUpdateLiveContextFocus(focus)
+            }
+        }
+        val routeTileMetricsById = if (tileGridRouteModel != null) {
+            remember(tileGridRouteModel, state.tileContextConfig) {
+                buildRouteTileMetricsIndex(
+                    routeModel = tileGridRouteModel,
+                    config = state.tileContextConfig,
+                )
+            }
+        } else {
+            null
+        }
+        val tileGridModel = if (tileGridRouteModel != null && tileGridBounds != null) {
             remember(
-                overviewRouteModel,
-                overviewBounds,
+                tileGridRouteModel,
+                routeTileMetricsById,
+                tileGridBounds,
                 viewportWidthPx,
                 viewportHeightPx,
                 state.tileDownloads,
                 state.tileContextConfig,
             ) {
                 buildTileGridRenderModel(
-                    routeModel = overviewRouteModel,
-                    bounds = overviewBounds,
+                    routeModel = tileGridRouteModel,
+                    routeTileMetricsById = routeTileMetricsById ?: emptyMap(),
+                    bounds = tileGridBounds,
                     canvasWidth = viewportWidthPx,
                     canvasHeight = viewportHeightPx,
                     config = state.tileContextConfig,
@@ -138,26 +216,60 @@ private fun GeePeeScreen(
         } else {
             null
         }
-        val routeCanvasModifier = if (!movementMode && setupViewportState.isReady) {
+        val visibleTileGridModel = if (movementMode) {
+            tileGridModel?.fullyVisibleWithin(
+                width = viewportWidthPx,
+                height = viewportHeightPx,
+            )
+        } else {
+            tileGridModel
+        }
+        val activeViewportState = when {
+            !movementMode -> setupViewportState
+            else -> movementViewportController!!.activeViewportState
+        }
+        val routeCanvasModifier = if (activeViewportState.isReady) {
             Modifier
                 .fillMaxSize()
-                .pointerInput(setupViewportState, tileGridModel, showTileOverview) {
+                .pointerInput(activeViewportState, tileGridModel, showTileOverview) {
                     detectTapGestures(
                         onTap = { point ->
                             if (showTileOverview) {
                                 tileGridModel?.tileAt(ScreenPoint(point.x, point.y))?.let { tile ->
                                     onDownloadTile(tile.tileId, tile.estimatedBytes)
                                 }
+                            } else if (movementMode) {
+                                selectedPois = tappedPoiSelections(
+                                    state = state,
+                                    screenPoint = ScreenPoint(point.x, point.y),
+                                    maxDistancePx = poiTapRadiusPx,
+                                    windowWidthMeters = currentWindowWidthMeters,
+                                    canvasWidth = viewportWidthPx,
+                                    canvasHeight = viewportHeightPx,
+                                    boundsOverride = movementViewportController?.boundsOverride,
+                                )
                             }
                         },
                         onDoubleTap = {
-                            setupViewportState.reset()
+                            selectedPois = emptyList()
+                            if (movementMode) {
+                                movementViewportController?.handleDoubleTap?.invoke()
+                            } else {
+                                activeViewportState.reset()
+                            }
                         },
                     )
                 }
-                .pointerInput(setupViewportState) {
+                .pointerInput(activeViewportState) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
-                        setupViewportState.transform(
+                        if (selectedPois.isNotEmpty() && (pan.x != 0f || pan.y != 0f || zoom != 1f)) {
+                            selectedPois = emptyList()
+                        }
+                        movementViewportController?.handleTransform?.invoke(
+                            ScreenPoint(centroid.x, centroid.y),
+                            ScreenPoint(pan.x, pan.y),
+                            zoom,
+                        ) ?: activeViewportState.transform(
                             centroid = ScreenPoint(centroid.x, centroid.y),
                             pan = ScreenPoint(pan.x, pan.y),
                             zoomChange = zoom,
@@ -172,62 +284,109 @@ private fun GeePeeScreen(
             state = state,
             toneColor = toneColor,
             orientationMode = state.orientationMode,
-            routeScale = state.routeScale,
-            boundsOverride = if (movementMode) null else setupViewportState.boundsOverride,
+            windowWidthMeters = currentWindowWidthMeters,
+            boundsOverride = movementViewportController?.boundsOverride ?: setupViewportState.boundsOverride,
             modifier = routeCanvasModifier,
         )
-        if (showTileOverview && tileGridModel != null) {
+        if (visibleTileGridModel != null) {
             TileGridCanvas(
-                model = tileGridModel,
+                model = visibleTileGridModel,
+                visualStyle = if (movementMode) {
+                    TileGridVisualStyle.LiveOverlay
+                } else {
+                    TileGridVisualStyle.Preview
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
 
         if (movementMode) {
+            val movementMenuState = MovementMenuState(
+                state.routeName,
+                state.darkModeEnabled,
+                state.batterySaverEnabled,
+                state.debugGpsEnabled,
+                openInPoint != null,
+                state.sessionRunning,
+            )
             MovementTopOverlay(
                 state = state,
-                onRequestLocationRefresh = onRequestLocationRefresh,
+                selectedPois = selectedPois,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 18.dp),
             )
-            MovementMenu(
-                routeName = state.routeName,
-                darkModeEnabled = state.darkModeEnabled,
-                batterySaverEnabled = state.batterySaverEnabled,
-                onPickRoute = onPickRoute,
-                onStartMonitoring = onStartMonitoring,
-                onToggleDarkMode = onToggleDarkMode,
-                onToggleBatterySaver = onToggleBatterySaver,
-                onRequestScreenPinning = onRequestScreenPinning,
-                onStopMonitoring = onStopMonitoring,
-                sessionRunning = state.sessionRunning,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-            )
-            state.compass?.let { compass ->
-                HeadingCompass(
-                    compass = compass,
-                    toneColor = toneColor,
-                    orientationMode = state.orientationMode,
-                    onToggleOrientationMode = onToggleOrientationMode,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
+            if (state.debugGpsEnabled) {
+                DebugGpsCrosshair(
+                    modifier = Modifier.align(Alignment.Center),
                 )
             }
-            ScaleBar(
-                routeScale = state.routeScale,
-                viewportWidthPx = viewportWidthPx,
-                onCycleScale = onCycleScale,
+            MovementBottomChrome(
+                primaryControls = {
+                    MovementBottomControls(
+                        menuState = movementMenuState,
+                        showSetDebugGpsHere = state.debugGpsEnabled,
+                        onPickRoute = onPickRoute,
+                        onRequestLocationRefresh = onRequestLocationRefresh,
+                        onStartMonitoring = onStartMonitoring,
+                        onToggleDarkMode = onToggleDarkMode,
+                        onToggleBatterySaver = onToggleBatterySaver,
+                        onToggleDebugGps = onToggleDebugGps,
+                        onRequestScreenPinning = onRequestScreenPinning,
+                        onStopMonitoring = onStopMonitoring,
+                        onSetDebugGpsHere = {
+                            movementViewportFocus?.centerGeoPoint?.let { point ->
+                                onSetDebugGpsLocation(point, movementViewportFocus.windowWidthMeters)
+                            }
+                        },
+                        onOpenInExternalMap = {
+                            openInPoint?.let { point ->
+                                onOpenInExternalMap(
+                                    point,
+                                    state.routeName ?: "GeePee",
+                                    currentWindowWidthMeters,
+                                )
+                            }
+                        },
+                        onOpenInOsmBrowser = {
+                            openInPoint?.let { point ->
+                                onOpenInOsmBrowser(
+                                    point,
+                                    currentWindowWidthMeters,
+                                )
+                            }
+                        },
+                    )
+                },
+                leadingUtility = state.compass?.let { compass ->
+                    {
+                        HeadingCompass(
+                            compass = compass,
+                            toneColor = toneColor,
+                            orientationMode = state.orientationMode,
+                            onToggleOrientationMode = onToggleOrientationMode,
+                        )
+                    }
+                },
+                trailingUtility = {
+                    ScaleBar(
+                        routeScale = state.routeScale,
+                        windowWidthMeters = currentWindowWidthMeters,
+                        viewportWidthPx = viewportWidthPx,
+                        onCycleScale = {
+                            if (movementMode) {
+                                val nextScale = movementViewportController!!.snapToNextScale()
+                                onSetRouteScale(nextScale)
+                            } else {
+                                onCycleScale()
+                            }
+                        },
+                    )
+                },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
             )
         } else {
             SetupTopOverlay(
@@ -240,9 +399,8 @@ private fun GeePeeScreen(
             SetupActions(
                 hasRoute = state.routeModel != null,
                 sessionRunning = state.sessionRunning,
-                overviewMode = state.setupOverviewMode,
                 onPickRoute = onPickRoute,
-                onToggleOverviewMode = onToggleSetupOverviewMode,
+                onReverseRoute = onReverseRoute,
                 onStartMonitoring = onStartMonitoring,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier
@@ -252,4 +410,58 @@ private fun GeePeeScreen(
             )
         }
     }
+}
+
+private fun tappedPoiSelections(
+    state: GeePeeUiState,
+    screenPoint: ScreenPoint,
+    maxDistancePx: Float,
+    windowWidthMeters: Double,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    boundsOverride: Bounds?,
+): List<RoutePoiSelectionInfo> {
+    val routeModel = state.routeModel ?: return emptyList()
+    val routeRotationDegrees = if (state.orientationMode == OrientationMode.CourseUp) {
+        -(state.compass?.headingDegrees?.toFloat() ?: 0f)
+    } else {
+        0f
+    }
+    val poiMarkers = buildRouteRenderModel(
+        routeModel = routeModel,
+        analysis = state.analysis,
+        matchHypotheses = emptyList(),
+        historyPoints = emptyList(),
+        pois = state.routePois,
+        nearbyWays = emptyList(),
+        localWindowWidthMeters = windowWidthMeters,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+        lookAheadFraction = 0.0,
+        rotationDegrees = routeRotationDegrees,
+        includeGradientPolylines = false,
+        boundsOverride = boundsOverride,
+    ).poiMarkers
+    val selectedMarkers = routePoiMarkersNearScreenPoint(
+        markers = poiMarkers,
+        tap = screenPoint,
+        maxDistancePx = maxDistancePx,
+    )
+    if (selectedMarkers.isEmpty()) {
+        return emptyList()
+    }
+    val origin = state.currentLocationGeoPoint
+    return selectedMarkers
+        .distinctBy(RoutePoiScreenMarker::featureId)
+        .map { marker ->
+            RoutePoiSelectionInfo(
+                kind = marker.kind,
+                title = routePoiSelectionTitle(marker),
+                distanceMeters = origin?.let { distanceBetweenGeoPointsMeters(it, marker.geoPoint) },
+            )
+        }
+        .sortedWith(
+            compareBy<RoutePoiSelectionInfo> { it.distanceMeters ?: Double.POSITIVE_INFINITY }
+                .thenBy(RoutePoiSelectionInfo::title),
+        )
 }

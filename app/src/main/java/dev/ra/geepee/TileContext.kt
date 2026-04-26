@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.PI
 import kotlin.math.asinh
 import kotlin.math.atan
@@ -31,6 +32,7 @@ private const val WEB_MERCATOR_MAX_LAT = 85.05112878
 private const val TILE_CONTEXT_EARTH_RADIUS_METERS = 6_371_000.0
 private const val DEFAULT_DOWNLOAD_ZOOM = 10
 private const val DEFAULT_WAY_HALO_METERS = 80.0
+private const val DEFAULT_NEARBY_WAY_CONTINUATION_METERS = 180.0
 private const val DEFAULT_POI_HALO_METERS = 220.0
 private const val DEFAULT_SERVICE_HALO_METERS = 500.0
 private const val APPROX_TILE_ESTIMATE_BYTES = 180_000L
@@ -67,14 +69,10 @@ private val POINT_TAG_ALLOWLIST = linkedSetOf(
     "name",
 )
 
-internal enum class SetupOverviewMode {
-    Route,
-    Tiles,
-}
-
 internal data class TileContextConfig(
     val downloadZoom: Int = DEFAULT_DOWNLOAD_ZOOM,
     val wayHaloMeters: Double = DEFAULT_WAY_HALO_METERS,
+    val nearbyWayContinuationMeters: Double = DEFAULT_NEARBY_WAY_CONTINUATION_METERS,
     val poiHaloMeters: Double = DEFAULT_POI_HALO_METERS,
     val serviceHaloMeters: Double = DEFAULT_SERVICE_HALO_METERS,
 ) {
@@ -134,6 +132,46 @@ internal data class TileDownloadSnapshot(
         }
 }
 
+internal class TileDownloadCancellation {
+    @Volatile
+    private var cancelled = false
+    private val callbacks = CopyOnWriteArrayList<() -> Unit>()
+
+    val isCancelled: Boolean
+        get() = cancelled
+
+    fun cancel() {
+        if (cancelled) {
+            return
+        }
+        cancelled = true
+        callbacks.forEach { callback ->
+            runCatching(callback)
+        }
+        callbacks.clear()
+    }
+
+    fun onCancel(callback: () -> Unit) {
+        if (cancelled) {
+            callback()
+            return
+        }
+        callbacks += callback
+        if (cancelled) {
+            callbacks.remove(callback)
+            callback()
+        }
+    }
+
+    fun throwIfCancelled() {
+        if (cancelled) {
+            throw TileDownloadCancelledException()
+        }
+    }
+}
+
+internal class TileDownloadCancelledException : RuntimeException("Tile download cancelled")
+
 internal data class ScreenRect(
     val left: Float,
     val top: Float,
@@ -149,12 +187,25 @@ internal data class ScreenRect(
     fun contains(point: ScreenPoint): Boolean {
         return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
     }
+
+    fun isFullyWithin(
+        width: Float,
+        height: Float,
+    ): Boolean {
+        return left >= 0f && top >= 0f && right <= width && bottom <= height
+    }
 }
 
 internal data class TileRouteMetrics(
     val intersectsRoute: Boolean,
     val intersectingEdgeCount: Int,
     val intersectingRouteMeters: Double,
+)
+
+private val EmptyTileRouteMetrics = TileRouteMetrics(
+    intersectsRoute = false,
+    intersectingEdgeCount = 0,
+    intersectingRouteMeters = 0.0,
 )
 
 internal data class TileGridDisplayTile(
@@ -171,6 +222,17 @@ internal data class TileGridRenderModel(
 ) {
     fun tileAt(point: ScreenPoint): TileGridDisplayTile? {
         return tiles.lastOrNull { it.screenRect.contains(point) }
+    }
+
+    fun fullyVisibleWithin(
+        width: Float,
+        height: Float,
+    ): TileGridRenderModel {
+        return TileGridRenderModel(
+            tiles = tiles.filter { tile ->
+                tile.screenRect.isFullyWithin(width = width, height = height)
+            },
+        )
     }
 }
 
@@ -307,6 +369,7 @@ internal fun tileContextPackFromJson(payload: String): TileContextPack {
 
 internal fun buildTileGridRenderModel(
     routeModel: RouteModel,
+    routeTileMetricsById: Map<DownloadTileId, TileRouteMetrics>,
     bounds: Bounds,
     canvasWidth: Float,
     canvasHeight: Float,
@@ -332,11 +395,7 @@ internal fun buildTileGridRenderModel(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
-        val routeMetrics = tileRouteMetrics(
-            routeModel = routeModel,
-            tileBounds = projectedBounds,
-            haloMeters = config.fetchHaloMeters,
-        )
+        val routeMetrics = routeTileMetricsById[tileId] ?: EmptyTileRouteMetrics
         val snapshot = tileSnapshots[tileId]
         val estimatedBytes = snapshot?.actualBytes
             ?: estimateTileBytes(routeMetrics, cachedAverageBytes)
@@ -347,6 +406,7 @@ internal fun buildTileGridRenderModel(
             snapshot = snapshot,
             estimatedBytes = estimatedBytes,
             label = tileLabel(
+                routeMetrics = routeMetrics,
                 snapshot = snapshot,
                 estimatedBytes = estimatedBytes,
                 minDimensionPx = min(screenRect.width, screenRect.height),
@@ -357,19 +417,55 @@ internal fun buildTileGridRenderModel(
     return TileGridRenderModel(tiles)
 }
 
+internal fun buildRouteTileMetricsIndex(
+    routeModel: RouteModel,
+    config: TileContextConfig,
+): Map<DownloadTileId, TileRouteMetrics> {
+    val geoBounds = geoBoundsForProjectedBounds(routeModel.bounds, routeModel.projection)
+    val expandedGeoBounds = expandGeoBoundsByMeters(geoBounds, config.fetchHaloMeters)
+    val candidates = tilesForGeoBounds(expandedGeoBounds, config.downloadZoom)
+    return buildMap(candidates.size) {
+        candidates.forEach { tileId ->
+            val metrics = tileRouteMetrics(
+                routeModel = routeModel,
+                tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection),
+                haloMeters = config.fetchHaloMeters,
+            )
+            if (metrics.intersectsRoute) {
+                put(tileId, metrics)
+            }
+        }
+    }
+}
+
 internal fun tilesForRoute(
     routeModel: RouteModel,
     config: TileContextConfig,
 ): Set<DownloadTileId> {
-    val geoBounds = geoBoundsForProjectedBounds(routeModel.bounds, routeModel.projection)
-    val expandedGeoBounds = expandGeoBoundsByMeters(geoBounds, config.fetchHaloMeters)
-    val candidates = tilesForGeoBounds(expandedGeoBounds, config.downloadZoom)
-    return candidates.filterTo(linkedSetOf()) { tileId ->
-        tileRouteMetrics(
-            routeModel = routeModel,
-            tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection),
-            haloMeters = config.fetchHaloMeters,
-        ).intersectsRoute
+    return buildRouteTileMetricsIndex(routeModel, config).keys
+}
+
+internal fun tileIdForGeoPoint(
+    point: GeoPoint,
+    zoom: Int,
+): DownloadTileId {
+    val tileCount = 1 shl zoom
+    val x = floor(longitudeToTileX(normalizeLongitude(point.lon), zoom)).toInt().coerceIn(0, tileCount - 1)
+    val y = floor(latitudeToTileY(point.lat, zoom)).toInt().coerceIn(0, tileCount - 1)
+    return DownloadTileId(zoom = zoom, x = x, y = y)
+}
+
+internal fun neighboringTileIds(
+    centerTile: DownloadTileId,
+    radius: Int,
+): Set<DownloadTileId> {
+    val tileCount = 1 shl centerTile.zoom
+    return buildSet {
+        for (x in max(0, centerTile.x - radius)..min(tileCount - 1, centerTile.x + radius)) {
+            for (y in max(0, centerTile.y - radius)..min(tileCount - 1, centerTile.y + radius)) {
+                add(DownloadTileId(zoom = centerTile.zoom, x = x, y = y))
+            }
+        }
     }
 }
 
@@ -462,13 +558,10 @@ private fun parseGeometryArray(geometryArray: JsonArray?): List<GeoPoint> {
     }
     return buildList {
         geometryArray.forEach { coordinateElement ->
-            val coordinate = coordinateElement.jsonObject
-            add(
-                GeoPoint(
-                    lat = coordinate.getValue("lat").jsonPrimitive.double,
-                    lon = coordinate.getValue("lon").jsonPrimitive.double,
-                ),
-            )
+            val coordinate = coordinateElement as? JsonObject ?: return@forEach
+            val lat = coordinate["lat"]?.jsonPrimitive?.doubleOrNull ?: return@forEach
+            val lon = coordinate["lon"]?.jsonPrimitive?.doubleOrNull ?: return@forEach
+            add(GeoPoint(lat = lat, lon = lon))
         }
     }
 }
@@ -597,21 +690,37 @@ private fun estimateTileBytes(
 }
 
 private fun tileLabel(
+    routeMetrics: TileRouteMetrics,
     snapshot: TileDownloadSnapshot?,
     estimatedBytes: Long,
     minDimensionPx: Float,
 ): String? {
-    if (minDimensionPx < 78f) {
-        return null
-    }
     return when (snapshot?.status) {
         TileDownloadStatus.Downloading -> {
+            if (minDimensionPx < 92f) {
+                return null
+            }
             val percent = ((snapshot.progressFraction ?: 0f) * 100f).roundToInt()
             "$percent%"
         }
-        TileDownloadStatus.Cached -> formatTileMegabytes(snapshot.actualBytes ?: estimatedBytes, approximate = false)
-        TileDownloadStatus.Error -> "Error"
-        null -> formatTileMegabytes(estimatedBytes, approximate = true)
+        TileDownloadStatus.Error -> {
+            if (minDimensionPx < 92f) {
+                return null
+            }
+            "Error"
+        }
+        TileDownloadStatus.Cached -> {
+            if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {
+                return null
+            }
+            formatTileMegabytes(snapshot.actualBytes ?: estimatedBytes, approximate = false)
+        }
+        null -> {
+            if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {
+                return null
+            }
+            formatTileMegabytes(estimatedBytes, approximate = true)
+        }
     }
 }
 

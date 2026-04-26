@@ -39,20 +39,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        val uiState = viewModel.uiState
-        if (event.repeatCount == 0 && uiState.sessionRunning && uiState.routeModel != null) {
-            when (keyCode) {
-                KeyEvent.KEYCODE_VOLUME_UP -> {
-                    viewModel.zoomInRouteScale()
-                    return true
-                }
-
-                KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    viewModel.zoomOutRouteScale()
-                    return true
-                }
-            }
-        }
         return super.onKeyDown(keyCode, event)
     }
 

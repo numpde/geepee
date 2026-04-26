@@ -102,9 +102,13 @@ data class ScreenPoint(
     val y: Float,
 )
 
-data class RouteRenderModel(
+internal data class RouteRenderModel(
     val polylines: List<List<ScreenPoint>>,
     val gradientPolylines: List<RouteGradientPolyline>,
+    val poiMarkers: List<RoutePoiScreenMarker>,
+    val nearbyWayPolylines: List<List<ScreenPoint>>,
+    val totalNearbyWayCount: Int,
+    val visibleNearbyWayCount: Int,
     val nearestPoint: ScreenPoint?,
     val hypothesisPoints: List<RouteHypothesisScreenPoint>,
     val nearestPointUncertainty: Float,
@@ -119,20 +123,28 @@ data class RouteRenderChunk(
     val bounds: Bounds,
 )
 
-data class RouteGradientPolyline(
+internal data class RouteGradientPolyline(
     val points: List<RouteGradientPoint>,
 )
 
-data class RouteGradientPoint(
+internal data class RouteGradientPoint(
     val point: ScreenPoint,
     val progressRatio: Float,
 )
 
-data class RouteHypothesisScreenPoint(
+internal data class RouteHypothesisScreenPoint(
     val point: ScreenPoint,
     val confidence: Float,
     val isPrimary: Boolean,
     val secondaryConfidenceContribution: Float,
+)
+
+internal data class RoutePoiScreenMarker(
+    val featureId: String,
+    val kind: RoutePoiKind,
+    val name: String?,
+    val geoPoint: GeoPoint,
+    val point: ScreenPoint,
 )
 
 private data class RouteAmbiguityDisplay(
@@ -303,11 +315,53 @@ internal fun collectRouteCandidates(
     return analyzeProjectedPointRange(model, projectedFix, 0, model.edges.lastIndex)
 }
 
+internal fun analyzeProjectedPointNearRouteHint(
+    model: RouteModel,
+    projectedFix: ProjectedPoint,
+    hintEdgeIndexes: List<Int>,
+    maxHintDistanceMeters: Double,
+): RouteAnalysis {
+    val validHintEdgeIndexes = hintEdgeIndexes.filter { it in 0..model.edges.lastIndex }
+    if (validHintEdgeIndexes.isNotEmpty()) {
+        val localBest = analyzeProjectedPointCandidates(
+            model = model,
+            projectedFix = projectedFix,
+            edgeIndexes = localWindowEdgeIndexes(model, validHintEdgeIndexes),
+        ).minByOrNull { it.offRouteMeters }
+        if (localBest != null && localBest.offRouteMeters <= maxHintDistanceMeters) {
+            return localBest
+        }
+    }
+    return collectRouteCandidates(
+        model = model,
+        projectedFix = projectedFix,
+        previousNearestEdgeIndexes = validHintEdgeIndexes,
+    ).minByOrNull { it.offRouteMeters } ?: emptyRouteAnalysis(projectedFix)
+}
+
+internal fun analyzeProjectedPointWithinHintWindow(
+    model: RouteModel,
+    projectedFix: ProjectedPoint,
+    hintEdgeIndexes: List<Int>,
+): RouteAnalysis? {
+    val validHintEdgeIndexes = hintEdgeIndexes.filter { it in 0..model.edges.lastIndex }
+    if (validHintEdgeIndexes.isEmpty()) {
+        return null
+    }
+    return analyzeProjectedPointCandidates(
+        model = model,
+        projectedFix = projectedFix,
+        edgeIndexes = localWindowEdgeIndexes(model, validHintEdgeIndexes),
+    ).minByOrNull { it.offRouteMeters }
+}
+
 internal fun buildRouteRenderModel(
     routeModel: RouteModel,
     analysis: RouteAnalysis?,
     matchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList(),
     historyPoints: List<ProjectedPoint> = emptyList(),
+    pois: List<RoutePoi> = emptyList(),
+    nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
     localWindowWidthMeters: Double,
     canvasWidth: Float,
     canvasHeight: Float,
@@ -317,7 +371,20 @@ internal fun buildRouteRenderModel(
     boundsOverride: Bounds? = null,
 ): RouteRenderModel {
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
-        return RouteRenderModel(emptyList(), emptyList(), null, emptyList(), 0f, null, null, emptyList())
+        return RouteRenderModel(
+            polylines = emptyList(),
+            gradientPolylines = emptyList(),
+            poiMarkers = emptyList(),
+            nearbyWayPolylines = emptyList(),
+            totalNearbyWayCount = 0,
+            visibleNearbyWayCount = 0,
+            nearestPoint = null,
+            hypothesisPoints = emptyList(),
+            nearestPointUncertainty = 0f,
+            userPoint = null,
+            edgePoint = null,
+            historyPoints = emptyList(),
+        )
     }
 
     val bounds = boundsOverride ?: if (analysis == null) {
@@ -397,6 +464,43 @@ internal fun buildRouteRenderModel(
     } else {
         emptyList()
     }
+    val poiMarkers = pois.mapNotNull { poi ->
+        if (!boundsContainPoint(bounds, poi.projectedPoint)) {
+            return@mapNotNull null
+        }
+        val projectedPoint = rotateScreenPoint(
+            point = toScreenPoint(poi.projectedPoint, projector),
+            center = screenCenter,
+            rotationDegrees = rotationDegrees.toDouble(),
+        )
+        projectedPoint
+            .takeIf { isScreenPointWithinBounds(it, screenBounds) }
+            ?.let { visiblePoint ->
+                RoutePoiScreenMarker(
+                    featureId = poi.featureId,
+                    kind = poi.kind,
+                    name = poi.name,
+                    geoPoint = poi.geoPoint,
+                    point = visiblePoint,
+                )
+            }
+    }
+    val nearbyWayPolylines = nearbyWays
+        .asSequence()
+        .filter { snippet -> boundsIntersect(snippet.bounds, bounds) }
+        .flatMap { snippet ->
+            clipScreenPolylineToBounds(
+                points = snippet.points.map { point ->
+                    rotateScreenPoint(
+                        point = toScreenPoint(point, projector),
+                        center = screenCenter,
+                        rotationDegrees = rotationDegrees.toDouble(),
+                    )
+                },
+                bounds = screenBounds,
+            ).asSequence()
+        }
+        .toList()
 
     val nearestProjected = analysis?.nearestPoint?.let { point ->
         rotateScreenPoint(
@@ -455,6 +559,10 @@ internal fun buildRouteRenderModel(
     return RouteRenderModel(
         polylines = polylines,
         gradientPolylines = gradientPolylines,
+        poiMarkers = poiMarkers,
+        nearbyWayPolylines = nearbyWayPolylines,
+        totalNearbyWayCount = nearbyWays.size,
+        visibleNearbyWayCount = nearbyWayPolylines.size,
         nearestPoint = nearestPoint,
         hypothesisPoints = ambiguityDisplay.visibleHypotheses,
         nearestPointUncertainty = ambiguityDisplay.nearestPointUncertainty,
@@ -502,13 +610,13 @@ internal fun transformRouteViewport(
     centroid: ScreenPoint,
     pan: ScreenPoint,
     zoomChange: Float,
+    minimumWidthMeters: Double = minimumViewportWidthMeters(contentBounds),
 ): RouteViewport {
     val currentBounds = routeViewportBounds(
         viewport = viewport,
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
     )
-    val minWidthMeters = minimumViewportWidthMeters(contentBounds)
     val maxWidthMeters = fittedViewportWidthMeters(
         contentBounds = contentBounds,
         canvasWidth = canvasWidth,
@@ -516,7 +624,7 @@ internal fun transformRouteViewport(
     )
     val nextWidthMeters = clamp(
         value = viewport.widthMeters / zoomChange.coerceAtLeast(0.01f).toDouble(),
-        minValue = minWidthMeters,
+        minValue = minimumWidthMeters,
         maxValue = maxWidthMeters,
     )
     val nextHeightMeters = nextWidthMeters * (canvasHeight / canvasWidth)
@@ -540,6 +648,7 @@ internal fun transformRouteViewport(
         contentBounds = contentBounds,
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
+        minimumWidthMeters = minimumWidthMeters,
     )
 }
 
@@ -709,6 +818,14 @@ internal fun candidateEdgeIndexes(
     point: ProjectedPoint,
 ): IntArray {
     val centerCell = gridCellForPoint(point, spatialIndex.cellSizeMeters)
+    if (!isCellWithinSpatialExtent(centerCell, spatialIndex)) {
+        return spatialIndex.cells.values
+            .asSequence()
+            .flatMap { it.asSequence() }
+            .distinct()
+            .toList()
+            .toIntArray()
+    }
     val collected = LinkedHashSet<Int>()
     val maxRadius = max(
         max(abs(centerCell.x - spatialIndex.minCellX), abs(centerCell.x - spatialIndex.maxCellX)),
@@ -755,6 +872,9 @@ private fun collectIndexedCandidates(
     }
 
     val centerCell = gridCellForPoint(projectedFix, spatialIndex.cellSizeMeters)
+    if (!isCellWithinSpatialExtent(centerCell, spatialIndex)) {
+        return emptyList()
+    }
     val maxRadius = max(
         max(abs(centerCell.x - spatialIndex.minCellX), abs(centerCell.x - spatialIndex.maxCellX)),
         max(abs(centerCell.y - spatialIndex.minCellY), abs(centerCell.y - spatialIndex.maxCellY)),
@@ -824,6 +944,14 @@ private fun searchExhausted(
         centerCell.y + radius >= spatialIndex.maxCellY
 }
 
+private fun isCellWithinSpatialExtent(
+    cell: GridCell,
+    spatialIndex: RouteSpatialIndex,
+): Boolean {
+    return cell.x in spatialIndex.minCellX..spatialIndex.maxCellX &&
+        cell.y in spatialIndex.minCellY..spatialIndex.maxCellY
+}
+
 private fun lowerBoundToUnsearchedCells(
     point: ProjectedPoint,
     centerCell: GridCell,
@@ -880,6 +1008,13 @@ private fun boundsIntersect(left: Bounds, right: Bounds): Boolean {
         left.minX <= right.maxX &&
         left.maxY >= right.minY &&
         left.minY <= right.maxY
+}
+
+private fun boundsContainPoint(bounds: Bounds, point: ProjectedPoint): Boolean {
+    return point.x >= bounds.minX &&
+        point.x <= bounds.maxX &&
+        point.y >= bounds.minY &&
+        point.y <= bounds.maxY
 }
 
 private fun collapseScreenHypotheses(
@@ -973,7 +1108,7 @@ private fun Bounds.centerX(): Double = (minX + maxX) / 2.0
 
 private fun Bounds.centerY(): Double = (minY + maxY) / 2.0
 
-private fun fittedViewportWidthMeters(
+internal fun fittedViewportWidthMeters(
     contentBounds: Bounds,
     canvasWidth: Double,
     canvasHeight: Double,
@@ -985,22 +1120,23 @@ private fun fittedViewportWidthMeters(
     )
 }
 
-private fun minimumViewportWidthMeters(contentBounds: Bounds): Double {
+internal fun minimumViewportWidthMeters(contentBounds: Bounds): Double {
     return max(
         24.0,
         min(contentBounds.width(), contentBounds.height()).coerceAtLeast(1.0) * 0.08,
     )
 }
 
-private fun clampRouteViewport(
+internal fun clampRouteViewport(
     viewport: RouteViewport,
     contentBounds: Bounds,
     canvasWidth: Double,
     canvasHeight: Double,
+    minimumWidthMeters: Double = minimumViewportWidthMeters(contentBounds),
 ): RouteViewport {
     val clampedWidth = clamp(
         value = viewport.widthMeters,
-        minValue = minimumViewportWidthMeters(contentBounds),
+        minValue = minimumWidthMeters,
         maxValue = fittedViewportWidthMeters(contentBounds, canvasWidth, canvasHeight),
     )
     val visibleHeight = clampedWidth * (canvasHeight / canvasWidth)
@@ -1320,6 +1456,38 @@ private fun isScreenPointWithinBounds(point: ScreenPoint, bounds: ScreenBounds):
         point.y <= bounds.maxY
 }
 
+internal fun routePoiMarkersNearScreenPoint(
+    markers: List<RoutePoiScreenMarker>,
+    tap: ScreenPoint,
+    maxDistancePx: Float,
+): List<RoutePoiScreenMarker> {
+    if (markers.isEmpty() || maxDistancePx <= 0f) {
+        return emptyList()
+    }
+    val maxDistanceSquared = maxDistancePx * maxDistancePx
+    return markers.filter { marker ->
+        val dx = marker.point.x - tap.x
+        val dy = marker.point.y - tap.y
+        (dx * dx) + (dy * dy) <= maxDistanceSquared
+    }
+}
+
+internal fun distanceBetweenGeoPointsMeters(
+    left: GeoPoint,
+    right: GeoPoint,
+): Double {
+    val leftLat = left.lat * PI / 180.0
+    val rightLat = right.lat * PI / 180.0
+    val deltaLat = (right.lat - left.lat) * PI / 180.0
+    val deltaLon = (right.lon - left.lon) * PI / 180.0
+    val sinHalfLat = sin(deltaLat / 2.0)
+    val sinHalfLon = sin(deltaLon / 2.0)
+    val a = sinHalfLat * sinHalfLat +
+        cos(leftLat) * cos(rightLat) * sinHalfLon * sinHalfLon
+    val c = 2.0 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1.0 - a))
+    return EARTH_RADIUS_METERS * c
+}
+
 private fun sameScreenPoint(left: ScreenPoint, right: ScreenPoint): Boolean {
     return abs(left.x - right.x) < 0.001 && abs(left.y - right.y) < 0.001
 }
@@ -1389,6 +1557,6 @@ private fun rotateScreenPoint(
     )
 }
 
-private fun clamp(value: Double, minValue: Double, maxValue: Double): Double {
+internal fun clamp(value: Double, minValue: Double, maxValue: Double): Double {
     return min(max(value, minValue), maxValue)
 }

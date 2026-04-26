@@ -6,16 +6,17 @@ import android.net.Uri
 private const val PREFS_NAME = "geepee_app_state"
 private const val KEY_ROUTE_URI = "route_uri"
 private const val KEY_ROUTE_NAME = "route_name"
+private const val KEY_ROUTE_REVERSED = "route_reversed"
 private const val KEY_SESSION_ACTIVE = "session_active"
 private const val KEY_BATTERY_SAVER = "battery_saver"
 private const val KEY_DARK_MODE = "dark_mode"
 private const val KEY_ORIENTATION_MODE = "orientation_mode"
 private const val KEY_ROUTE_SCALE = "route_scale"
-private const val KEY_SETUP_OVERVIEW_MODE = "setup_overview_mode"
 
 internal data class RestorableAppState(
     val routeUri: Uri?,
     val routeName: String?,
+    val routeReversed: Boolean,
     val sessionActive: Boolean,
     val preferences: AppPreferences,
 )
@@ -28,6 +29,7 @@ internal class AppStateStore(context: Context) {
         return RestorableAppState(
             routeUri = routeUri,
             routeName = preferences.getString(KEY_ROUTE_NAME, null),
+            routeReversed = preferences.getBoolean(KEY_ROUTE_REVERSED, false),
             sessionActive = preferences.getBoolean(KEY_SESSION_ACTIVE, false),
             preferences = AppPreferences(
                 batterySaverEnabled = preferences.getBoolean(KEY_BATTERY_SAVER, true),
@@ -40,18 +42,15 @@ internal class AppStateStore(context: Context) {
                     rawValue = preferences.getString(KEY_ROUTE_SCALE, null),
                     defaultValue = RouteScale.TwoHundred,
                 ),
-                setupOverviewMode = enumValueOrDefault(
-                    rawValue = preferences.getString(KEY_SETUP_OVERVIEW_MODE, null),
-                    defaultValue = SetupOverviewMode.Route,
-                ),
             ),
         )
     }
 
-    fun saveRouteSelection(uri: Uri, routeName: String) {
+    fun saveRouteSelection(uri: Uri, routeName: String, routeReversed: Boolean) {
         preferences.edit()
             .putString(KEY_ROUTE_URI, uri.toString())
             .putString(KEY_ROUTE_NAME, routeName)
+            .putBoolean(KEY_ROUTE_REVERSED, routeReversed)
             .apply()
     }
 
@@ -59,6 +58,7 @@ internal class AppStateStore(context: Context) {
         preferences.edit()
             .remove(KEY_ROUTE_URI)
             .remove(KEY_ROUTE_NAME)
+            .remove(KEY_ROUTE_REVERSED)
             .putBoolean(KEY_SESSION_ACTIVE, false)
             .apply()
     }
@@ -75,7 +75,6 @@ internal class AppStateStore(context: Context) {
             .putBoolean(KEY_DARK_MODE, appPreferences.darkModeEnabled)
             .putString(KEY_ORIENTATION_MODE, appPreferences.orientationMode.name)
             .putString(KEY_ROUTE_SCALE, appPreferences.routeScale.name)
-            .putString(KEY_SETUP_OVERVIEW_MODE, appPreferences.setupOverviewMode.name)
             .apply()
     }
 

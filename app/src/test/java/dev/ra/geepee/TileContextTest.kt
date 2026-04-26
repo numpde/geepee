@@ -3,6 +3,7 @@ package dev.ra.geepee
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,6 +41,10 @@ class TileContextTest {
 
         val renderModel = buildTileGridRenderModel(
             routeModel = route,
+            routeTileMetricsById = buildRouteTileMetricsIndex(
+                routeModel = route,
+                config = TileContextConfig(downloadZoom = 10),
+            ),
             bounds = route.bounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -65,6 +70,10 @@ class TileContextTest {
 
         val renderModel = buildTileGridRenderModel(
             routeModel = route,
+            routeTileMetricsById = buildRouteTileMetricsIndex(
+                routeModel = route,
+                config = TileContextConfig(downloadZoom = 10),
+            ),
             bounds = route.bounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -81,6 +90,60 @@ class TileContextTest {
 
         assertNotNull(hitTile)
         assertEquals(firstTile.tileId, hitTile?.tileId)
+    }
+
+    @Test
+    fun tileGridRenderModelCanFilterToFullyVisibleTiles() {
+        val metrics = TileRouteMetrics(
+            intersectsRoute = false,
+            intersectingEdgeCount = 0,
+            intersectingRouteMeters = 0.0,
+        )
+        val model = TileGridRenderModel(
+            tiles = listOf(
+                TileGridDisplayTile(
+                    tileId = DownloadTileId(zoom = 10, x = 1, y = 1),
+                    screenRect = ScreenRect(left = 10f, top = 20f, right = 110f, bottom = 120f),
+                    routeMetrics = metrics,
+                    snapshot = null,
+                    estimatedBytes = 0L,
+                    label = null,
+                ),
+                TileGridDisplayTile(
+                    tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
+                    screenRect = ScreenRect(left = -5f, top = 20f, right = 95f, bottom = 120f),
+                    routeMetrics = metrics,
+                    snapshot = null,
+                    estimatedBytes = 0L,
+                    label = null,
+                ),
+            ),
+        )
+
+        val filtered = model.fullyVisibleWithin(width = 200f, height = 200f)
+
+        assertEquals(1, filtered.tiles.size)
+        assertEquals("10/1/1", filtered.tiles.single().tileId.cacheKey)
+    }
+
+    @Test
+    fun buildRouteTileMetricsIndexContainsOnlyIntersectingTiles() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+
+        val metricsByTile = buildRouteTileMetricsIndex(
+            routeModel = route,
+            config = TileContextConfig(downloadZoom = 10),
+        )
+
+        assertTrue(metricsByTile.isNotEmpty())
+        assertTrue(metricsByTile.values.all { it.intersectsRoute })
     }
 
     @Test
@@ -144,6 +207,36 @@ class TileContextTest {
     }
 
     @Test
+    fun normalizeOverpassTilePackIgnoresNullGeometryEntries() {
+        val pack = normalizeOverpassTilePack(
+            tileId = DownloadTileId(zoom = 10, x = 571, y = 357),
+            config = DefaultTileContextConfig,
+            overpassJson = """
+                {
+                  "elements": [
+                    {
+                      "type": "way",
+                      "id": 101,
+                      "tags": {
+                        "highway": "path"
+                      },
+                      "geometry": [
+                        {"lat": -1.0, "lon": 36.8},
+                        null,
+                        {"lat": -1.0005, "lon": 36.8005}
+                      ]
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            fetchedAtMillis = 4321L,
+        )
+
+        assertEquals(1, pack.features.size)
+        assertEquals(2, pack.features.single().geometry.size)
+    }
+
+    @Test
     fun tileContextPackJsonRoundTrips() {
         val original = TileContextPack(
             tileId = DownloadTileId(zoom = 10, x = 512, y = 512),
@@ -162,5 +255,20 @@ class TileContextTest {
         val restored = tileContextPackFromJson(original.toJsonString())
 
         assertEquals(original, restored)
+    }
+
+    @Test
+    fun tileDownloadCancellationRunsCallbacksAndThrowsOnCheck() {
+        val cancellation = TileDownloadCancellation()
+        var callbackCount = 0
+
+        cancellation.onCancel { callbackCount += 1 }
+        cancellation.cancel()
+        cancellation.onCancel { callbackCount += 1 }
+
+        assertEquals(2, callbackCount)
+        assertThrows(TileDownloadCancelledException::class.java) {
+            cancellation.throwIfCancelled()
+        }
     }
 }

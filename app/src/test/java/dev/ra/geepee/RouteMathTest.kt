@@ -165,6 +165,33 @@ class RouteMathTest {
         assertEquals(fullSearch.offRouteMeters, hintedSearch.offRouteMeters, 0.001)
     }
 
+    @Test(timeout = 1000L)
+    fun farOutsideSpatialExtentDoesNotRingScanAcrossTheWorld() {
+        val routePoints = (0..2200).map { index ->
+            GeoPoint(
+                lat = 48.0,
+                lon = 22.0 + index * 0.00001,
+            )
+        }
+        val route = buildRouteModel(listOf(routePoints))
+
+        val analysis = analyzeLocationAgainstModel(
+            model = route,
+            fix = LocationFix(
+                lat = -1.286389,
+                lon = 36.817223,
+                accuracyMeters = 12f,
+                headingDegrees = 135f,
+                speedMetersPerSecond = 0f,
+                timestampMillis = 0L,
+                bearingAccuracyDegrees = 20f,
+            ),
+        )
+
+        assertTrue(analysis.nearestEdgeIndex in 0..route.edges.lastIndex)
+        assertTrue(analysis.offRouteMeters > 1_000_000.0)
+    }
+
     @Test
     fun multiHintLocalSearchUsesWindowUnionInsteadOfSpanningWholeRoute() {
         val routePoints = (0..2200).map { index ->
@@ -229,6 +256,96 @@ class RouteMathTest {
 
         assertEquals(1, analysis.nearestEdgeIndex)
         assertTrue(analysis.offRouteMeters < 5.0)
+    }
+
+    @Test
+    fun renderModelProjectsRoutePoisAtTheirActualLocation() {
+        val routeModel = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.01),
+                ),
+            ),
+        )
+        val context = buildRouteContext(
+            routeModel = routeModel,
+            packs = listOf(
+                TileContextPack(
+                    tileId = DownloadTileId(zoom = 10, x = 0, y = 0),
+                    queryBounds = GeoBounds(west = 0.0, south = 0.0, east = 0.01, north = 0.01),
+                    fetchedAtMillis = 0L,
+                    features = listOf(
+                        TileContextFeature(
+                            featureId = "node/water",
+                            geometryKind = TileGeometryKind.Point,
+                            tags = mapOf("amenity" to "drinking_water"),
+                            geometry = listOf(GeoPoint(lat = 0.0005, lon = 0.005)),
+                        ),
+                    ),
+                ),
+            ),
+            config = DefaultTileContextConfig,
+        )
+
+        val render = buildRouteRenderModel(
+            routeModel = routeModel,
+            analysis = analyzeLocationAgainstModel(
+                model = routeModel,
+                fix = LocationFix(
+                    lat = 0.0,
+                    lon = 0.005,
+                    accuracyMeters = 5f,
+                    headingDegrees = null,
+                    speedMetersPerSecond = null,
+                    timestampMillis = 0L,
+                ),
+            ),
+            pois = context.pois,
+            localWindowWidthMeters = 220.0,
+            canvasWidth = 1080f,
+            canvasHeight = 1920f,
+        )
+
+        assertEquals(1, render.poiMarkers.size)
+        val marker = render.poiMarkers.single()
+        assertEquals("node/water", marker.featureId)
+        assertEquals(RoutePoiKind.DrinkingWater, marker.kind)
+        assertEquals(GeoPoint(lat = 0.0005, lon = 0.005), marker.geoPoint)
+        assertTrue(marker.point.y < 960f)
+    }
+
+    @Test
+    fun routePoiMarkersNearScreenPointReturnsAllNearbyMarkers() {
+        val selected = routePoiMarkersNearScreenPoint(
+            markers = listOf(
+                RoutePoiScreenMarker(
+                    featureId = "node/water",
+                    kind = RoutePoiKind.DrinkingWater,
+                    name = "Pump",
+                    geoPoint = GeoPoint(lat = 0.0, lon = 0.0),
+                    point = ScreenPoint(x = 100f, y = 100f),
+                ),
+                RoutePoiScreenMarker(
+                    featureId = "node/toilets",
+                    kind = RoutePoiKind.Toilets,
+                    name = null,
+                    geoPoint = GeoPoint(lat = 0.0, lon = 0.0),
+                    point = ScreenPoint(x = 118f, y = 104f),
+                ),
+                RoutePoiScreenMarker(
+                    featureId = "node/far",
+                    kind = RoutePoiKind.Shelter,
+                    name = null,
+                    geoPoint = GeoPoint(lat = 0.0, lon = 0.0),
+                    point = ScreenPoint(x = 180f, y = 180f),
+                ),
+            ),
+            tap = ScreenPoint(x = 108f, y = 102f),
+            maxDistancePx = 24f,
+        )
+
+        assertEquals(listOf("node/water", "node/toilets"), selected.map(RoutePoiScreenMarker::featureId))
     }
 
     @Test

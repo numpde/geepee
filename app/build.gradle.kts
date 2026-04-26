@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val runBenchmarksOptIn = providers.gradleProperty("geepee.runBenchmarks")
+    .orElse(providers.environmentVariable("GEEPEE_RUN_BENCHMARKS"))
+    .orNull
+
 android {
     namespace = "dev.ra.geepee"
     compileSdk = 36
@@ -38,6 +42,12 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    runBenchmarksOptIn?.let { enabled ->
+        systemProperty("geepee.runBenchmarks", enabled)
     }
 }
 

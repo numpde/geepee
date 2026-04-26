@@ -12,6 +12,8 @@ internal data class GeePeeUiProjectionInputs(
     val appPreferences: AppPreferences,
     val tileContextConfig: TileContextConfig,
     val tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
+    val routeContextState: RouteContextState,
+    val debugGpsEnabled: Boolean,
     val locationProvidersEnabled: Boolean,
     val headingDegrees: Double?,
 )
@@ -35,6 +37,9 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         routeName = inputs.routeLoadState.routeName,
         routeModel = inputs.routeModel,
         analysis = inputs.analysis,
+        currentLocationGeoPoint = inputs.analysis?.nearestGeoPoint ?: inputs.currentFix?.let { fix ->
+            GeoPoint(lat = fix.lat, lon = fix.lon)
+        },
         routeMatchHypotheses = inputs.routeMatchHypotheses,
         locationHistoryPoints = inputs.locationHistoryPoints,
         compass = inputs.compass,
@@ -42,9 +47,12 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         darkModeEnabled = inputs.appPreferences.darkModeEnabled,
         orientationMode = inputs.appPreferences.orientationMode,
         routeScale = inputs.appPreferences.routeScale,
-        setupOverviewMode = inputs.appPreferences.setupOverviewMode,
         tileContextConfig = inputs.tileContextConfig,
         tileDownloads = inputs.tileDownloads,
+        routePois = inputs.routeContextState.pois,
+        routeContextDebugText = routeContextDebugText(inputs.routeContextState.debugState),
+        routeNearbyWays = inputs.routeContextState.nearbyWays,
+        debugGpsEnabled = inputs.debugGpsEnabled,
         sessionRunning = inputs.sessionState.sessionActive,
         routeLoading = inputs.routeLoadState.routeLoading,
         hasCoarsePermission = inputs.sessionState.hasCoarsePermission,
@@ -52,4 +60,20 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         batterySaverEnabled = inputs.appPreferences.batterySaverEnabled,
         status = status,
     )
+}
+
+internal fun routeContextDebugText(state: RouteContextDebugState?): String? {
+    val status = state?.localNearbyWays ?: return null
+    status.errorMessage?.let {
+        return "Map info for this view: unavailable"
+    }
+    val currentTileAvailable = status.currentTileAvailable ?: return null
+    if (!currentTileAvailable) {
+        return "Map info for this view: not downloaded"
+    }
+    return when {
+        status.nearbyWaysLoading -> "Map info for this view: loading…"
+        status.localTileCount > 0 && status.loadedLocalTileCount < status.localTileCount -> "Map info for this view: partly available"
+        else -> "Map info for this view: available"
+    }
 }

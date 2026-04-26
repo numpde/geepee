@@ -5,5 +5,4 @@ internal data class AppPreferences(
     val darkModeEnabled: Boolean = true,
     val orientationMode: OrientationMode = OrientationMode.CourseUp,
     val routeScale: RouteScale = RouteScale.TwoHundred,
-    val setupOverviewMode: SetupOverviewMode = SetupOverviewMode.Route,
 )

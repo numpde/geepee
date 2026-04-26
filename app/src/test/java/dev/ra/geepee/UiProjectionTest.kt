@@ -2,6 +2,7 @@ package dev.ra.geepee
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class UiProjectionTest {
@@ -29,6 +30,8 @@ class UiProjectionTest {
                 ),
                 tileContextConfig = TileContextConfig(downloadZoom = 10),
                 tileDownloads = emptyMap(),
+                routeContextState = RouteContextState(),
+                debugGpsEnabled = false,
                 locationProvidersEnabled = true,
                 headingDegrees = null,
             ),
@@ -40,5 +43,116 @@ class UiProjectionTest {
         assertEquals(RouteScale.TenKilometers, uiState.routeScale)
         assertFalse(uiState.batterySaverEnabled)
         assertEquals("Reading route", uiState.status.headline)
+    }
+
+    @Test
+    fun projectionPrefersMatchedRoutePointForExternalMapTarget() {
+        val routeModel = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.01),
+                ),
+            ),
+        )
+        val fix = LocationFix(
+            lat = 1.0,
+            lon = 1.0,
+            accuracyMeters = 5f,
+            headingDegrees = null,
+            speedMetersPerSecond = null,
+            timestampMillis = 42L,
+        )
+        val analysis = analyzeLocationAgainstModel(
+            model = routeModel,
+            fix = LocationFix(
+                lat = 0.0,
+                lon = 0.005,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 42L,
+            ),
+        )
+
+        val uiState = buildGeePeeUiState(
+            GeePeeUiProjectionInputs(
+                routeLoadState = RouteLoadState(routeName = "Tisza"),
+                routeModel = routeModel,
+                currentFix = fix,
+                analysis = analysis,
+                routeMatchHypotheses = emptyList(),
+                locationHistoryPoints = emptyList(),
+                compass = null,
+                sessionState = SessionState(sessionActive = true),
+                appPreferences = AppPreferences(),
+                tileContextConfig = DefaultTileContextConfig,
+                tileDownloads = emptyMap(),
+                routeContextState = RouteContextState(),
+                debugGpsEnabled = false,
+                locationProvidersEnabled = true,
+                headingDegrees = null,
+            ),
+        )
+
+        assertNotNull(uiState.currentLocationGeoPoint)
+        assertEquals(analysis.nearestGeoPoint, uiState.currentLocationGeoPoint)
+    }
+
+    @Test
+    fun routeContextDebugTextReportsCurrentViewAvailability() {
+        assertEquals(
+            "Map info for this view: not downloaded",
+            routeContextDebugText(
+                RouteContextDebugState(
+                    localNearbyWays = LocalNearbyWayDebugStatus(
+                        localTileCount = 9,
+                        loadedLocalTileCount = 3,
+                        currentTileAvailable = false,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "Map info for this view: loading…",
+            routeContextDebugText(
+                RouteContextDebugState(
+                    localNearbyWays = LocalNearbyWayDebugStatus(
+                        localTileCount = 9,
+                        loadedLocalTileCount = 3,
+                        currentTileAvailable = true,
+                        nearbyWaysLoading = true,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "Map info for this view: available",
+            routeContextDebugText(
+                RouteContextDebugState(
+                    localNearbyWays = LocalNearbyWayDebugStatus(
+                        nearbyWayCount = 2,
+                        localTileCount = 9,
+                        loadedLocalTileCount = 9,
+                        currentTileAvailable = true,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "Map info for this view: partly available",
+            routeContextDebugText(
+                RouteContextDebugState(
+                    localNearbyWays = LocalNearbyWayDebugStatus(
+                        localTileCount = 9,
+                        loadedLocalTileCount = 5,
+                        currentTileAvailable = true,
+                    ),
+                ),
+            ),
+        )
     }
 }

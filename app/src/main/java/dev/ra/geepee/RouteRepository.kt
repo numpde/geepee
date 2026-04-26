@@ -8,6 +8,8 @@ import android.util.Log
 internal data class LoadedRoute(
     val model: RouteModel,
     val displayName: String,
+    val baseDisplayName: String,
+    val isReversed: Boolean,
 )
 
 internal class RouteRepository(
@@ -15,17 +17,24 @@ internal class RouteRepository(
     private val appStateStore: AppStateStore,
     private val logTag: String,
 ) {
-    fun loadRoute(uri: Uri, displayName: String?): LoadedRoute {
+    fun loadRoute(uri: Uri, displayName: String?, reversed: Boolean): LoadedRoute {
         val resolvedName = displayName ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Route"
         val parsedSegments = contentResolver.openInputStream(uri)?.use(GpxParser::parse)
             ?: throw IllegalArgumentException("Could not open that GPX file.")
+        val routeSegments = if (reversed) {
+            reverseRouteSegments(parsedSegments)
+        } else {
+            parsedSegments
+        }
         return LoadedRoute(
-            model = buildRouteModel(parsedSegments),
-            displayName = resolvedName,
+            model = buildRouteModel(routeSegments),
+            displayName = routeDisplayName(resolvedName, reversed),
+            baseDisplayName = resolvedName,
+            isReversed = reversed,
         )
     }
 
-    fun rememberSelectedRoute(uri: Uri, displayName: String) {
+    fun rememberSelectedRoute(uri: Uri, displayName: String, reversed: Boolean) {
         val previousUri = appStateStore.load().routeUri
         runCatching {
             contentResolver.takePersistableUriPermission(
@@ -38,7 +47,7 @@ internal class RouteRepository(
         if (previousUri != null && previousUri != uri) {
             releasePersistedReadGrant(previousUri)
         }
-        appStateStore.saveRouteSelection(uri, displayName)
+        appStateStore.saveRouteSelection(uri, displayName, reversed)
     }
 
     fun clearRememberedRoute() {
@@ -55,5 +64,19 @@ internal class RouteRepository(
         }.onFailure { error ->
             Log.w(logTag, "Could not release previous route grant for uri=$uri", error)
         }
+    }
+}
+
+internal fun reverseRouteSegments(rawSegments: List<List<GeoPoint>>): List<List<GeoPoint>> {
+    return rawSegments.asReversed().map { segment ->
+        segment.asReversed()
+    }
+}
+
+private fun routeDisplayName(baseDisplayName: String, reversed: Boolean): String {
+    return if (reversed) {
+        "$baseDisplayName (reversed)"
+    } else {
+        baseDisplayName
     }
 }

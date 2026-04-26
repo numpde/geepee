@@ -19,7 +19,6 @@ private const val LOG_TAG = "GeePee"
 internal class GeePeeViewModel(application: Application) : AndroidViewModel(application) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val tileDownloadExecutor: ExecutorService = Executors.newCachedThreadPool()
     private val appStateStore = AppStateStore(application)
     private val callbackExecutor = Executor(mainHandler::post)
     private val routeRepository = RouteRepository(
@@ -42,13 +41,31 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         onHeadingDegrees = ::handleHeadingChanged,
     )
     private val tileContextRepository = TileContextRepository(application)
-    private val routeRuntimeState = RouteRuntimeState()
     private val tileContextConfig = DefaultTileContextConfig
+    private val tileDownloadCoordinator = TileDownloadCoordinator(
+        tileContextRepository = tileContextRepository,
+        tileContextConfig = tileContextConfig,
+        callbackExecutor = callbackExecutor,
+        logTag = LOG_TAG,
+    )
+    private val routeContextCoordinator = RouteContextCoordinator(
+        tileContextRepository = tileContextRepository,
+        tileContextConfig = tileContextConfig,
+        callbackExecutor = callbackExecutor,
+        logTag = LOG_TAG,
+    )
+    private val routeRuntimeState = RouteRuntimeState()
 
     private var routeLoadState = RouteLoadState()
     private var sessionState = SessionState()
     private var appPreferences = AppPreferences()
+    private var selectedRouteUri: Uri? = null
+    private var selectedRouteBaseName: String? = null
+    private var selectedRouteReversed: Boolean = false
     private var tileDownloads: Map<DownloadTileId, TileDownloadSnapshot> = tileContextRepository.cachedTileSnapshots()
+    private var routeContextState = RouteContextState()
+    private var debugGpsEnabled = false
+    private var liveContextFocus: MapInfoFocus? = null
 
     var uiState by mutableStateOf(GeePeeUiState())
         private set
@@ -57,6 +74,9 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         val restoredState = appStateStore.load()
         sessionState = sessionState.copy(sessionActive = restoredState.sessionActive)
         appPreferences = restoredState.preferences
+        selectedRouteUri = restoredState.routeUri
+        selectedRouteBaseName = restoredState.routeName
+        selectedRouteReversed = restoredState.routeReversed
         restoreSelectedRouteIfNeeded(restoredState)
         recomputeUiState()
     }
@@ -122,24 +142,8 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         updateRouteScale(appPreferences.routeScale.next())
     }
 
-    fun toggleSetupOverviewMode() {
-        updatePreferences {
-            copy(
-                setupOverviewMode = when (setupOverviewMode) {
-                    SetupOverviewMode.Route -> SetupOverviewMode.Tiles
-                    SetupOverviewMode.Tiles -> SetupOverviewMode.Route
-                },
-            )
-        }
-        recomputeUiState()
-    }
-
-    fun zoomInRouteScale() {
-        updateRouteScale(appPreferences.routeScale.zoomIn())
-    }
-
-    fun zoomOutRouteScale() {
-        updateRouteScale(appPreferences.routeScale.zoomOut())
+    fun setRouteScale(scale: RouteScale) {
+        updateRouteScale(scale)
     }
 
     fun startMonitoring() {
@@ -169,6 +173,8 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     fun stopMonitoring() {
         applySessionTransition(sessionState.stop())
+        clearMapInfoFocus(clearCoordinator = true)
+        debugGpsEnabled = false
         routeLoadState = routeLoadState.clearIssue()
         syncTrackingState()
         recomputeUiState()
@@ -187,9 +193,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     fun downloadTile(tileId: DownloadTileId, estimatedBytes: Long) {
         when (tileDownloads[tileId]?.status) {
-            TileDownloadStatus.Downloading,
-            TileDownloadStatus.Cached,
-            -> return
+            TileDownloadStatus.Downloading -> {
+                tileDownloadCoordinator.cancelDownload(tileId) { update ->
+                    handleTileDownloadUpdate(tileId, update)
+                }
+                return
+            }
+            TileDownloadStatus.Cached -> return
             TileDownloadStatus.Error,
             null,
             -> Unit
@@ -202,56 +212,33 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             )
         )
         recomputeUiState()
-
-        tileDownloadExecutor.execute {
-            try {
-                val cachedSnapshot = tileContextRepository.downloadTile(
-                    tileId = tileId,
-                    config = tileContextConfig,
-                ) { downloadedBytes, contentLengthBytes ->
-                    callbackExecutor.execute {
-                        val currentSnapshot = tileDownloads[tileId]
-                        if (currentSnapshot?.status == TileDownloadStatus.Downloading) {
-                            tileDownloads = tileDownloads + (
-                                tileId to currentSnapshot.copy(
-                                    downloadedBytes = downloadedBytes,
-                                    actualBytes = contentLengthBytes,
-                                )
-                            )
-                            recomputeUiState()
-                        }
-                    }
-                }
-                callbackExecutor.execute {
-                    tileDownloads = tileDownloads + (
-                        tileId to cachedSnapshot.copy(
-                            estimatedBytes = estimatedBytes,
-                        )
-                    )
-                    recomputeUiState()
-                }
-            } catch (error: Exception) {
-                Log.e(LOG_TAG, "Tile context download failed for $tileId", error)
-                callbackExecutor.execute {
-                    tileDownloads = tileDownloads + (
-                        tileId to TileDownloadSnapshot(
-                            status = TileDownloadStatus.Error,
-                            estimatedBytes = estimatedBytes,
-                            errorMessage = error.message ?: "Download failed",
-                        )
-                    )
-                    recomputeUiState()
-                }
-            }
+        tileDownloadCoordinator.startDownload(
+            tileId = tileId,
+            estimatedBytes = estimatedBytes,
+        ) { update ->
+            handleTileDownloadUpdate(tileId, update)
         }
+    }
+
+    fun reverseRoute() {
+        val routeUri = selectedRouteUri ?: return
+        loadRoute(
+            uri = routeUri,
+            displayName = selectedRouteBaseName,
+            reversed = !selectedRouteReversed,
+            rememberSelection = true,
+        )
     }
 
     fun loadRoute(
         uri: Uri,
         displayName: String?,
+        reversed: Boolean = false,
         rememberSelection: Boolean = true,
         fromRestore: Boolean = false,
     ) {
+        resetRouteContextState()
+        debugGpsEnabled = false
         routeLoadState = routeLoadState.beginLoading()
         recomputeUiState()
 
@@ -259,6 +246,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             request = RouteLoadRequest(
                 routeRef = uri,
                 displayName = displayName,
+                reversed = reversed,
                 rememberSelection = rememberSelection,
                 fromRestore = fromRestore,
             ),
@@ -266,7 +254,12 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 when (outcome) {
                     is RouteLoadOutcome.Success -> {
                         routeRuntimeState.applyRoute(outcome.loadedRoute.model)
+                        selectedRouteUri = uri
+                        selectedRouteBaseName = outcome.loadedRoute.baseDisplayName
+                        selectedRouteReversed = outcome.loadedRoute.isReversed
                         routeLoadState = routeLoadState.loadSucceeded(outcome.loadedRoute.displayName)
+                        rebuildRouteContextAsync()
+                        rebuildNearbyWaysAsync(force = true)
                     }
 
                     is RouteLoadOutcome.Failure -> {
@@ -284,17 +277,22 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     override fun onCleared() {
         liveTrackingController.shutdown()
         ioExecutor.shutdownNow()
-        tileDownloadExecutor.shutdownNow()
+        tileDownloadCoordinator.shutdown()
+        routeContextCoordinator.shutdown()
         super.onCleared()
     }
 
     private fun handleLocation(location: Location) {
+        if (debugGpsEnabled) {
+            return
+        }
         routeRuntimeState.acceptLocation(
             location = location,
             sessionActive = sessionState.sessionActive,
             batterySaverEnabled = appPreferences.batterySaverEnabled,
         )
         routeLoadState = routeLoadState.clearIssue()
+        rebuildNearbyWaysAsync()
         recomputeUiState()
     }
 
@@ -343,16 +341,75 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         loadRoute(
             uri = routeUri,
             displayName = restoredState.routeName,
+            reversed = restoredState.routeReversed,
             rememberSelection = false,
             fromRestore = true,
         )
     }
 
     private fun clearRememberedRoute() {
+        resetRouteContextState()
         routeRepository.clearRememberedRoute()
         applySessionTransition(sessionState.stop())
+        selectedRouteUri = null
+        selectedRouteBaseName = null
+        selectedRouteReversed = false
         routeRuntimeState.clearRoute()
         routeLoadState = routeLoadState.clearRoute()
+        debugGpsEnabled = false
+    }
+
+    fun toggleDebugGps() {
+        debugGpsEnabled = !debugGpsEnabled
+        if (!debugGpsEnabled) {
+            clearMapInfoFocus(clearCoordinator = true)
+            requestImmediateLocationRefresh()
+        }
+        recomputeUiState()
+    }
+
+    fun setDebugGpsLocation(point: GeoPoint, focusWindowWidthMeters: Double) {
+        val timestampMillis = System.currentTimeMillis()
+        liveContextFocus = MapInfoFocus(
+            centerGeoPoint = point,
+            windowWidthMeters = focusWindowWidthMeters,
+        )
+        routeRuntimeState.teleportToFix(
+            fix = LocationFix(
+                lat = point.lat,
+                lon = point.lon,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = timestampMillis,
+            ),
+            sessionActive = sessionState.sessionActive,
+            batterySaverEnabled = appPreferences.batterySaverEnabled,
+        )
+        routeLoadState = routeLoadState.clearIssue()
+        clearMapInfoFocus(clearCoordinator = true)
+        rebuildNearbyWaysAsync(force = true)
+        recomputeUiState()
+    }
+
+    fun updateLiveContextFocus(focus: MapInfoFocus) {
+        val analysis = routeRuntimeState.currentAnalysis ?: run {
+            return
+        }
+        val previousFocus = liveContextFocus
+        val defaultWidthMeters = appPreferences.routeScale.windowWidthMeters
+        if (
+            previousFocus == null &&
+            kotlin.math.abs(focus.windowWidthMeters - defaultWidthMeters) <= maxOf(5.0, defaultWidthMeters * 0.05) &&
+            distanceBetweenGeoPointsMeters(focus.centerGeoPoint, analysis.nearestGeoPoint) <= 3.0
+        ) {
+            return
+        }
+        if (!mapInfoFocusChanged(previousFocus, focus)) {
+            return
+        }
+        liveContextFocus = focus
+        rebuildNearbyWaysAsync(force = true)
     }
 
     private fun updateRouteScale(scale: RouteScale) {
@@ -361,6 +418,32 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
         updatePreferences { copy(routeScale = scale) }
         recomputeUiState()
+    }
+
+    private fun clearMapInfoFocus(clearCoordinator: Boolean) {
+        liveContextFocus = null
+        if (clearCoordinator) {
+            routeContextCoordinator.clear()
+        }
+    }
+
+    private fun resetRouteContextState() {
+        routeContextState = RouteContextState()
+        clearMapInfoFocus(clearCoordinator = true)
+    }
+
+    private fun mapInfoFocusChanged(
+        previous: MapInfoFocus?,
+        current: MapInfoFocus,
+    ): Boolean {
+        val previousFocus = previous ?: return true
+        val widthChanged = kotlin.math.abs(previousFocus.windowWidthMeters - current.windowWidthMeters) >
+            maxOf(5.0, previousFocus.windowWidthMeters * 0.05)
+        if (widthChanged) {
+            return true
+        }
+        val movementThresholdMeters = maxOf(25.0, current.windowWidthMeters * 0.2)
+        return distanceBetweenGeoPointsMeters(previousFocus.centerGeoPoint, current.centerGeoPoint) > movementThresholdMeters
     }
 
     private fun currentLiveTrackingConfig(): LiveTrackingConfig {
@@ -381,6 +464,8 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 appPreferences = appPreferences,
                 tileContextConfig = tileContextConfig,
                 tileDownloads = tileDownloads,
+                routeContextState = routeContextState,
+                debugGpsEnabled = debugGpsEnabled,
                 locationProvidersEnabled = liveTrackingController.hasEnabledProviders(),
                 headingDegrees = routeRuntimeState.displayHeadingDegrees(),
             ),
@@ -420,5 +505,113 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
         appPreferences = updatedPreferences
         appStateStore.savePreferences(updatedPreferences)
+    }
+
+    private fun rebuildRouteContextAsync() {
+        val routeModel = routeRuntimeState.routeModel ?: run {
+            routeContextState = routeContextState.copy(pois = emptyList())
+            return
+        }
+        routeContextCoordinator.rebuildRouteContext(routeModel) { result ->
+            routeContextState = routeContextState.copy(pois = result.pois)
+            recomputeUiState()
+        }
+    }
+
+    private fun rebuildNearbyWaysAsync(force: Boolean = false) {
+        val routeModel = routeRuntimeState.routeModel ?: run {
+            routeContextState = routeContextState.copy(
+                debugState = null,
+                nearbyWays = emptyList(),
+            )
+            return
+        }
+        val analysis = routeRuntimeState.currentAnalysis ?: run {
+            routeContextState = routeContextState.copy(
+                debugState = routeContextState.debugState?.copy(
+                    localNearbyWays = routeContextState.debugState?.localNearbyWays?.copy(
+                        nearbyWayCount = 0,
+                        nearbyWaysLoading = false,
+                        errorMessage = null,
+                    ),
+                ),
+                nearbyWays = emptyList(),
+            )
+            return
+        }
+        routeContextCoordinator.rebuildNearbyWays(
+            routeModel = routeModel,
+            analysis = analysis,
+            tileDownloads = tileDownloads,
+            existingLocalStatus = routeContextState.debugState?.localNearbyWays,
+            focus = liveContextFocus,
+            defaultFocusWindowWidthMeters = appPreferences.routeScale.windowWidthMeters,
+            force = force,
+            onStarted = { startedStatus ->
+                routeContextState = routeContextState.copy(
+                    debugState = routeContextState.debugState?.copy(
+                        localNearbyWays = startedStatus,
+                    ) ?: RouteContextDebugState(localNearbyWays = startedStatus),
+                )
+                recomputeUiState()
+            },
+            onResult = { result ->
+                routeContextState = routeContextState.copy(
+                    nearbyWays = result.nearbyWays,
+                    debugState = routeContextState.debugState?.copy(
+                        localNearbyWays = result.localNearbyWays.copy(nearbyWaysLoading = false),
+                    ) ?: RouteContextDebugState(localNearbyWays = result.localNearbyWays.copy(nearbyWaysLoading = false)),
+                )
+                recomputeUiState()
+            },
+        )
+    }
+
+    private fun handleTileDownloadUpdate(
+        tileId: DownloadTileId,
+        update: TileDownloadUpdate,
+    ) {
+        when (update) {
+            is TileDownloadUpdate.Progress -> {
+                val currentSnapshot = tileDownloads[tileId]
+                if (currentSnapshot?.status == TileDownloadStatus.Downloading) {
+                    tileDownloads = tileDownloads + (
+                        tileId to currentSnapshot.copy(
+                            downloadedBytes = update.downloadedBytes,
+                            actualBytes = update.actualBytes,
+                        )
+                    )
+                    recomputeUiState()
+                }
+            }
+
+            is TileDownloadUpdate.Success -> {
+                tileDownloads = tileDownloads + (
+                    tileId to update.snapshot
+                )
+                rebuildRouteContextAsync()
+                rebuildNearbyWaysAsync(force = true)
+                recomputeUiState()
+            }
+
+            TileDownloadUpdate.Cancelled -> {
+                if (tileDownloads[tileId]?.status == TileDownloadStatus.Downloading) {
+                    tileDownloads = tileDownloads - tileId
+                    recomputeUiState()
+                }
+            }
+
+            is TileDownloadUpdate.Error -> {
+                val estimatedBytes = tileDownloads[tileId]?.estimatedBytes ?: 0L
+                tileDownloads = tileDownloads + (
+                    tileId to TileDownloadSnapshot(
+                        status = TileDownloadStatus.Error,
+                        estimatedBytes = estimatedBytes,
+                        errorMessage = update.message,
+                    )
+                )
+                recomputeUiState()
+            }
+        }
     }
 }

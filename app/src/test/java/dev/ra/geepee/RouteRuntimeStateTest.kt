@@ -220,4 +220,64 @@ class RouteRuntimeStateTest {
         assertTrue(forwardMatch.routeMeters > restartMatch.routeMeters)
         assertEquals(2, runtimeState.locationHistoryPoints.size)
     }
+
+    @Test
+    fun teleportToFixResetsHistoryAndReprojectsImmediately() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0010, 0.0),
+                    GeoPoint(0.0010, 0.0010),
+                ),
+            ),
+        )
+        val runtimeState = RouteRuntimeState().apply {
+            applyRoute(route)
+            acceptFix(
+                fix = LocationFix(
+                    lat = 0.0004,
+                    lon = 0.0,
+                    accuracyMeters = 4f,
+                    headingDegrees = 0f,
+                    speedMetersPerSecond = 2f,
+                    timestampMillis = 1_000L,
+                ),
+                sessionActive = true,
+                batterySaverEnabled = false,
+            )
+            acceptFix(
+                fix = LocationFix(
+                    lat = 0.0007,
+                    lon = 0.0,
+                    accuracyMeters = 4f,
+                    headingDegrees = 0f,
+                    speedMetersPerSecond = 2f,
+                    timestampMillis = 2_000L,
+                ),
+                sessionActive = true,
+                batterySaverEnabled = false,
+            )
+        }
+
+        assertEquals(2, runtimeState.locationHistoryPoints.size)
+
+        runtimeState.teleportToFix(
+            fix = LocationFix(
+                lat = 0.0010,
+                lon = 0.0005,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 3_000L,
+            ),
+            sessionActive = true,
+            batterySaverEnabled = false,
+        )
+
+        assertEquals(1, runtimeState.locationHistoryPoints.size)
+        assertNotNull(runtimeState.currentAnalysis)
+        assertTrue(runtimeState.currentMatchHypotheses.isNotEmpty())
+        assertTrue(requireNotNull(runtimeState.currentAnalysis).offRouteMeters < 1.0)
+    }
 }

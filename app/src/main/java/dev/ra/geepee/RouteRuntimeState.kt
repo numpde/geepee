@@ -58,6 +58,19 @@ internal class RouteRuntimeState {
         refreshSmoothedHeading(batterySaverEnabled)
     }
 
+    fun teleportToFix(
+        fix: LocationFix,
+        sessionActive: Boolean,
+        batterySaverEnabled: Boolean,
+    ) {
+        routeMatcher?.reset()
+        clearRouteProjection()
+        currentFix = fix
+        recomputeAnalysis()
+        appendLocationHistory(sessionActive)
+        refreshSmoothedHeading(batterySaverEnabled)
+    }
+
     fun acceptLocation(
         location: Location,
         sessionActive: Boolean,

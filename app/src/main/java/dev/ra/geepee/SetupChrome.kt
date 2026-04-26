@@ -1,5 +1,7 @@
 package dev.ra.geepee
 
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,11 +10,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -22,13 +30,12 @@ internal fun SetupTopOverlay(
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
-    val tileMode = state.setupOverviewMode == SetupOverviewMode.Tiles
-    val headline = if (tileMode && state.routeModel != null) {
+    val headline = if (state.routeModel != null) {
         "Tap tiles to fetch context"
     } else {
         state.status.headline
     }
-    val detail = if (tileMode && state.routeModel != null) {
+    val detail = if (state.routeModel != null) {
         "Download only the areas worth spending network on."
     } else {
         state.status.detail
@@ -63,28 +70,43 @@ internal fun SetupTopOverlay(
 internal fun SetupActions(
     hasRoute: Boolean,
     sessionRunning: Boolean,
-    overviewMode: SetupOverviewMode,
     onPickRoute: () -> Unit,
-    onToggleOverviewMode: () -> Unit,
+    onReverseRoute: () -> Unit,
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var routeMenuExpanded by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ActionButton(
-            label = if (!hasRoute) "Load route" else "Change route",
-            onClick = onPickRoute,
-            modifier = Modifier.weight(1f),
-        )
-        if (hasRoute) {
+        Box(modifier = Modifier.weight(1f)) {
             ActionButton(
-                label = if (overviewMode == SetupOverviewMode.Route) "Tiles" else "Route",
-                onClick = onToggleOverviewMode,
-                modifier = Modifier.weight(1f),
+                label = if (!hasRoute) "Load route" else "Change route",
+                onClick = onPickRoute,
+                onLongClick = if (hasRoute) {
+                    { routeMenuExpanded = true }
+                } else {
+                    null
+                },
+                modifier = Modifier.fillMaxWidth(),
             )
+            DropdownMenu(
+                expanded = routeMenuExpanded,
+                onDismissRequest = { routeMenuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = "Reverse route") },
+                    onClick = {
+                        routeMenuExpanded = false
+                        onReverseRoute()
+                    },
+                )
+            }
+        }
+        if (hasRoute) {
             ActionButton(
                 label = if (sessionRunning) "Stop" else "Start",
                 onClick = if (sessionRunning) onStopMonitoring else onStartMonitoring,
@@ -99,23 +121,31 @@ internal fun SetupActions(
 private fun ActionButton(
     label: String,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     emphasized: Boolean = false,
 ) {
     val colors = geePeeColors()
-    TextButton(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(999.dp),
-        colors = ButtonDefaults.textButtonColors(
-            containerColor = if (emphasized) colors.ink else colors.mist.copy(alpha = 0.92f),
-            contentColor = if (emphasized) colors.mist else colors.ink,
+    Surface(
+        modifier = modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick,
         ),
+        shape = RoundedCornerShape(999.dp),
+        color = if (emphasized) colors.ink else colors.mist.copy(alpha = 0.92f),
+        contentColor = if (emphasized) colors.mist else colors.ink,
+        shadowElevation = 0.dp,
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(vertical = 8.dp),
-            style = MaterialTheme.typography.titleMedium,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
     }
 }

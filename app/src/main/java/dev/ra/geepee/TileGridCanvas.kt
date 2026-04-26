@@ -17,9 +17,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+internal enum class TileGridVisualStyle {
+    Preview,
+    LiveOverlay,
+}
+
 @Composable
 internal fun TileGridCanvas(
     model: TileGridRenderModel,
+    visualStyle: TileGridVisualStyle = TileGridVisualStyle.Preview,
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
@@ -39,6 +45,7 @@ internal fun TileGridCanvas(
                 tile = tile,
                 colors = colors,
                 labelPaint = labelPaint,
+                visualStyle = visualStyle,
             )
         }
     }
@@ -48,6 +55,7 @@ private fun DrawScope.drawTileCell(
     tile: TileGridDisplayTile,
     colors: GeePeeColors,
     labelPaint: Paint,
+    visualStyle: TileGridVisualStyle,
 ) {
     val rect = tile.screenRect
     val topLeft = Offset(rect.left, rect.top)
@@ -55,7 +63,10 @@ private fun DrawScope.drawTileCell(
     val cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
     val state = tile.snapshot?.status
 
-    val routeFill = if (tile.routeMetrics.intersectsRoute) {
+    val showFills = visualStyle == TileGridVisualStyle.Preview
+    val showProgress = visualStyle == TileGridVisualStyle.Preview
+
+    val routeFill = if (showFills && tile.routeMetrics.intersectsRoute) {
         colors.ink.copy(alpha = 0.05f)
     } else {
         Color.Transparent
@@ -69,11 +80,15 @@ private fun DrawScope.drawTileCell(
         )
     }
 
-    val stateFill = when (state) {
-        TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.2f)
-        TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.18f)
-        TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.18f)
-        null -> Color.Transparent
+    val stateFill = if (showFills) {
+        when (state) {
+            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.2f)
+            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.18f)
+            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.18f)
+            null -> Color.Transparent
+        }
+    } else {
+        Color.Transparent
     }
     if (stateFill.alpha > 0f) {
         drawRoundRect(
@@ -89,9 +104,9 @@ private fun DrawScope.drawTileCell(
         TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.8f)
         TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.82f)
         null -> if (tile.routeMetrics.intersectsRoute) {
-            colors.ink.copy(alpha = 0.24f)
+            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.24f else 0.14f)
         } else {
-            colors.ink.copy(alpha = 0.1f)
+            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.1f else 0.06f)
         }
     }
     drawRoundRect(
@@ -99,10 +114,16 @@ private fun DrawScope.drawTileCell(
         topLeft = topLeft,
         size = size,
         cornerRadius = cornerRadius,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (tile.routeMetrics.intersectsRoute) 2.dp.toPx() else 1.dp.toPx()),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = when (visualStyle) {
+                TileGridVisualStyle.Preview -> if (tile.routeMetrics.intersectsRoute) 2.dp.toPx() else 1.dp.toPx()
+                TileGridVisualStyle.LiveOverlay -> if (tile.routeMetrics.intersectsRoute) 1.25.dp.toPx() else 1.dp.toPx()
+            },
+        ),
     )
 
-    tile.snapshot?.takeIf { it.status == TileDownloadStatus.Downloading }?.progressFraction?.let { fraction ->
+    if (showProgress) {
+        tile.snapshot?.takeIf { it.status == TileDownloadStatus.Downloading }?.progressFraction?.let { fraction ->
         val inset = 5.dp.toPx()
         val progressHeight = 5.dp.toPx()
         drawRoundRect(
@@ -111,14 +132,17 @@ private fun DrawScope.drawTileCell(
             size = Size((rect.width - inset * 2f) * fraction.coerceIn(0f, 1f), progressHeight),
             cornerRadius = CornerRadius(progressHeight, progressHeight),
         )
+        }
     }
 
-    tile.label?.let { label ->
+    if (visualStyle == TileGridVisualStyle.Preview) {
+        tile.label?.let { label ->
         drawContext.canvas.nativeCanvas.drawText(
             label,
             rect.left + rect.width / 2f,
             rect.top + rect.height / 2f + labelPaint.textSize * 0.35f,
             labelPaint,
         )
+        }
     }
 }

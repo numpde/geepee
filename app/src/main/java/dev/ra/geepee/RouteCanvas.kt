@@ -15,11 +15,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -34,7 +34,7 @@ internal fun RouteCanvas(
     state: GeePeeUiState,
     toneColor: Color,
     orientationMode: OrientationMode,
-    routeScale: RouteScale,
+    windowWidthMeters: Double,
     boundsOverride: Bounds? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -49,6 +49,7 @@ internal fun RouteCanvas(
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
     }
+    val routeRibbonPaint = remember { androidx.compose.ui.graphics.Paint() }
 
     Canvas(modifier = modifier) {
         val routeModel = state.routeModel ?: return@Canvas
@@ -62,7 +63,9 @@ internal fun RouteCanvas(
             analysis = state.analysis,
             matchHypotheses = state.routeMatchHypotheses,
             historyPoints = state.locationHistoryPoints,
-            localWindowWidthMeters = routeScale.windowWidthMeters,
+            pois = state.routePois,
+            nearbyWays = state.routeNearbyWays,
+            localWindowWidthMeters = windowWidthMeters,
             canvasWidth = size.width,
             canvasHeight = size.height,
             lookAheadFraction = 0.0,
@@ -92,44 +95,53 @@ internal fun RouteCanvas(
             offsetPixels = 18.dp.toPx(),
         )
         val setupGradientMode = !state.sessionRunning
+        if (!setupGradientMode && renderModel.nearbyWayPolylines.isNotEmpty()) {
+            drawNearbyWays(
+                polylines = renderModel.nearbyWayPolylines,
+                color = if (state.darkModeEnabled) {
+                    colors.nearbyWay.copy(alpha = 0.6f)
+                } else {
+                    colors.nearbyWay.copy(alpha = 0.52f)
+                },
+                widthPx = 3.dp.toPx(),
+            )
+        }
         if (setupGradientMode) {
-            renderModel.gradientPolylines.forEach { polyline ->
-                if (polyline.points.size < 2) {
+            mergedDisplayGradientPolylines(
+                polylines = renderModel.gradientPolylines,
+                simplifyTolerancePx = 1.5f,
+                pruneSharpSpikes = true,
+            ).forEach { displayPoints ->
+                if (displayPoints.size < 2) {
                     return@forEach
                 }
-                val polylinePath = buildPolylinePath(polyline.points.map(RouteGradientPoint::point))
+                val polylinePath = buildPolylinePath(displayPoints.map(RouteGradientPoint::point))
                 drawPath(
                     path = polylinePath,
                     color = colors.line.copy(alpha = 0.08f),
                     style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
-                polyline.points.zipWithNext().forEach { (start, end) ->
-                    val startOffset = Offset(start.point.x, start.point.y)
-                    val endOffset = Offset(end.point.x, end.point.y)
-                    val startColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, start.progressRatio.coerceIn(0f, 1f))
-                    val endColor = lerp(ROUTE_START_COLOR, ROUTE_FINISH_COLOR, end.progressRatio.coerceIn(0f, 1f))
-
-                    drawLine(
-                        brush = Brush.linearGradient(
-                            colors = listOf(startColor, endColor),
-                            start = startOffset,
-                            end = endOffset,
-                        ),
-                        start = startOffset,
-                        end = endOffset,
-                        strokeWidth = routeWidth,
-                        cap = StrokeCap.Round,
+                buildRouteRibbonMesh(
+                    points = displayPoints,
+                    widthPx = routeWidth,
+                )?.let { ribbon ->
+                    drawContext.canvas.drawVertices(
+                        vertices = ribbon.vertices,
+                        blendMode = BlendMode.SrcOver,
+                        paint = routeRibbonPaint,
                     )
                 }
             }
         } else {
             val currentRouteMeters = state.analysis?.routeMeters
-            renderModel.gradientPolylines.forEach { polyline ->
-                if (polyline.points.size < 2) {
+            mergedDisplayGradientPolylines(
+                polylines = renderModel.gradientPolylines,
+            ).forEach { displayPoints ->
+                if (displayPoints.size < 2) {
                     return@forEach
                 }
 
-                val path = buildPolylinePath(polyline.points.map(RouteGradientPoint::point))
+                val path = buildPolylinePath(displayPoints.map(RouteGradientPoint::point))
 
                 drawPath(
                     path = path,
@@ -143,10 +155,10 @@ internal fun RouteCanvas(
                 )
 
                 highlightedSessionSubpaths(
-                    polyline = polyline,
+                    points = displayPoints,
                     currentRouteMeters = currentRouteMeters,
                     totalRouteMeters = routeModel.totalLengthMeters,
-                    windowWidthMeters = routeScale.windowWidthMeters,
+                    windowWidthMeters = windowWidthMeters,
                     isClosedLoop = routeModel.isClosedLoop,
                 ).forEach { highlightedPath ->
                     val (haloColor, lineColor) = when (highlightedPath.kind) {
@@ -169,6 +181,13 @@ internal fun RouteCanvas(
                     )
                 }
             }
+        }
+        if (!setupGradientMode && renderModel.poiMarkers.isNotEmpty()) {
+            drawRoutePoiMarkers(
+                markers = renderModel.poiMarkers,
+                darkModeEnabled = state.darkModeEnabled,
+                colors = colors,
+            )
         }
 
         if (hypothesisPoints.isNotEmpty()) {
@@ -235,11 +254,132 @@ internal fun RouteCanvas(
                 borderColor = colors.ink.copy(alpha = 0.1f),
             )
         }
+
     }
 }
 
-private val ROUTE_START_COLOR = Color(0xFF2962FF)
-private val ROUTE_FINISH_COLOR = Color(0xFFD32F2F)
+private fun DrawScope.drawNearbyWays(
+    polylines: List<List<ScreenPoint>>,
+    color: Color,
+    widthPx: Float,
+) {
+    val dashPathEffect = PathEffect.dashPathEffect(
+        intervals = floatArrayOf(widthPx * 3.2f, widthPx * 2.4f),
+    )
+    polylines.forEach { polyline ->
+        if (polyline.size < 2) {
+            return@forEach
+        }
+        drawPath(
+            path = buildPolylinePath(polyline),
+            color = color,
+            style = Stroke(
+                width = widthPx,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+                pathEffect = dashPathEffect,
+            ),
+        )
+    }
+}
+
+private fun DrawScope.drawRoutePoiMarkers(
+    markers: List<RoutePoiScreenMarker>,
+    darkModeEnabled: Boolean,
+    colors: GeePeeColors,
+) {
+    markers.forEach { marker ->
+        val center = Offset(marker.point.x, marker.point.y)
+        val accent = routePoiAccentColor(marker.kind)
+        val haloRadius = 9.dp.toPx()
+        val iconRadius = 6.dp.toPx()
+
+        drawCircle(
+            color = colors.mist.copy(alpha = if (darkModeEnabled) 0.94f else 0.9f),
+            radius = haloRadius,
+            center = center,
+        )
+        when (marker.kind) {
+            RoutePoiKind.DrinkingWater -> {
+                drawPath(
+                    path = Path().apply {
+                        moveTo(center.x, center.y - iconRadius)
+                        cubicTo(
+                            center.x + iconRadius,
+                            center.y - iconRadius * 0.3f,
+                            center.x + iconRadius * 0.9f,
+                            center.y + iconRadius * 0.8f,
+                            center.x,
+                            center.y + iconRadius,
+                        )
+                        cubicTo(
+                            center.x - iconRadius * 0.9f,
+                            center.y + iconRadius * 0.8f,
+                            center.x - iconRadius,
+                            center.y - iconRadius * 0.3f,
+                            center.x,
+                            center.y - iconRadius,
+                        )
+                        close()
+                    },
+                    color = accent,
+                )
+            }
+
+            RoutePoiKind.Shelter -> {
+                val roofWidth = iconRadius * 1.9f
+                val roofHeight = iconRadius * 1.2f
+                drawPath(
+                    path = Path().apply {
+                        moveTo(center.x, center.y - roofHeight)
+                        lineTo(center.x + roofWidth / 2f, center.y - roofHeight / 5f)
+                        lineTo(center.x - roofWidth / 2f, center.y - roofHeight / 5f)
+                        close()
+                    },
+                    color = accent,
+                )
+                drawRoundRect(
+                    color = accent,
+                    topLeft = Offset(center.x - iconRadius * 0.55f, center.y - iconRadius * 0.1f),
+                    size = Size(iconRadius * 1.1f, iconRadius * 1.15f),
+                    cornerRadius = CornerRadius(iconRadius * 0.2f, iconRadius * 0.2f),
+                )
+            }
+
+            RoutePoiKind.PicnicSite -> {
+                drawPath(
+                    path = Path().apply {
+                        moveTo(center.x, center.y - iconRadius)
+                        lineTo(center.x + iconRadius, center.y)
+                        lineTo(center.x, center.y + iconRadius)
+                        lineTo(center.x - iconRadius, center.y)
+                        close()
+                    },
+                    color = accent,
+                )
+            }
+
+            RoutePoiKind.Toilets -> {
+                drawRoundRect(
+                    color = accent,
+                    topLeft = Offset(center.x - iconRadius, center.y - iconRadius * 0.8f),
+                    size = Size(iconRadius * 2f, iconRadius * 1.6f),
+                    cornerRadius = CornerRadius(iconRadius * 0.35f, iconRadius * 0.35f),
+                )
+            }
+
+            RoutePoiKind.BicycleRepairStation,
+            RoutePoiKind.BicycleShop,
+            -> {
+                drawCircle(
+                    color = accent,
+                    radius = iconRadius,
+                    center = center,
+                )
+            }
+        }
+    }
+}
 
 private data class SessionRoutePalette(
     val baseHalo: Color,
@@ -354,14 +494,14 @@ internal fun routeSegmentEmphasis(
 }
 
 internal fun highlightedSessionSubpaths(
-    polyline: RouteGradientPolyline,
+    points: List<RouteGradientPoint>,
     currentRouteMeters: Double?,
     totalRouteMeters: Double,
     windowWidthMeters: Double,
     isClosedLoop: Boolean,
     minimumEmphasis: Float = 0.35f,
 ): List<SessionHighlightedRoutePath> {
-    if (polyline.points.size < 2) {
+    if (points.size < 2) {
         return emptyList()
     }
 
@@ -380,7 +520,7 @@ internal fun highlightedSessionSubpaths(
         currentKind = null
     }
 
-    polyline.points.zipWithNext().forEach { (start, end) ->
+    points.zipWithNext().forEach { (start, end) ->
         val kind = routeSegmentHighlightKind(
             startProgressRatio = start.progressRatio,
             endProgressRatio = end.progressRatio,
@@ -598,6 +738,177 @@ private fun buildPolylinePath(points: List<ScreenPoint>): Path {
             lineTo(point.x, point.y)
         }
     }
+}
+
+internal fun mergedDisplayGradientPolylines(
+    polylines: List<RouteGradientPolyline>,
+    simplifyTolerancePx: Float? = null,
+    mergeTolerancePx: Float = 0.75f,
+    pruneSharpSpikes: Boolean = false,
+): List<List<RouteGradientPoint>> {
+    if (polylines.isEmpty()) {
+        return emptyList()
+    }
+
+    val merged = mutableListOf<MutableList<RouteGradientPoint>>()
+
+    polylines.forEach { polyline ->
+        val points = polyline.points
+        if (points.size < 2) {
+            return@forEach
+        }
+
+        val current = points.toMutableList()
+        val previous = merged.lastOrNull()
+        if (previous != null && areScreenPointsClose(previous.last().point, current.first().point, mergeTolerancePx)) {
+            previous += current.drop(1)
+        } else {
+            merged += current
+        }
+    }
+
+    return merged.map { points ->
+        val simplified = simplifyTolerancePx?.let { tolerance ->
+            simplifyGradientPointsForDisplay(points, tolerance)
+        } ?: points
+        if (pruneSharpSpikes) {
+            pruneSharpDisplaySpikes(simplified)
+        } else {
+            simplified
+        }
+    }
+}
+
+internal fun pruneSharpDisplaySpikes(
+    points: List<RouteGradientPoint>,
+    shortSegmentThresholdPx: Float = 18f,
+    shortToLongRatioThreshold: Float = 0.55f,
+    maxTurnDot: Float = 0.25f,
+    directLengthRatioThreshold: Float = 1.1f,
+): List<RouteGradientPoint> {
+    if (points.size < 3) {
+        return points
+    }
+
+    val pruned = mutableListOf<RouteGradientPoint>()
+    pruned += points.first()
+
+    for (index in 1 until points.lastIndex) {
+        val previous = pruned.last()
+        val current = points[index]
+        val next = points[index + 1]
+        val previousToCurrent = screenPointDistance(previous.point, current.point)
+        val currentToNext = screenPointDistance(current.point, next.point)
+        val previousToNext = screenPointDistance(previous.point, next.point)
+        val shorter = minOf(previousToCurrent, currentToNext)
+        val longer = maxOf(previousToCurrent, currentToNext)
+        val turnDot = turnDot(previous.point, current.point, next.point)
+        val shouldDrop = shorter <= shortSegmentThresholdPx &&
+            shorter <= longer * shortToLongRatioThreshold &&
+            turnDot <= maxTurnDot &&
+            previousToNext <= longer * directLengthRatioThreshold
+
+        if (!shouldDrop) {
+            pruned += current
+        }
+    }
+
+    pruned += points.last()
+    return pruned
+}
+
+private fun areScreenPointsClose(
+    first: ScreenPoint,
+    second: ScreenPoint,
+    tolerancePx: Float,
+): Boolean {
+    return screenPointDistance(first, second) <= tolerancePx
+}
+
+internal fun simplifyGradientPointsForDisplay(
+    points: List<RouteGradientPoint>,
+    tolerancePx: Float,
+): List<RouteGradientPoint> {
+    if (points.size <= 2 || tolerancePx <= 0f) {
+        return points
+    }
+
+    val keep = BooleanArray(points.size)
+    keep[0] = true
+    keep[points.lastIndex] = true
+
+    fun simplifyRange(startIndex: Int, endIndex: Int) {
+        if (endIndex - startIndex <= 1) {
+            return
+        }
+
+        val start = points[startIndex].point
+        val end = points[endIndex].point
+        var maxDistance = 0f
+        var furthestIndex = -1
+
+        for (index in (startIndex + 1) until endIndex) {
+            val distance = perpendicularDistance(points[index].point, start, end)
+            if (distance > maxDistance) {
+                maxDistance = distance
+                furthestIndex = index
+            }
+        }
+
+        if (furthestIndex >= 0 && maxDistance >= tolerancePx) {
+            keep[furthestIndex] = true
+            simplifyRange(startIndex, furthestIndex)
+            simplifyRange(furthestIndex, endIndex)
+        }
+    }
+
+    simplifyRange(0, points.lastIndex)
+    return buildList {
+        points.forEachIndexed { index, point ->
+            if (keep[index]) {
+                add(point)
+            }
+        }
+    }
+}
+
+private fun perpendicularDistance(
+    point: ScreenPoint,
+    segmentStart: ScreenPoint,
+    segmentEnd: ScreenPoint,
+): Float {
+    val dx = segmentEnd.x - segmentStart.x
+    val dy = segmentEnd.y - segmentStart.y
+    if (dx == 0f && dy == 0f) {
+        return hypot(point.x - segmentStart.x, point.y - segmentStart.y)
+    }
+    val numerator = kotlin.math.abs(
+        dy * point.x - dx * point.y + segmentEnd.x * segmentStart.y - segmentEnd.y * segmentStart.x,
+    )
+    val denominator = hypot(dx, dy)
+    return numerator / denominator
+}
+
+private fun turnDot(
+    previous: ScreenPoint,
+    current: ScreenPoint,
+    next: ScreenPoint,
+): Float {
+    val incomingX = current.x - previous.x
+    val incomingY = current.y - previous.y
+    val outgoingX = next.x - current.x
+    val outgoingY = next.y - current.y
+    val incomingLength = hypot(incomingX, incomingY).coerceAtLeast(0.0001f)
+    val outgoingLength = hypot(outgoingX, outgoingY).coerceAtLeast(0.0001f)
+    return ((incomingX / incomingLength) * (outgoingX / outgoingLength)) +
+        ((incomingY / incomingLength) * (outgoingY / outgoingLength))
+}
+
+private fun screenPointDistance(
+    first: ScreenPoint,
+    second: ScreenPoint,
+): Float {
+    return hypot(first.x - second.x, first.y - second.y)
 }
 
 private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {

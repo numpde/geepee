@@ -12,10 +12,10 @@ class RouteLoadCoordinatorTest {
 
     @Test
     fun successfulLoadRemembersSelectionWhenRequested() {
-        var remembered: Pair<String, String>? = null
+        var remembered: Triple<String, String, Boolean>? = null
         var outcome: RouteLoadOutcome? = null
         val coordinator = RouteLoadCoordinator<String>(
-            loadRoute = { _, _ ->
+            loadRoute = { _, _, reversed ->
                 LoadedRoute(
                     model = RouteModel(
                         projection = Projection(0.0, 0.0, 1.0),
@@ -34,9 +34,11 @@ class RouteLoadCoordinatorTest {
                         bounds = Bounds(0.0, 0.0, 0.0, 0.0),
                     ),
                     displayName = "Tisza",
+                    baseDisplayName = "Tisza",
+                    isReversed = reversed,
                 )
             },
-            rememberRoute = { uri, routeName -> remembered = uri to routeName },
+            rememberRoute = { uri, routeName, reversed -> remembered = Triple(uri, routeName, reversed) },
             workExecutor = directExecutor,
             callbackExecutor = directExecutor,
             logFailure = { _, _ -> },
@@ -46,13 +48,14 @@ class RouteLoadCoordinatorTest {
             request = RouteLoadRequest(
                 routeRef = routeRef,
                 displayName = null,
+                reversed = true,
                 rememberSelection = true,
                 fromRestore = false,
             ),
             onOutcome = { outcome = it },
         )
 
-        assertEquals(routeRef to "Tisza", remembered)
+        assertEquals(Triple(routeRef, "Tisza", true), remembered)
         assertTrue(outcome is RouteLoadOutcome.Success)
     }
 
@@ -60,8 +63,8 @@ class RouteLoadCoordinatorTest {
     fun failedRestoreLoadAsksCallerToClearRememberedRoute() {
         var outcome: RouteLoadOutcome? = null
         val coordinator = RouteLoadCoordinator<String>(
-            loadRoute = { _, _ -> throw IllegalArgumentException("bad gpx") },
-            rememberRoute = { _, _ -> error("should not remember failed load") },
+            loadRoute = { _, _, _ -> throw IllegalArgumentException("bad gpx") },
+            rememberRoute = { _, _, _ -> error("should not remember failed load") },
             workExecutor = directExecutor,
             callbackExecutor = directExecutor,
             logFailure = { _, _ -> },
@@ -71,6 +74,7 @@ class RouteLoadCoordinatorTest {
             request = RouteLoadRequest(
                 routeRef = routeRef,
                 displayName = "Broken",
+                reversed = false,
                 rememberSelection = false,
                 fromRestore = true,
             ),
@@ -87,8 +91,8 @@ class RouteLoadCoordinatorTest {
     fun failedNormalLoadKeepsRememberedRouteUntouched() {
         var outcome: RouteLoadOutcome? = null
         val coordinator = RouteLoadCoordinator<String>(
-            loadRoute = { _, _ -> throw IllegalStateException("parse failed") },
-            rememberRoute = { _, _ -> error("should not remember failed load") },
+            loadRoute = { _, _, _ -> throw IllegalStateException("parse failed") },
+            rememberRoute = { _, _, _ -> error("should not remember failed load") },
             workExecutor = directExecutor,
             callbackExecutor = directExecutor,
             logFailure = { _, _ -> },
@@ -98,6 +102,7 @@ class RouteLoadCoordinatorTest {
             request = RouteLoadRequest(
                 routeRef = routeRef,
                 displayName = "Broken",
+                reversed = false,
                 rememberSelection = false,
                 fromRestore = false,
             ),

@@ -5,6 +5,7 @@ import java.util.concurrent.Executor
 internal data class RouteLoadRequest<RouteRef>(
     val routeRef: RouteRef,
     val displayName: String?,
+    val reversed: Boolean,
     val rememberSelection: Boolean,
     val fromRestore: Boolean,
 )
@@ -21,8 +22,8 @@ internal sealed interface RouteLoadOutcome {
 }
 
 internal class RouteLoadCoordinator<RouteRef>(
-    private val loadRoute: (RouteRef, String?) -> LoadedRoute,
-    private val rememberRoute: (RouteRef, String) -> Unit,
+    private val loadRoute: (RouteRef, String?, Boolean) -> LoadedRoute,
+    private val rememberRoute: (RouteRef, String, Boolean) -> Unit,
     private val workExecutor: Executor,
     private val callbackExecutor: Executor,
     private val logFailure: (RouteRef, Throwable) -> Unit,
@@ -33,9 +34,9 @@ internal class RouteLoadCoordinator<RouteRef>(
     ) {
         workExecutor.execute {
             val outcome = try {
-                val loadedRoute = loadRoute(request.routeRef, request.displayName)
+                val loadedRoute = loadRoute(request.routeRef, request.displayName, request.reversed)
                 if (request.rememberSelection) {
-                    rememberRoute(request.routeRef, loadedRoute.displayName)
+                    rememberRoute(request.routeRef, loadedRoute.baseDisplayName, loadedRoute.isReversed)
                 }
                 RouteLoadOutcome.Success(loadedRoute)
             } catch (error: Exception) {
