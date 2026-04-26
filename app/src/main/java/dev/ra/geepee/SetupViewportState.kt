@@ -144,6 +144,7 @@ internal fun rememberMovementViewportController(
                     projection = routeModel.projection,
                 ),
                 windowWidthMeters = viewport.widthMeters,
+                projectedBounds = boundsOverride,
             )
         }
     } else {

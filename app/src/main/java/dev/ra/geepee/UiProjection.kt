@@ -67,8 +67,8 @@ internal fun routeContextDebugText(state: RouteContextDebugState?): String? {
     status.errorMessage?.let {
         return "Map info for this view: unavailable"
     }
-    val currentTileAvailable = status.currentTileAvailable ?: return null
-    if (!currentTileAvailable) {
+    val hasVisibleTileData = status.hasVisibleTileData ?: return null
+    if (!hasVisibleTileData) {
         return "Map info for this view: not downloaded"
     }
     return when {

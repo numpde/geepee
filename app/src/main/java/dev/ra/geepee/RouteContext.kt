@@ -34,7 +34,7 @@ internal data class RouteContext(
 internal data class LocalNearbyWayDebugStatus(
     val localTileCount: Int = 0,
     val loadedLocalTileCount: Int = 0,
-    val currentTileAvailable: Boolean? = null,
+    val hasVisibleTileData: Boolean? = null,
     val nearbyWaysLoading: Boolean = false,
     val nearbyWayCount: Int = 0,
     val errorMessage: String? = null,
@@ -498,7 +498,7 @@ private fun nearbyWayBounds(points: List<ProjectedPoint>): Bounds {
     )
 }
 
-private fun nearbyWayFocusBounds(
+internal fun nearbyWayFocusBounds(
     routeModel: RouteModel,
     focusGeoPoint: GeoPoint?,
     focusWindowWidthMeters: Double?,
@@ -521,7 +521,7 @@ private fun nearbyWayFocusBounds(
     )
 }
 
-private fun expandBounds(bounds: Bounds, paddingMeters: Double): Bounds {
+internal fun expandBounds(bounds: Bounds, paddingMeters: Double): Bounds {
     return Bounds(
         minX = bounds.minX - paddingMeters,
         maxX = bounds.maxX + paddingMeters,

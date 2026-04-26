@@ -108,7 +108,7 @@ class UiProjectionTest {
                     localNearbyWays = LocalNearbyWayDebugStatus(
                         localTileCount = 9,
                         loadedLocalTileCount = 3,
-                        currentTileAvailable = false,
+                        hasVisibleTileData = false,
                     ),
                 ),
             ),
@@ -121,7 +121,7 @@ class UiProjectionTest {
                     localNearbyWays = LocalNearbyWayDebugStatus(
                         localTileCount = 9,
                         loadedLocalTileCount = 3,
-                        currentTileAvailable = true,
+                        hasVisibleTileData = true,
                         nearbyWaysLoading = true,
                     ),
                 ),
@@ -136,7 +136,7 @@ class UiProjectionTest {
                         nearbyWayCount = 2,
                         localTileCount = 9,
                         loadedLocalTileCount = 9,
-                        currentTileAvailable = true,
+                        hasVisibleTileData = true,
                     ),
                 ),
             ),
@@ -149,7 +149,7 @@ class UiProjectionTest {
                     localNearbyWays = LocalNearbyWayDebugStatus(
                         localTileCount = 9,
                         loadedLocalTileCount = 5,
-                        currentTileAvailable = true,
+                        hasVisibleTileData = true,
                     ),
                 ),
             ),

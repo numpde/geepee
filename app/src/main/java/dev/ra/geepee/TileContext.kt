@@ -499,7 +499,7 @@ internal fun expandGeoBoundsByMeters(bounds: GeoBounds, meters: Double): GeoBoun
     )
 }
 
-private fun tilesIntersectingProjectedBounds(
+internal fun tilesIntersectingProjectedBounds(
     projection: Projection,
     bounds: Bounds,
     zoom: Int,

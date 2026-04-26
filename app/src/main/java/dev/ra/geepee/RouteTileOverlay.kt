@@ -347,6 +347,7 @@ internal fun queryRouteTileOverlayNearbyWays(
         runtimePack = bundle.runtimePack,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
+        projection = routeModel.projection,
         config = config,
     )
     val candidateLeafIndexes = bundle.runtimePack.quadtreeNodes
@@ -396,6 +397,7 @@ internal fun queryTileRuntimeNearbyWays(
     focusGeoPoint: GeoPoint,
     focusNearestEdgeIndex: Int,
     focusWindowWidthMeters: Double,
+    focusBoundsOverride: Bounds? = null,
     config: TileContextConfig,
 ): List<RouteNearbyWaySnippet> {
     if (runtimePack.waySegments.isEmpty()) {
@@ -405,6 +407,8 @@ internal fun queryTileRuntimeNearbyWays(
         runtimePack = runtimePack,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
+        focusProjectedBounds = focusBoundsOverride,
+        projection = routeModel.projection,
         config = config,
     )
     val seedLeafIndexes = runtimePack.quadtreeNodes
@@ -426,7 +430,7 @@ internal fun queryTileRuntimeNearbyWays(
         return emptyList()
     }
 
-    val projectedFocusBounds = overlayNearbyWayFocusBounds(
+    val projectedFocusBounds = focusBoundsOverride ?: overlayNearbyWayFocusBounds(
         routeModel = routeModel,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
@@ -528,8 +532,13 @@ private fun localFocusBounds(
     runtimePack: TileRuntimePack,
     focusGeoPoint: GeoPoint,
     focusWindowWidthMeters: Double,
+    focusProjectedBounds: Bounds? = null,
+    projection: Projection,
     config: TileContextConfig,
 ): TileRuntimeLocalBounds {
+    focusProjectedBounds?.let { projectedBounds ->
+        return tileRuntimeProjectedBoundsToLocalBounds(runtimePack, projectedBounds, projection)
+    }
     val focusPoint = tileRuntimeGeoPointToLocalPoint(runtimePack, focusGeoPoint)
     val focusRadiusMeters = max(
         (config.wayHaloMeters + config.nearbyWayContinuationMeters) * 1.35,
@@ -541,6 +550,30 @@ private fun localFocusBounds(
         minY = focusPoint.y - radiusUnits,
         maxX = focusPoint.x + radiusUnits,
         maxY = focusPoint.y + radiusUnits,
+    )
+}
+
+private fun tileRuntimeProjectedBoundsToLocalBounds(
+    runtimePack: TileRuntimePack,
+    bounds: Bounds,
+    projection: Projection,
+): TileRuntimeLocalBounds {
+    val corners = listOf(
+        ProjectedPoint(bounds.minX, bounds.minY),
+        ProjectedPoint(bounds.minX, bounds.maxY),
+        ProjectedPoint(bounds.maxX, bounds.minY),
+        ProjectedPoint(bounds.maxX, bounds.maxY),
+    ).map { corner ->
+        tileRuntimeGeoPointToLocalPoint(
+            runtimePack,
+            unprojectPoint(corner, projection),
+        )
+    }
+    return TileRuntimeLocalBounds(
+        minX = corners.minOf { it.x },
+        minY = corners.minOf { it.y },
+        maxX = corners.maxOf { it.x },
+        maxY = corners.maxOf { it.y },
     )
 }
 
@@ -591,15 +624,6 @@ private fun overlayNearbyWayFocusBounds(
         maxX = center.x + focusRadiusMeters,
         minY = center.y - focusRadiusMeters,
         maxY = center.y + focusRadiusMeters,
-    )
-}
-
-private fun expandBounds(bounds: Bounds, paddingMeters: Double): Bounds {
-    return Bounds(
-        minX = bounds.minX - paddingMeters,
-        maxX = bounds.maxX + paddingMeters,
-        minY = bounds.minY - paddingMeters,
-        maxY = bounds.maxY + paddingMeters,
     )
 }
 

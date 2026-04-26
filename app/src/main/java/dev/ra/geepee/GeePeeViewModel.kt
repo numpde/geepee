@@ -370,10 +370,6 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     fun setDebugGpsLocation(point: GeoPoint, focusWindowWidthMeters: Double) {
         val timestampMillis = System.currentTimeMillis()
-        liveContextFocus = MapInfoFocus(
-            centerGeoPoint = point,
-            windowWidthMeters = focusWindowWidthMeters,
-        )
         routeRuntimeState.teleportToFix(
             fix = LocationFix(
                 lat = point.lat,
@@ -387,7 +383,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             batterySaverEnabled = appPreferences.batterySaverEnabled,
         )
         routeLoadState = routeLoadState.clearIssue()
-        clearMapInfoFocus(clearCoordinator = true)
+        replaceMapInfoFocus(
+            focus = MapInfoFocus(
+                centerGeoPoint = point,
+                windowWidthMeters = focusWindowWidthMeters,
+            ),
+            clearCoordinator = true,
+        )
         rebuildNearbyWaysAsync(force = true)
         recomputeUiState()
     }
@@ -421,7 +423,14 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     }
 
     private fun clearMapInfoFocus(clearCoordinator: Boolean) {
-        liveContextFocus = null
+        replaceMapInfoFocus(focus = null, clearCoordinator = clearCoordinator)
+    }
+
+    private fun replaceMapInfoFocus(
+        focus: MapInfoFocus?,
+        clearCoordinator: Boolean,
+    ) {
+        liveContextFocus = focus
         if (clearCoordinator) {
             routeContextCoordinator.clear()
         }
