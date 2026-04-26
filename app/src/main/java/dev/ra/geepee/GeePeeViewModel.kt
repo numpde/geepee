@@ -518,33 +518,31 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     private fun rebuildRouteContextAsync() {
         val routeModel = routeRuntimeState.routeModel ?: run {
-            routeContextState = routeContextState.copy(pois = emptyList())
+            routeContextState = routeContextState.withPois(emptyList())
             return
         }
         routeContextCoordinator.rebuildRouteContext(routeModel) { result ->
-            routeContextState = routeContextState.copy(pois = result.pois)
+            routeContextState = routeContextState.withPois(result.pois)
             recomputeUiState()
         }
     }
 
     private fun rebuildNearbyWaysAsync(force: Boolean = false) {
         val routeModel = routeRuntimeState.routeModel ?: run {
-            routeContextState = routeContextState.copy(
-                debugState = null,
+            routeContextState = routeContextState.withMapInfo(
                 nearbyWays = emptyList(),
+                status = null,
             )
             return
         }
         val analysis = routeRuntimeState.currentAnalysis ?: run {
-            routeContextState = routeContextState.copy(
-                debugState = routeContextState.debugState?.copy(
-                    localNearbyWays = routeContextState.debugState?.localNearbyWays?.copy(
-                        nearbyWayCount = 0,
-                        nearbyWaysLoading = false,
-                        errorMessage = null,
-                    ),
-                ),
+            routeContextState = routeContextState.withMapInfo(
                 nearbyWays = emptyList(),
+                status = routeContextState.mapInfo.localNearbyWays?.copy(
+                    nearbyWayCount = 0,
+                    nearbyWaysLoading = false,
+                    errorMessage = null,
+                ),
             )
             return
         }
@@ -552,24 +550,20 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             routeModel = routeModel,
             analysis = analysis,
             tileDownloads = tileDownloads,
-            existingLocalStatus = routeContextState.debugState?.localNearbyWays,
+            existingLocalStatus = routeContextState.mapInfo.localNearbyWays,
             focus = liveContextFocus,
             defaultFocusWindowWidthMeters = appPreferences.routeScale.windowWidthMeters,
             force = force,
             onStarted = { startedStatus ->
-                routeContextState = routeContextState.copy(
-                    debugState = routeContextState.debugState?.copy(
-                        localNearbyWays = startedStatus,
-                    ) ?: RouteContextDebugState(localNearbyWays = startedStatus),
-                )
+                routeContextState = routeContextState.withNearbyWayStatus(startedStatus)
                 recomputeUiState()
             },
             onResult = { result ->
-                routeContextState = routeContextState.copy(
+                routeContextState = routeContextState.withMapInfo(
                     nearbyWays = result.nearbyWays,
-                    debugState = routeContextState.debugState?.copy(
-                        localNearbyWays = result.localNearbyWays.copy(nearbyWaysLoading = false),
-                    ) ?: RouteContextDebugState(localNearbyWays = result.localNearbyWays.copy(nearbyWaysLoading = false)),
+                    status = result.localNearbyWays.copy(
+                        nearbyWaysLoading = false,
+                    ),
                 )
                 recomputeUiState()
             },

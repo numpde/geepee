@@ -50,8 +50,8 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         tileContextConfig = inputs.tileContextConfig,
         tileDownloads = inputs.tileDownloads,
         routePois = inputs.routeContextState.pois,
-        routeContextDebugText = routeContextDebugText(inputs.routeContextState.debugState),
-        routeNearbyWays = inputs.routeContextState.nearbyWays,
+        routeContextDebugText = routeContextDebugText(inputs.routeContextState.mapInfo.localNearbyWays),
+        routeNearbyWays = inputs.routeContextState.mapInfo.nearbyWays,
         debugGpsEnabled = inputs.debugGpsEnabled,
         sessionRunning = inputs.sessionState.sessionActive,
         routeLoading = inputs.routeLoadState.routeLoading,
@@ -62,8 +62,8 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
     )
 }
 
-internal fun routeContextDebugText(state: RouteContextDebugState?): String? {
-    val status = state?.localNearbyWays ?: return null
+internal fun routeContextDebugText(status: LocalNearbyWayDebugStatus?): String? {
+    status ?: return null
     status.errorMessage?.let {
         return "Map info for this view: unavailable"
     }

@@ -40,15 +40,45 @@ internal data class LocalNearbyWayDebugStatus(
     val errorMessage: String? = null,
 )
 
-internal data class RouteContextDebugState(
+internal data class RouteMapInfoState(
     val localNearbyWays: LocalNearbyWayDebugStatus? = null,
+    val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
 )
 
 internal data class RouteContextState(
     val pois: List<RoutePoi> = emptyList(),
-    val debugState: RouteContextDebugState? = null,
-    val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
+    val mapInfo: RouteMapInfoState = RouteMapInfoState(),
 )
+
+internal fun RouteContextState.withPois(pois: List<RoutePoi>): RouteContextState {
+    return copy(pois = pois)
+}
+
+internal fun RouteContextState.withNearbyWayStatus(status: LocalNearbyWayDebugStatus?): RouteContextState {
+    return copy(
+        mapInfo = mapInfo.copy(
+            localNearbyWays = status,
+        ),
+    )
+}
+
+internal fun RouteContextState.withNearbyWays(nearbyWays: List<RouteNearbyWaySnippet>): RouteContextState {
+    return copy(
+        mapInfo = mapInfo.copy(nearbyWays = nearbyWays),
+    )
+}
+
+internal fun RouteContextState.withMapInfo(
+    nearbyWays: List<RouteNearbyWaySnippet>,
+    status: LocalNearbyWayDebugStatus?,
+): RouteContextState {
+    return copy(
+        mapInfo = RouteMapInfoState(
+            localNearbyWays = status,
+            nearbyWays = nearbyWays,
+        ),
+    )
+}
 
 private data class RoutePoiCandidate(
     val poi: RoutePoi,

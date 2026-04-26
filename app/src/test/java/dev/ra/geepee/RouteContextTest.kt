@@ -110,6 +110,26 @@ class RouteContextTest {
         assertTrue(context.nearbyWays.single().points.size >= 2)
     }
 
+    @Test
+    fun routeContextStateKeepsLocalMapInfoTogether() {
+        val status = LocalNearbyWayDebugStatus(
+            localTileCount = 4,
+            loadedLocalTileCount = 2,
+            hasVisibleTileData = true,
+            nearbyWaysLoading = true,
+        )
+        val state = RouteContextState()
+            .withPois(listOf(dummyPoi()))
+            .withMapInfo(
+                nearbyWays = listOf(dummyNearbyWay()),
+                status = status,
+            )
+
+        assertEquals(1, state.pois.size)
+        assertEquals(1, state.mapInfo.nearbyWays.size)
+        assertEquals(status, state.mapInfo.localNearbyWays)
+    }
+
     private fun tilePack(vararg features: TileContextFeature): TileContextPack {
         return TileContextPack(
             tileId = DownloadTileId(zoom = 10, x = 0, y = 0),

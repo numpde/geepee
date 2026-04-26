@@ -104,12 +104,10 @@ class UiProjectionTest {
         assertEquals(
             "Map info for this view: not downloaded",
             routeContextDebugText(
-                RouteContextDebugState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
-                        localTileCount = 9,
-                        loadedLocalTileCount = 3,
-                        hasVisibleTileData = false,
-                    ),
+                LocalNearbyWayDebugStatus(
+                    localTileCount = 9,
+                    loadedLocalTileCount = 3,
+                    hasVisibleTileData = false,
                 ),
             ),
         )
@@ -117,13 +115,11 @@ class UiProjectionTest {
         assertEquals(
             "Map info for this view: loading…",
             routeContextDebugText(
-                RouteContextDebugState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
-                        localTileCount = 9,
-                        loadedLocalTileCount = 3,
-                        hasVisibleTileData = true,
-                        nearbyWaysLoading = true,
-                    ),
+                LocalNearbyWayDebugStatus(
+                    localTileCount = 9,
+                    loadedLocalTileCount = 3,
+                    hasVisibleTileData = true,
+                    nearbyWaysLoading = true,
                 ),
             ),
         )
@@ -131,13 +127,11 @@ class UiProjectionTest {
         assertEquals(
             "Map info for this view: available",
             routeContextDebugText(
-                RouteContextDebugState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
-                        nearbyWayCount = 2,
-                        localTileCount = 9,
-                        loadedLocalTileCount = 9,
-                        hasVisibleTileData = true,
-                    ),
+                LocalNearbyWayDebugStatus(
+                    nearbyWayCount = 2,
+                    localTileCount = 9,
+                    loadedLocalTileCount = 9,
+                    hasVisibleTileData = true,
                 ),
             ),
         )
@@ -145,12 +139,10 @@ class UiProjectionTest {
         assertEquals(
             "Map info for this view: partly available",
             routeContextDebugText(
-                RouteContextDebugState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
-                        localTileCount = 9,
-                        loadedLocalTileCount = 5,
-                        hasVisibleTileData = true,
-                    ),
+                LocalNearbyWayDebugStatus(
+                    localTileCount = 9,
+                    loadedLocalTileCount = 5,
+                    hasVisibleTileData = true,
                 ),
             ),
         )
