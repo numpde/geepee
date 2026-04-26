@@ -204,6 +204,13 @@ private fun awaitNearbyWayRebuild(
         focus = MapInfoFocus(
             centerGeoPoint = analysis.nearestGeoPoint,
             windowWidthMeters = focusWindowWidthMeters,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = routeModel,
+                focusGeoPoint = analysis.nearestGeoPoint,
+                focusWindowWidthMeters = focusWindowWidthMeters,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: routeModel.bounds,
         ),
         defaultFocusWindowWidthMeters = focusWindowWidthMeters,
         force = force,

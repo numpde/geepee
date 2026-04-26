@@ -82,6 +82,13 @@ class RouteContextCoordinatorTest {
         val explicitFocus = MapInfoFocus(
             centerGeoPoint = GeoPoint(0.9, 1.0),
             windowWidthMeters = 150.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = routeModel,
+                focusGeoPoint = GeoPoint(0.9, 1.0),
+                focusWindowWidthMeters = 150.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: routeModel.bounds,
         )
 
         val resolved = resolveNearbyWayQueryFocus(
@@ -113,7 +120,7 @@ class RouteContextCoordinatorTest {
             ),
         )
         val baseFocus = NearbyWayQueryFocus(
-            focus = ResolvedMapInfoFocus(
+            focus = MapInfoFocus(
                 centerGeoPoint = GeoPoint(0.0, 0.0020),
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
@@ -158,7 +165,7 @@ class RouteContextCoordinatorTest {
             ),
         )
         val focus = NearbyWayQueryFocus(
-            focus = ResolvedMapInfoFocus(
+            focus = MapInfoFocus(
                 centerGeoPoint = GeoPoint(0.0, 0.0020),
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),

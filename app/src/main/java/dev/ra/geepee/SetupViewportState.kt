@@ -132,15 +132,19 @@ internal fun rememberMovementViewportController(
 
     val activeViewportState = if (debugGpsEnabled) debugViewportState else liveViewportState
     val viewportFocus = if (routeModel != null) {
-        activeViewportState.viewport?.let { viewport ->
+        val projectedBounds = activeViewportState.boundsOverride
+        val viewport = activeViewportState.viewport
+        if (projectedBounds != null && viewport != null) {
             MapInfoFocus(
                 centerGeoPoint = unprojectPoint(
                     point = ProjectedPoint(viewport.centerX, viewport.centerY),
                     projection = routeModel.projection,
                 ),
                 windowWidthMeters = viewport.widthMeters,
-                projectedBounds = activeViewportState.boundsOverride,
+                projectedBounds = projectedBounds,
             )
+        } else {
+            null
         }
     } else {
         null

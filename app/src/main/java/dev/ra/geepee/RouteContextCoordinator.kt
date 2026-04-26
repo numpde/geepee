@@ -5,14 +5,8 @@ import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-internal data class ResolvedMapInfoFocus(
-    val centerGeoPoint: GeoPoint,
-    val windowWidthMeters: Double,
-    val projectedBounds: Bounds,
-)
-
 internal data class NearbyWayQueryFocus(
-    val focus: ResolvedMapInfoFocus,
+    val focus: MapInfoFocus,
     val nearestEdgeIndex: Int,
     val localTileIds: Set<DownloadTileId>,
 )
@@ -211,22 +205,18 @@ internal fun resolveNearbyWayQueryFocus(
     config: TileContextConfig,
     defaultFocusWindowWidthMeters: Double,
 ): NearbyWayQueryFocus {
-    val mapInfoFocus = explicitFocus ?: MapInfoFocus(
+    val resolvedFocus = explicitFocus ?: MapInfoFocus(
         centerGeoPoint = analysis.nearestGeoPoint,
         windowWidthMeters = defaultFocusWindowWidthMeters,
+        projectedBounds = nearbyWayFocusBounds(
+            routeModel = routeModel,
+            focusGeoPoint = analysis.nearestGeoPoint,
+            focusWindowWidthMeters = defaultFocusWindowWidthMeters,
+            haloMeters = config.wayHaloMeters,
+            continuationMeters = config.nearbyWayContinuationMeters,
+        ) ?: routeModel.bounds,
     )
-    val projectedFocusBounds = mapInfoFocus.projectedBounds ?: nearbyWayFocusBounds(
-        routeModel = routeModel,
-        focusGeoPoint = mapInfoFocus.centerGeoPoint,
-        focusWindowWidthMeters = mapInfoFocus.windowWidthMeters,
-        haloMeters = config.wayHaloMeters,
-        continuationMeters = config.nearbyWayContinuationMeters,
-    ) ?: routeModel.bounds
-    val resolvedFocus = ResolvedMapInfoFocus(
-        centerGeoPoint = mapInfoFocus.centerGeoPoint,
-        windowWidthMeters = mapInfoFocus.windowWidthMeters,
-        projectedBounds = projectedFocusBounds,
-    )
+    val projectedFocusBounds = resolvedFocus.projectedBounds
     val focusNearestEdgeIndex = if (
         explicitFocus == null ||
         distanceBetweenGeoPointsMeters(resolvedFocus.centerGeoPoint, analysis.nearestGeoPoint) <= 3.0
