@@ -120,7 +120,7 @@ private fun GeePeeScreen(
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
     onToggleDebugGps: () -> Unit,
-    onSetDebugGpsLocation: (GeoPoint, Double) -> Unit,
+    onSetDebugGpsLocation: (MapInfoFocus) -> Unit,
     onUpdateLiveContextFocus: (MapInfoFocus) -> Unit,
     onSetRouteScale: (RouteScale) -> Unit,
     onOpenInExternalMap: (GeoPoint, String, Double?) -> Unit,
@@ -336,9 +336,7 @@ private fun GeePeeScreen(
                         onRequestScreenPinning = onRequestScreenPinning,
                         onStopMonitoring = onStopMonitoring,
                         onSetDebugGpsHere = {
-                            movementViewportFocus?.centerGeoPoint?.let { point ->
-                                onSetDebugGpsLocation(point, movementViewportFocus.windowWidthMeters)
-                            }
+                            movementViewportFocus?.let(onSetDebugGpsLocation)
                         },
                         onOpenInExternalMap = {
                             openInPoint?.let { point ->

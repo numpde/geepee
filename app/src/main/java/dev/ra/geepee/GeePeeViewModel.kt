@@ -368,7 +368,8 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         recomputeUiState()
     }
 
-    fun setDebugGpsLocation(point: GeoPoint, focusWindowWidthMeters: Double) {
+    fun setDebugGpsLocation(focus: MapInfoFocus) {
+        val point = focus.centerGeoPoint
         val timestampMillis = System.currentTimeMillis()
         routeRuntimeState.teleportToFix(
             fix = LocationFix(
@@ -384,10 +385,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         )
         routeLoadState = routeLoadState.clearIssue()
         replaceMapInfoFocus(
-            focus = MapInfoFocus(
-                centerGeoPoint = point,
-                windowWidthMeters = focusWindowWidthMeters,
-            ),
+            focus = focus,
             clearCoordinator = true,
         )
         rebuildNearbyWaysAsync(force = true)
@@ -439,20 +437,6 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     private fun resetRouteContextState() {
         routeContextState = RouteContextState()
         clearMapInfoFocus(clearCoordinator = true)
-    }
-
-    private fun mapInfoFocusChanged(
-        previous: MapInfoFocus?,
-        current: MapInfoFocus,
-    ): Boolean {
-        val previousFocus = previous ?: return true
-        val widthChanged = kotlin.math.abs(previousFocus.windowWidthMeters - current.windowWidthMeters) >
-            maxOf(5.0, previousFocus.windowWidthMeters * 0.05)
-        if (widthChanged) {
-            return true
-        }
-        val movementThresholdMeters = maxOf(25.0, current.windowWidthMeters * 0.2)
-        return distanceBetweenGeoPointsMeters(previousFocus.centerGeoPoint, current.centerGeoPoint) > movementThresholdMeters
     }
 
     private fun currentLiveTrackingConfig(): LiveTrackingConfig {
