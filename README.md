@@ -90,6 +90,26 @@ Replay a checked-in GPX route to a real phone over ADB:
 
 More examples are in [scripts/REPLAY.md](scripts/REPLAY.md).
 
+## OSM Route Context Pilot
+
+There is also a reversible, dev-only pilot for fetching OSM route context without turning GeePee into a full map app.
+
+It fetches:
+
+- route-adjacent `highway=*` ways
+- derived junctions
+- selected bike-useful POIs like drinking water, picnic sites, shelters, toilets, and bike services
+
+Example:
+
+```bash
+./scripts/fetch_osm_route_context.py \
+  ./routes/unneplos-tisza-ride.gpx \
+  --out /tmp/unneplos-tisza-ride.osm-context.json
+```
+
+See [scripts/OSM_CONTEXT.md](scripts/OSM_CONTEXT.md).
+
 ## Publish On GitHub
 
 The simplest publish path in this repo is a GitHub Release with the debug APK attached.
@@ -130,10 +150,12 @@ Important:
 
 GeePee is deliberately narrow:
 
-- no network access
-- no analytics
+- no analytics or telemetry
+- no background syncing
 - no ads
 - no background location permission
 - no GPX copying into app storage
+
+The app now has an explicit route-context tile downloader. Network use happens only when you tap tiles in that pre-start screen.
 
 See [AUDIT.md](AUDIT.md) for the audit-oriented overview.

@@ -21,6 +21,13 @@ data class GeoPoint(
     val lon: Double,
 )
 
+data class GeoBounds(
+    val west: Double,
+    val south: Double,
+    val east: Double,
+    val north: Double,
+)
+
 data class LocationFix(
     val lat: Double,
     val lon: Double,
@@ -59,6 +66,7 @@ data class RouteModel(
     val pointCount: Int,
     val totalLengthMeters: Double,
     val bounds: Bounds,
+    val isClosedLoop: Boolean = false,
 )
 
 data class RouteAnalysis(
@@ -98,6 +106,8 @@ data class RouteRenderModel(
     val polylines: List<List<ScreenPoint>>,
     val gradientPolylines: List<RouteGradientPolyline>,
     val nearestPoint: ScreenPoint?,
+    val hypothesisPoints: List<RouteHypothesisScreenPoint>,
+    val nearestPointUncertainty: Float,
     val userPoint: ScreenPoint?,
     val edgePoint: ScreenPoint?,
     val historyPoints: List<ScreenPoint>,
@@ -117,6 +127,21 @@ data class RouteGradientPoint(
     val point: ScreenPoint,
     val progressRatio: Float,
 )
+
+data class RouteHypothesisScreenPoint(
+    val point: ScreenPoint,
+    val confidence: Float,
+    val isPrimary: Boolean,
+    val secondaryConfidenceContribution: Float,
+)
+
+private data class RouteAmbiguityDisplay(
+    val visibleHypotheses: List<RouteHypothesisScreenPoint>,
+    val nearestPointUncertainty: Float,
+)
+
+private const val MIN_VISIBLE_AMBIGUITY_CONFIDENCE = 0.18f
+private const val MIN_VISIBLE_AMBIGUITY_SEPARATION_PX = 18f
 
 data class RouteEdge(
     val startPoint: ProjectedPoint,
@@ -148,6 +173,10 @@ fun buildRouteModel(rawSegments: List<List<GeoPoint>>): RouteModel {
     require(allPoints.size >= 2) { "Route needs at least two GPX points." }
 
     val projection = buildProjection(allPoints)
+    val isClosedLoop = distanceBetweenProjected(
+        projectPoint(allPoints.first(), projection),
+        projectPoint(allPoints.last(), projection),
+    ) <= 12.0
     var totalLengthMeters = 0.0
     var pointCount = 0
     val edges = mutableListOf<RouteEdge>()
@@ -199,6 +228,7 @@ fun buildRouteModel(rawSegments: List<List<GeoPoint>>): RouteModel {
         pointCount = pointCount,
         totalLengthMeters = totalLengthMeters,
         bounds = computeBounds(segments.flatMap { it.points }),
+        isClosedLoop = isClosedLoop,
     )
 }
 
@@ -273,9 +303,10 @@ internal fun collectRouteCandidates(
     return analyzeProjectedPointRange(model, projectedFix, 0, model.edges.lastIndex)
 }
 
-fun buildRouteRenderModel(
+internal fun buildRouteRenderModel(
     routeModel: RouteModel,
     analysis: RouteAnalysis?,
+    matchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList(),
     historyPoints: List<ProjectedPoint> = emptyList(),
     localWindowWidthMeters: Double,
     canvasWidth: Float,
@@ -286,7 +317,7 @@ fun buildRouteRenderModel(
     boundsOverride: Bounds? = null,
 ): RouteRenderModel {
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
-        return RouteRenderModel(emptyList(), emptyList(), null, null, null, emptyList())
+        return RouteRenderModel(emptyList(), emptyList(), null, emptyList(), 0f, null, null, emptyList())
     }
 
     val bounds = boundsOverride ?: if (analysis == null) {
@@ -375,6 +406,27 @@ fun buildRouteRenderModel(
         )
     }
     val nearestPoint = nearestProjected?.takeIf { isScreenPointWithinBounds(it, screenBounds) }
+    val ambiguityDisplay = classifyAmbiguityDisplay(
+        collapseScreenHypotheses(
+            matchHypotheses.mapNotNull { hypothesis ->
+                val projectedPoint = rotateScreenPoint(
+                    point = toScreenPoint(hypothesis.analysis.nearestPoint, projector),
+                    center = screenCenter,
+                    rotationDegrees = rotationDegrees.toDouble(),
+                )
+                projectedPoint
+                    .takeIf { isScreenPointWithinBounds(it, screenBounds) }
+                    ?.let { visiblePoint ->
+                    RouteHypothesisScreenPoint(
+                        point = visiblePoint,
+                        confidence = hypothesis.confidence,
+                        isPrimary = hypothesis.isPrimary,
+                        secondaryConfidenceContribution = if (hypothesis.isPrimary) 0f else hypothesis.confidence,
+                    )
+                }
+            },
+        ),
+    )
 
     val userProjected = analysis?.point?.let { point ->
         rotateScreenPoint(
@@ -404,6 +456,8 @@ fun buildRouteRenderModel(
         polylines = polylines,
         gradientPolylines = gradientPolylines,
         nearestPoint = nearestPoint,
+        hypothesisPoints = ambiguityDisplay.visibleHypotheses,
+        nearestPointUncertainty = ambiguityDisplay.nearestPointUncertainty,
         userPoint = userPoint,
         edgePoint = edgePoint,
         historyPoints = projectedHistoryPoints,
@@ -486,6 +540,58 @@ internal fun transformRouteViewport(
         contentBounds = contentBounds,
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
+    )
+}
+
+internal fun geoBoundsForProjectedBounds(
+    bounds: Bounds,
+    projection: Projection,
+): GeoBounds {
+    val corners = listOf(
+        unprojectPoint(ProjectedPoint(bounds.minX, bounds.minY), projection),
+        unprojectPoint(ProjectedPoint(bounds.minX, bounds.maxY), projection),
+        unprojectPoint(ProjectedPoint(bounds.maxX, bounds.minY), projection),
+        unprojectPoint(ProjectedPoint(bounds.maxX, bounds.maxY), projection),
+    )
+    return GeoBounds(
+        west = corners.minOf { it.lon },
+        south = corners.minOf { it.lat },
+        east = corners.maxOf { it.lon },
+        north = corners.maxOf { it.lat },
+    )
+}
+
+internal fun projectedBoundsForGeoBounds(
+    bounds: GeoBounds,
+    projection: Projection,
+): Bounds {
+    val corners = listOf(
+        projectPoint(GeoPoint(bounds.south, bounds.west), projection),
+        projectPoint(GeoPoint(bounds.north, bounds.west), projection),
+        projectPoint(GeoPoint(bounds.south, bounds.east), projection),
+        projectPoint(GeoPoint(bounds.north, bounds.east), projection),
+    )
+    return Bounds(
+        minX = corners.minOf { it.x },
+        maxX = corners.maxOf { it.x },
+        minY = corners.minOf { it.y },
+        maxY = corners.maxOf { it.y },
+    )
+}
+
+internal fun projectedPointToScreenPoint(
+    point: ProjectedPoint,
+    bounds: Bounds,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): ScreenPoint {
+    return toScreenPoint(
+        point = point,
+        projector = createScreenProjector(
+            bounds = bounds,
+            canvasWidth = canvasWidth.toDouble(),
+            canvasHeight = canvasHeight.toDouble(),
+        ),
     )
 }
 
@@ -776,6 +882,89 @@ private fun boundsIntersect(left: Bounds, right: Bounds): Boolean {
         left.minY <= right.maxY
 }
 
+private fun collapseScreenHypotheses(
+    hypotheses: List<RouteHypothesisScreenPoint>,
+    mergeDistancePx: Float = 14f,
+): List<RouteHypothesisScreenPoint> {
+    if (hypotheses.isEmpty()) {
+        return emptyList()
+    }
+
+    val merged = mutableListOf<RouteHypothesisScreenPoint>()
+    hypotheses.forEach { hypothesis ->
+        val existingIndex = merged.indexOfFirst { existing ->
+            hypot(
+                (existing.point.x - hypothesis.point.x).toDouble(),
+                (existing.point.y - hypothesis.point.y).toDouble(),
+            ) <= mergeDistancePx
+        }
+        if (existingIndex == -1) {
+            merged += hypothesis
+        } else {
+            val existing = merged[existingIndex]
+            val totalConfidence = existing.confidence + hypothesis.confidence
+            val mergedPoint = if (totalConfidence > 0f) {
+                ScreenPoint(
+                    x = ((existing.point.x * existing.confidence) + (hypothesis.point.x * hypothesis.confidence)) / totalConfidence,
+                    y = ((existing.point.y * existing.confidence) + (hypothesis.point.y * hypothesis.confidence)) / totalConfidence,
+                )
+            } else {
+                existing.point
+            }
+            merged[existingIndex] = RouteHypothesisScreenPoint(
+                point = mergedPoint,
+                confidence = totalConfidence.coerceAtMost(1f),
+                isPrimary = existing.isPrimary || hypothesis.isPrimary,
+                secondaryConfidenceContribution =
+                    (existing.secondaryConfidenceContribution + hypothesis.secondaryConfidenceContribution)
+                        .coerceIn(0f, 1f),
+            )
+        }
+    }
+
+    return merged.sortedWith(
+        compareByDescending<RouteHypothesisScreenPoint> { it.isPrimary }
+            .thenByDescending { it.confidence },
+    )
+}
+
+private fun classifyAmbiguityDisplay(
+    hypotheses: List<RouteHypothesisScreenPoint>,
+): RouteAmbiguityDisplay {
+    val primary = hypotheses.firstOrNull { it.isPrimary }
+        ?: return RouteAmbiguityDisplay(
+            visibleHypotheses = emptyList(),
+            nearestPointUncertainty = 0f,
+        )
+    val secondaries = hypotheses.filterNot { it.isPrimary }
+    val meaningfulSecondary = secondaries.any { hypothesis ->
+        if (hypothesis.isPrimary) {
+            false
+        } else {
+            hypothesis.confidence >= MIN_VISIBLE_AMBIGUITY_CONFIDENCE &&
+                hypot(
+                    (hypothesis.point.x - primary.point.x).toDouble(),
+                    (hypothesis.point.y - primary.point.y).toDouble(),
+                ) >= MIN_VISIBLE_AMBIGUITY_SEPARATION_PX
+        }
+    }
+    return if (meaningfulSecondary) {
+        RouteAmbiguityDisplay(
+            visibleHypotheses = hypotheses,
+            nearestPointUncertainty = 0f,
+        )
+    } else {
+        RouteAmbiguityDisplay(
+            visibleHypotheses = emptyList(),
+            nearestPointUncertainty = (
+                primary.secondaryConfidenceContribution +
+                    secondaries.sumOf { it.confidence.toDouble() }.toFloat()
+                )
+                .coerceIn(0f, 1f),
+        )
+    }
+}
+
 private fun Bounds.width(): Double = maxX - minX
 
 private fun Bounds.height(): Double = maxY - minY
@@ -875,6 +1064,13 @@ private fun projectPoint(point: GeoPoint, projection: Projection): ProjectedPoin
     return ProjectedPoint(
         x = ((point.lon - projection.originLon) * PI / 180.0) * EARTH_RADIUS_METERS * projection.cosLat,
         y = ((point.lat - projection.originLat) * PI / 180.0) * EARTH_RADIUS_METERS,
+    )
+}
+
+internal fun unprojectPoint(point: ProjectedPoint, projection: Projection): GeoPoint {
+    return GeoPoint(
+        lat = projection.originLat + (point.y / EARTH_RADIUS_METERS) * (180.0 / PI),
+        lon = projection.originLon + (point.x / (EARTH_RADIUS_METERS * projection.cosLat)) * (180.0 / PI),
     )
 }
 

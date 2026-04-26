@@ -13,6 +13,7 @@ class UiProjectionTest {
                 routeModel = null,
                 currentFix = null,
                 analysis = null,
+                routeMatchHypotheses = emptyList(),
                 locationHistoryPoints = emptyList(),
                 compass = null,
                 sessionState = SessionState(
@@ -26,6 +27,8 @@ class UiProjectionTest {
                     orientationMode = OrientationMode.NorthUp,
                     routeScale = RouteScale.TenKilometers,
                 ),
+                tileContextConfig = TileContextConfig(downloadZoom = 10),
+                tileDownloads = emptyMap(),
                 locationProvidersEnabled = true,
                 headingDegrees = null,
             ),

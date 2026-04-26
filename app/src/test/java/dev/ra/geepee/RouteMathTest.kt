@@ -386,6 +386,101 @@ class RouteMathTest {
     }
 
     @Test
+    fun renderModelProjectsConfidenceHypothesesIntoScreenSpace() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.004),
+                ),
+            ),
+        )
+        val primary = analyzeLocationAgainstModel(
+            model = route,
+            fix = LocationFix(
+                lat = 0.0001,
+                lon = 0.001,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+        val alternate = analyzeLocationAgainstModel(
+            model = route,
+            fix = LocationFix(
+                lat = 0.0001,
+                lon = 0.003,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+
+        val render = buildRouteRenderModel(
+            routeModel = route,
+            analysis = primary,
+            matchHypotheses = listOf(
+                RouteMatchDisplayHypothesis(primary, confidence = 0.65f, isPrimary = true),
+                RouteMatchDisplayHypothesis(alternate, confidence = 0.35f, isPrimary = false),
+            ),
+            localWindowWidthMeters = 600.0,
+            canvasWidth = 1000f,
+            canvasHeight = 1000f,
+        )
+
+        assertEquals(2, render.hypothesisPoints.size)
+        assertEquals(0f, render.nearestPointUncertainty, 0.001f)
+        assertTrue(render.hypothesisPoints.first().isPrimary)
+        assertTrue(render.hypothesisPoints.first().confidence > render.hypothesisPoints.last().confidence)
+    }
+
+    @Test
+    fun renderModelSuppressesInsignificantAmbiguityMarkers() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.004),
+                ),
+            ),
+        )
+        val primary = analyzeLocationAgainstModel(
+            model = route,
+            fix = LocationFix(
+                lat = 0.0001,
+                lon = 0.0015,
+                accuracyMeters = 5f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+        val nearlySame = primary.copy(
+            nearestPoint = ProjectedPoint(
+                x = primary.nearestPoint.x + 2.0,
+                y = primary.nearestPoint.y,
+            ),
+        )
+
+        val render = buildRouteRenderModel(
+            routeModel = route,
+            analysis = primary,
+            matchHypotheses = listOf(
+                RouteMatchDisplayHypothesis(primary, confidence = 0.88f, isPrimary = true),
+                RouteMatchDisplayHypothesis(nearlySame, confidence = 0.12f, isPrimary = false),
+            ),
+            localWindowWidthMeters = 600.0,
+            canvasWidth = 1000f,
+            canvasHeight = 1000f,
+        )
+
+        assertTrue(render.hypothesisPoints.isEmpty())
+        assertTrue(render.nearestPointUncertainty > 0.1f)
+    }
+
+    @Test
     fun createRouteViewportFitsContentBoundsToCanvasAspect() {
         val contentBounds = Bounds(
             minX = -40.0,

@@ -11,6 +11,7 @@ private const val KEY_BATTERY_SAVER = "battery_saver"
 private const val KEY_DARK_MODE = "dark_mode"
 private const val KEY_ORIENTATION_MODE = "orientation_mode"
 private const val KEY_ROUTE_SCALE = "route_scale"
+private const val KEY_SETUP_OVERVIEW_MODE = "setup_overview_mode"
 
 internal data class RestorableAppState(
     val routeUri: Uri?,
@@ -38,6 +39,10 @@ internal class AppStateStore(context: Context) {
                 routeScale = enumValueOrDefault(
                     rawValue = preferences.getString(KEY_ROUTE_SCALE, null),
                     defaultValue = RouteScale.TwoHundred,
+                ),
+                setupOverviewMode = enumValueOrDefault(
+                    rawValue = preferences.getString(KEY_SETUP_OVERVIEW_MODE, null),
+                    defaultValue = SetupOverviewMode.Route,
                 ),
             ),
         )
@@ -70,6 +75,7 @@ internal class AppStateStore(context: Context) {
             .putBoolean(KEY_DARK_MODE, appPreferences.darkModeEnabled)
             .putString(KEY_ORIENTATION_MODE, appPreferences.orientationMode.name)
             .putString(KEY_ROUTE_SCALE, appPreferences.routeScale.name)
+            .putString(KEY_SETUP_OVERVIEW_MODE, appPreferences.setupOverviewMode.name)
             .apply()
     }
 

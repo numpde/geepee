@@ -22,18 +22,29 @@ internal fun SetupTopOverlay(
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
+    val tileMode = state.setupOverviewMode == SetupOverviewMode.Tiles
+    val headline = if (tileMode && state.routeModel != null) {
+        "Tap tiles to fetch context"
+    } else {
+        state.status.headline
+    }
+    val detail = if (tileMode && state.routeModel != null) {
+        "Download only the areas worth spending network on."
+    } else {
+        state.status.detail
+    }
 
     Column(
         modifier = modifier.widthIn(max = 340.dp),
     ) {
         Text(
-            text = state.status.headline,
+            text = headline,
             style = MaterialTheme.typography.displaySmall,
             color = colors.ink,
         )
         Spacer(modifier = Modifier.padding(top = 8.dp))
         Text(
-            text = state.status.detail,
+            text = detail,
             style = MaterialTheme.typography.bodyLarge,
             color = colors.ink.copy(alpha = 0.78f),
         )
@@ -52,7 +63,9 @@ internal fun SetupTopOverlay(
 internal fun SetupActions(
     hasRoute: Boolean,
     sessionRunning: Boolean,
+    overviewMode: SetupOverviewMode,
     onPickRoute: () -> Unit,
+    onToggleOverviewMode: () -> Unit,
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
@@ -67,6 +80,11 @@ internal fun SetupActions(
             modifier = Modifier.weight(1f),
         )
         if (hasRoute) {
+            ActionButton(
+                label = if (overviewMode == SetupOverviewMode.Route) "Tiles" else "Route",
+                onClick = onToggleOverviewMode,
+                modifier = Modifier.weight(1f),
+            )
             ActionButton(
                 label = if (sessionRunning) "Stop" else "Start",
                 onClick = if (sessionRunning) onStopMonitoring else onStartMonitoring,

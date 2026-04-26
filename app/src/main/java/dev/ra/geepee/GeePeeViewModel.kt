@@ -19,6 +19,7 @@ private const val LOG_TAG = "GeePee"
 internal class GeePeeViewModel(application: Application) : AndroidViewModel(application) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val tileDownloadExecutor: ExecutorService = Executors.newCachedThreadPool()
     private val appStateStore = AppStateStore(application)
     private val callbackExecutor = Executor(mainHandler::post)
     private val routeRepository = RouteRepository(
@@ -40,11 +41,14 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         onLocation = ::handleLocation,
         onHeadingDegrees = ::handleHeadingChanged,
     )
+    private val tileContextRepository = TileContextRepository(application)
     private val routeRuntimeState = RouteRuntimeState()
+    private val tileContextConfig = DefaultTileContextConfig
 
     private var routeLoadState = RouteLoadState()
     private var sessionState = SessionState()
     private var appPreferences = AppPreferences()
+    private var tileDownloads: Map<DownloadTileId, TileDownloadSnapshot> = tileContextRepository.cachedTileSnapshots()
 
     var uiState by mutableStateOf(GeePeeUiState())
         private set
@@ -118,6 +122,18 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         updateRouteScale(appPreferences.routeScale.next())
     }
 
+    fun toggleSetupOverviewMode() {
+        updatePreferences {
+            copy(
+                setupOverviewMode = when (setupOverviewMode) {
+                    SetupOverviewMode.Route -> SetupOverviewMode.Tiles
+                    SetupOverviewMode.Tiles -> SetupOverviewMode.Route
+                },
+            )
+        }
+        recomputeUiState()
+    }
+
     fun zoomInRouteScale() {
         updateRouteScale(appPreferences.routeScale.zoomIn())
     }
@@ -169,6 +185,67 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    fun downloadTile(tileId: DownloadTileId, estimatedBytes: Long) {
+        when (tileDownloads[tileId]?.status) {
+            TileDownloadStatus.Downloading,
+            TileDownloadStatus.Cached,
+            -> return
+            TileDownloadStatus.Error,
+            null,
+            -> Unit
+        }
+
+        tileDownloads = tileDownloads + (
+            tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Downloading,
+                estimatedBytes = estimatedBytes,
+            )
+        )
+        recomputeUiState()
+
+        tileDownloadExecutor.execute {
+            try {
+                val cachedSnapshot = tileContextRepository.downloadTile(
+                    tileId = tileId,
+                    config = tileContextConfig,
+                ) { downloadedBytes, contentLengthBytes ->
+                    callbackExecutor.execute {
+                        val currentSnapshot = tileDownloads[tileId]
+                        if (currentSnapshot?.status == TileDownloadStatus.Downloading) {
+                            tileDownloads = tileDownloads + (
+                                tileId to currentSnapshot.copy(
+                                    downloadedBytes = downloadedBytes,
+                                    actualBytes = contentLengthBytes,
+                                )
+                            )
+                            recomputeUiState()
+                        }
+                    }
+                }
+                callbackExecutor.execute {
+                    tileDownloads = tileDownloads + (
+                        tileId to cachedSnapshot.copy(
+                            estimatedBytes = estimatedBytes,
+                        )
+                    )
+                    recomputeUiState()
+                }
+            } catch (error: Exception) {
+                Log.e(LOG_TAG, "Tile context download failed for $tileId", error)
+                callbackExecutor.execute {
+                    tileDownloads = tileDownloads + (
+                        tileId to TileDownloadSnapshot(
+                            status = TileDownloadStatus.Error,
+                            estimatedBytes = estimatedBytes,
+                            errorMessage = error.message ?: "Download failed",
+                        )
+                    )
+                    recomputeUiState()
+                }
+            }
+        }
+    }
+
     fun loadRoute(
         uri: Uri,
         displayName: String?,
@@ -207,6 +284,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     override fun onCleared() {
         liveTrackingController.shutdown()
         ioExecutor.shutdownNow()
+        tileDownloadExecutor.shutdownNow()
         super.onCleared()
     }
 
@@ -296,10 +374,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 routeModel = routeRuntimeState.routeModel,
                 currentFix = routeRuntimeState.currentFix,
                 analysis = routeRuntimeState.currentAnalysis,
+                routeMatchHypotheses = routeRuntimeState.currentMatchHypotheses,
                 locationHistoryPoints = routeRuntimeState.locationHistoryPoints,
                 compass = buildCompassState(),
                 sessionState = sessionState,
                 appPreferences = appPreferences,
+                tileContextConfig = tileContextConfig,
+                tileDownloads = tileDownloads,
                 locationProvidersEnabled = liveTrackingController.hasEnabledProviders(),
                 headingDegrees = routeRuntimeState.displayHeadingDegrees(),
             ),

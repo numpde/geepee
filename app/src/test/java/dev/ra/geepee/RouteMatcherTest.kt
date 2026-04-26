@@ -42,7 +42,7 @@ class RouteMatcherTest {
             timestampMillis = 1_000L,
             bearingAccuracyDegrees = 8f,
         )
-        val firstMatch = matcher.match(firstFix)
+        val firstMatch = matcher.match(firstFix).analysis
 
         val ambiguousFix = LocationFix(
             lat = 0.00055,
@@ -58,12 +58,14 @@ class RouteMatcherTest {
             fix = ambiguousFix,
             previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
         )
-        val matched = matcher.match(ambiguousFix)
+        val matchedResult = matcher.match(ambiguousFix)
+        val matched = matchedResult.analysis
 
         assertNotEquals(rawNearest.nearestEdgeIndex, matched.nearestEdgeIndex)
         assertTrue(matched.nearestEdgeIndex <= firstMatch.nearestEdgeIndex)
         assertTrue(matched.routeMeters > firstMatch.routeMeters)
         assertTrue(matched.routeMeters < rawNearest.routeMeters)
+        assertEquals(1.0f, matchedResult.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
     }
 
     @Test
@@ -108,9 +110,9 @@ class RouteMatcherTest {
             bearingAccuracyDegrees = 8f,
         )
 
-        val match1 = matcher.match(firstLegFix)
-        val match2 = matcher.match(connectorFix)
-        val match3 = matcher.match(returnLegFix)
+        val match1 = matcher.match(firstLegFix).analysis
+        val match2 = matcher.match(connectorFix).analysis
+        val match3 = matcher.match(returnLegFix).analysis
 
         assertTrue(match2.routeMeters > match1.routeMeters)
         assertTrue(match3.routeMeters > match2.routeMeters)
@@ -150,13 +152,13 @@ class RouteMatcherTest {
             bearingAccuracyDegrees = 8f,
         )
 
-        val firstMatch = matcher.match(firstFix)
+        val firstMatch = matcher.match(firstFix).analysis
         val rawNearest = analyzeLocationAgainstModel(
             model = route,
             fix = secondFix,
             previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
         )
-        val secondMatch = matcher.match(secondFix)
+        val secondMatch = matcher.match(secondFix).analysis
 
         assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
         assertTrue(secondMatch.offRouteMeters <= rawNearest.offRouteMeters + 0.5)
@@ -196,13 +198,13 @@ class RouteMatcherTest {
             bearingAccuracyDegrees = 8f,
         )
 
-        val firstMatch = matcher.match(firstFix)
+        val firstMatch = matcher.match(firstFix).analysis
         val rawNearest = analyzeLocationAgainstModel(
             model = route,
             fix = secondFix,
             previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
         )
-        val secondMatch = matcher.match(secondFix)
+        val secondMatch = matcher.match(secondFix).analysis
 
         assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
         assertTrue(secondMatch.offRouteMeters < 8.0)
@@ -252,13 +254,13 @@ class RouteMatcherTest {
             bearingAccuracyDegrees = 8f,
         )
 
-        val firstMatch = matcher.match(firstFix)
+        val firstMatch = matcher.match(firstFix).analysis
         val rawNearest = analyzeLocationAgainstModel(
             model = route,
             fix = secondFix,
             previousNearestEdgeIndex = firstMatch.nearestEdgeIndex,
         )
-        val secondMatch = matcher.match(secondFix)
+        val secondMatch = matcher.match(secondFix).analysis
 
         assertEquals(rawNearest.nearestEdgeIndex, secondMatch.nearestEdgeIndex)
         assertTrue(secondMatch.offRouteMeters < 0.5)
@@ -312,12 +314,43 @@ class RouteMatcherTest {
         val firstForwardMatch = matcher.match(firstForwardFix)
         val secondForwardMatch = matcher.match(secondForwardFix)
 
-        assertTrue(startMatch.offRouteMeters < 1.0)
-        assertTrue(firstForwardMatch.offRouteMeters < 2.0)
-        assertTrue(secondForwardMatch.offRouteMeters < 2.0)
-        assertTrue(firstForwardMatch.routeMeters < route.totalLengthMeters / 2.0)
-        assertTrue(secondForwardMatch.routeMeters < route.totalLengthMeters / 2.0)
-        assertTrue(secondForwardMatch.routeMeters > firstForwardMatch.routeMeters)
+        assertTrue(startMatch.analysis.offRouteMeters < 1.0)
+        assertEquals(1.0f, startMatch.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertTrue(firstForwardMatch.analysis.offRouteMeters < 2.0)
+        assertTrue(secondForwardMatch.analysis.offRouteMeters < 2.0)
+        assertTrue(firstForwardMatch.analysis.routeMeters < route.totalLengthMeters / 2.0)
+        assertTrue(secondForwardMatch.analysis.routeMeters < route.totalLengthMeters / 2.0)
+        assertTrue(secondForwardMatch.analysis.routeMeters > firstForwardMatch.analysis.routeMeters)
+    }
+
+    @Test
+    fun matcherExposesMultipleHypothesesAtFigureEightCrossing() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0010, lon = 0.0010),
+                    GeoPoint(lat = 0.0, lon = 0.0010),
+                    GeoPoint(lat = 0.0010, lon = 0.0),
+                ),
+            ),
+        )
+        val matcher = RouteMatcher(route)
+
+        val crossingFix = LocationFix(
+            lat = 0.0005,
+            lon = 0.0005,
+            accuracyMeters = 4f,
+            headingDegrees = null,
+            speedMetersPerSecond = null,
+            timestampMillis = 1_000L,
+        )
+
+        val match = matcher.match(crossingFix)
+
+        assertTrue(match.analysis.offRouteMeters < 1.0)
+        assertTrue(match.hypotheses.size > 1)
+        assertEquals(1.0f, match.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
     }
 
     @Test
@@ -469,7 +502,7 @@ private fun RouteFixture.runTiszaStartHairpin(
                         pointIndex,
                         1_000L + (step * 2_000L),
                     ),
-                ),
+                ).analysis,
             )
         }
     }

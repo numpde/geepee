@@ -35,6 +35,7 @@ class RouteRuntimeStateTest {
 
         assertEquals(fix, runtimeState.currentFix)
         assertNotNull(runtimeState.currentAnalysis)
+        assertTrue(runtimeState.currentMatchHypotheses.isNotEmpty())
     }
 
     @Test
@@ -78,6 +79,7 @@ class RouteRuntimeStateTest {
         assertTrue(runtimeState.locationHistoryPoints.isEmpty())
         assertNotNull(runtimeState.currentFix)
         assertNotNull(runtimeState.currentAnalysis)
+        assertTrue(runtimeState.currentMatchHypotheses.isNotEmpty())
     }
 
     @Test
@@ -145,6 +147,7 @@ class RouteRuntimeStateTest {
             freshState.currentAnalysis!!.nearestEdgeIndex,
             runtimeState.currentAnalysis!!.nearestEdgeIndex,
         )
+        assertTrue(runtimeState.currentMatchHypotheses.isNotEmpty())
     }
 
     @Test

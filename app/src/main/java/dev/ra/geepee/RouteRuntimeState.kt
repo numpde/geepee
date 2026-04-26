@@ -19,6 +19,8 @@ internal class RouteRuntimeState {
         private set
     var currentAnalysis: RouteAnalysis? = null
         private set
+    var currentMatchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList()
+        private set
     var locationHistoryPoints: List<ProjectedPoint> = emptyList()
         private set
     private var currentHeadingDegrees: Double? = null
@@ -115,20 +117,24 @@ internal class RouteRuntimeState {
     private fun recomputeAnalysis() {
         val model = routeModel
         val fix = currentFix
-        currentAnalysis = if (model != null && fix != null) {
-            routeMatcher?.match(fix)
+        if (model != null && fix != null) {
+            val matchResult = routeMatcher?.match(fix)
+            currentAnalysis = matchResult?.analysis
                 ?: analyzeLocationAgainstModel(
                     model = model,
                     fix = fix,
                     previousNearestEdgeIndex = currentAnalysis?.nearestEdgeIndex?.takeIf { it >= 0 },
                 )
+            currentMatchHypotheses = matchResult?.hypotheses.orEmpty()
         } else {
-            null
+            currentAnalysis = null
+            currentMatchHypotheses = emptyList()
         }
     }
 
     private fun clearRouteProjection() {
         currentAnalysis = null
+        currentMatchHypotheses = emptyList()
         locationHistoryPoints = emptyList()
     }
 

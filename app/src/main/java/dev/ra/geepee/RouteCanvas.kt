@@ -39,6 +39,7 @@ internal fun RouteCanvas(
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
+    val sessionRoutePalette = sessionRoutePalette(darkModeEnabled = state.darkModeEnabled, colors = colors)
     val density = LocalDensity.current
     val connectorLabelPaint = remember(density, colors.ink) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -59,13 +60,14 @@ internal fun RouteCanvas(
         val renderModel = buildRouteRenderModel(
             routeModel = routeModel,
             analysis = state.analysis,
+            matchHypotheses = state.routeMatchHypotheses,
             historyPoints = state.locationHistoryPoints,
             localWindowWidthMeters = routeScale.windowWidthMeters,
             canvasWidth = size.width,
             canvasHeight = size.height,
             lookAheadFraction = 0.0,
             rotationDegrees = routeRotationDegrees,
-            includeGradientPolylines = !state.sessionRunning,
+            includeGradientPolylines = true,
             boundsOverride = boundsOverride,
         )
 
@@ -77,6 +79,8 @@ internal fun RouteCanvas(
         }
 
         val nearest = renderModel.nearestPoint
+        val hypothesisPoints = renderModel.hypothesisPoints
+        val nearestPointUncertainty = renderModel.nearestPointUncertainty
         val user = renderModel.userPoint
         val edge = renderModel.edgePoint
         val history = renderModel.historyPoints
@@ -119,36 +123,65 @@ internal fun RouteCanvas(
                 }
             }
         } else {
-            renderModel.polylines.forEach { polyline ->
-                if (polyline.size < 2) {
+            val currentRouteMeters = state.analysis?.routeMeters
+            renderModel.gradientPolylines.forEach { polyline ->
+                if (polyline.points.size < 2) {
                     return@forEach
                 }
 
-                val path = buildPolylinePath(polyline)
+                val path = buildPolylinePath(polyline.points.map(RouteGradientPoint::point))
 
                 drawPath(
                     path = path,
-                    color = colors.line.copy(alpha = 0.12f),
+                    color = sessionRoutePalette.baseHalo,
                     style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
                 drawPath(
                     path = path,
-                    color = colors.line,
+                    color = sessionRoutePalette.baseLine,
                     style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
+
+                highlightedSessionSubpaths(
+                    polyline = polyline,
+                    currentRouteMeters = currentRouteMeters,
+                    totalRouteMeters = routeModel.totalLengthMeters,
+                    windowWidthMeters = routeScale.windowWidthMeters,
+                    isClosedLoop = routeModel.isClosedLoop,
+                ).forEach { highlightedPath ->
+                    val (haloColor, lineColor) = when (highlightedPath.kind) {
+                        SessionRouteHighlightKind.Ahead -> {
+                            sessionRoutePalette.aheadHalo to sessionRoutePalette.aheadLine
+                        }
+                        SessionRouteHighlightKind.Behind -> {
+                            sessionRoutePalette.behindHalo to sessionRoutePalette.behindLine
+                        }
+                    }
+                    drawPath(
+                        path = highlightedPath.path,
+                        color = haloColor,
+                        style = Stroke(width = routeHaloWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                    drawPath(
+                        path = highlightedPath.path,
+                        color = lineColor,
+                        style = Stroke(width = routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
             }
         }
 
-        if (nearest != null) {
-            drawCircle(
-                color = toneColor.copy(alpha = 0.18f),
-                radius = 14.dp.toPx(),
-                center = Offset(nearest.x, nearest.y),
+        if (hypothesisPoints.isNotEmpty()) {
+            drawRouteHypotheses(
+                hypotheses = hypothesisPoints,
+                toneColor = toneColor,
+                mistColor = colors.mist,
             )
-            drawCircle(
-                color = toneColor,
-                radius = 6.dp.toPx(),
+        } else if (nearest != null) {
+            drawNearestSnapMarker(
                 center = Offset(nearest.x, nearest.y),
+                toneColor = toneColor,
+                uncertainty = nearestPointUncertainty,
             )
         }
 
@@ -208,6 +241,40 @@ internal fun RouteCanvas(
 private val ROUTE_START_COLOR = Color(0xFF2962FF)
 private val ROUTE_FINISH_COLOR = Color(0xFFD32F2F)
 
+private data class SessionRoutePalette(
+    val baseHalo: Color,
+    val baseLine: Color,
+    val aheadHalo: Color,
+    val aheadLine: Color,
+    val behindHalo: Color,
+    val behindLine: Color,
+)
+
+private fun sessionRoutePalette(
+    darkModeEnabled: Boolean,
+    colors: GeePeeColors,
+): SessionRoutePalette {
+    return if (darkModeEnabled) {
+        SessionRoutePalette(
+            baseHalo = colors.line.copy(alpha = 0.08f),
+            baseLine = colors.line.copy(alpha = 0.34f),
+            aheadHalo = colors.routeAhead.copy(alpha = 0.18f),
+            aheadLine = colors.routeAhead,
+            behindHalo = colors.line.copy(alpha = 0.12f),
+            behindLine = colors.line.copy(alpha = 0.68f),
+        )
+    } else {
+        SessionRoutePalette(
+            baseHalo = colors.line.copy(alpha = 0.05f),
+            baseLine = colors.line.copy(alpha = 0.22f),
+            aheadHalo = colors.routeAhead.copy(alpha = 0.12f),
+            aheadLine = colors.routeAhead,
+            behindHalo = colors.line.copy(alpha = 0.08f),
+            behindLine = colors.line.copy(alpha = 0.48f),
+        )
+    }
+}
+
 private fun DrawScope.drawHistoryTrail(
     history: List<ScreenPoint>,
     color: Color,
@@ -251,6 +318,249 @@ private fun DrawScope.drawHistoryTrail(
             join = StrokeJoin.Round,
         ),
     )
+}
+
+internal fun routeSegmentEmphasis(
+    startProgressRatio: Float,
+    endProgressRatio: Float,
+    currentRouteMeters: Double?,
+    totalRouteMeters: Double,
+    windowWidthMeters: Double,
+    isClosedLoop: Boolean,
+): Float {
+    if (currentRouteMeters == null || totalRouteMeters <= 0.0) {
+        return 1f
+    }
+
+    val segmentRouteMeters = ((startProgressRatio + endProgressRatio) / 2.0f) * totalRouteMeters.toFloat()
+    val routeDeltaMeters = routeProgressDeltaMeters(
+        routeMetersA = segmentRouteMeters.toDouble(),
+        routeMetersB = currentRouteMeters,
+        totalRouteMeters = totalRouteMeters,
+        isClosedLoop = isClosedLoop,
+    )
+    val fullStrengthMeters = kotlin.math.max(90.0, windowWidthMeters * 0.18)
+    val fadeOutMeters = kotlin.math.max(180.0, windowWidthMeters * 0.55)
+
+    return when {
+        routeDeltaMeters <= fullStrengthMeters -> 1f
+        routeDeltaMeters >= fadeOutMeters -> 0f
+        else -> {
+            val normalized = ((routeDeltaMeters - fullStrengthMeters) / (fadeOutMeters - fullStrengthMeters)).toFloat()
+            val eased = 1f - normalized
+            eased * eased * (3f - 2f * eased)
+        }
+    }
+}
+
+internal fun highlightedSessionSubpaths(
+    polyline: RouteGradientPolyline,
+    currentRouteMeters: Double?,
+    totalRouteMeters: Double,
+    windowWidthMeters: Double,
+    isClosedLoop: Boolean,
+    minimumEmphasis: Float = 0.35f,
+): List<SessionHighlightedRoutePath> {
+    if (polyline.points.size < 2) {
+        return emptyList()
+    }
+
+    val subpaths = mutableListOf<SessionHighlightedRoutePath>()
+    var currentPoints = mutableListOf<ScreenPoint>()
+    var currentKind: SessionRouteHighlightKind? = null
+
+    fun flushCurrent() {
+        if (currentPoints.size >= 2 && currentKind != null) {
+            subpaths += SessionHighlightedRoutePath(
+                path = buildPolylinePath(currentPoints),
+                kind = currentKind!!,
+            )
+        }
+        currentPoints = mutableListOf()
+        currentKind = null
+    }
+
+    polyline.points.zipWithNext().forEach { (start, end) ->
+        val kind = routeSegmentHighlightKind(
+            startProgressRatio = start.progressRatio,
+            endProgressRatio = end.progressRatio,
+            currentRouteMeters = currentRouteMeters,
+            totalRouteMeters = totalRouteMeters,
+            windowWidthMeters = windowWidthMeters,
+            isClosedLoop = isClosedLoop,
+            minimumEmphasis = minimumEmphasis,
+        )
+
+        if (kind != null) {
+            if (currentPoints.isEmpty() || currentKind != kind) {
+                flushCurrent()
+                currentPoints += start.point
+                currentKind = kind
+            }
+            if (currentPoints.last() != end.point) {
+                currentPoints += end.point
+            }
+        } else {
+            flushCurrent()
+        }
+    }
+
+    flushCurrent()
+    return subpaths
+}
+
+internal enum class SessionRouteHighlightKind {
+    Ahead,
+    Behind,
+}
+
+internal data class SessionHighlightedRoutePath(
+    val path: Path,
+    val kind: SessionRouteHighlightKind,
+)
+
+internal fun routeSegmentHighlightKind(
+    startProgressRatio: Float,
+    endProgressRatio: Float,
+    currentRouteMeters: Double?,
+    totalRouteMeters: Double,
+    windowWidthMeters: Double,
+    isClosedLoop: Boolean,
+    minimumEmphasis: Float = 0.35f,
+): SessionRouteHighlightKind? {
+    val emphasis = routeSegmentEmphasis(
+        startProgressRatio = startProgressRatio,
+        endProgressRatio = endProgressRatio,
+        currentRouteMeters = currentRouteMeters,
+        totalRouteMeters = totalRouteMeters,
+        windowWidthMeters = windowWidthMeters,
+        isClosedLoop = isClosedLoop,
+    )
+    if (emphasis < minimumEmphasis || currentRouteMeters == null || totalRouteMeters <= 0.0) {
+        return null
+    }
+
+    val segmentRouteMeters = ((startProgressRatio + endProgressRatio) / 2.0f) * totalRouteMeters.toFloat()
+    val signedDeltaMeters = signedRouteProgressDeltaMeters(
+        routeMetersA = segmentRouteMeters.toDouble(),
+        routeMetersB = currentRouteMeters,
+        totalRouteMeters = totalRouteMeters,
+        isClosedLoop = isClosedLoop,
+    )
+    return if (signedDeltaMeters < 0.0) {
+        SessionRouteHighlightKind.Behind
+    } else {
+        SessionRouteHighlightKind.Ahead
+    }
+}
+
+private fun routeProgressDeltaMeters(
+    routeMetersA: Double,
+    routeMetersB: Double,
+    totalRouteMeters: Double,
+    isClosedLoop: Boolean,
+): Double {
+    val directDelta = kotlin.math.abs(routeMetersA - routeMetersB)
+    if (!isClosedLoop || totalRouteMeters <= 0.0) {
+        return directDelta
+    }
+    return minOf(directDelta, totalRouteMeters - directDelta)
+}
+
+private fun signedRouteProgressDeltaMeters(
+    routeMetersA: Double,
+    routeMetersB: Double,
+    totalRouteMeters: Double,
+    isClosedLoop: Boolean,
+): Double {
+    val directDelta = routeMetersA - routeMetersB
+    if (!isClosedLoop || totalRouteMeters <= 0.0) {
+        return directDelta
+    }
+    var wrappedDelta = directDelta % totalRouteMeters
+    if (wrappedDelta > totalRouteMeters / 2.0) {
+        wrappedDelta -= totalRouteMeters
+    } else if (wrappedDelta < -totalRouteMeters / 2.0) {
+        wrappedDelta += totalRouteMeters
+    }
+    return wrappedDelta
+}
+
+private fun DrawScope.drawNearestSnapMarker(
+    center: Offset,
+    toneColor: Color,
+    uncertainty: Float,
+) {
+    val clampedUncertainty = uncertainty.coerceIn(0f, 1f)
+    if (clampedUncertainty > 0f) {
+        drawCircle(
+            color = toneColor.copy(alpha = lerpFloat(start = 0.08f, stop = 0.18f, fraction = clampedUncertainty)),
+            radius = lerpFloat(start = 18.dp.toPx(), stop = 24.dp.toPx(), fraction = clampedUncertainty),
+            center = center,
+            style = Stroke(width = 3.dp.toPx()),
+        )
+    }
+    drawCircle(
+        color = toneColor.copy(alpha = 0.18f),
+        radius = 14.dp.toPx(),
+        center = center,
+    )
+    drawCircle(
+        color = toneColor,
+        radius = 6.dp.toPx(),
+        center = center,
+    )
+}
+
+private fun DrawScope.drawRouteHypotheses(
+    hypotheses: List<RouteHypothesisScreenPoint>,
+    toneColor: Color,
+    mistColor: Color,
+) {
+    hypotheses.forEach { hypothesis ->
+        val center = Offset(hypothesis.point.x, hypothesis.point.y)
+        val confidence = hypothesis.confidence.coerceIn(0f, 1f)
+        val haloAlpha = if (hypothesis.isPrimary) {
+            lerpFloat(start = 0.08f, stop = 0.22f, fraction = confidence)
+        } else {
+            lerpFloat(start = 0.16f, stop = 0.3f, fraction = confidence)
+        }
+        val fillAlpha = if (hypothesis.isPrimary) {
+            lerpFloat(start = 0.18f, stop = 0.85f, fraction = confidence)
+        } else {
+            lerpFloat(start = 0.34f, stop = 0.62f, fraction = confidence)
+        }
+        val haloRadius = if (hypothesis.isPrimary) {
+            lerpFloat(start = 10.dp.toPx(), stop = 14.dp.toPx(), fraction = confidence)
+        } else {
+            lerpFloat(start = 11.dp.toPx(), stop = 13.dp.toPx(), fraction = confidence)
+        }
+        val fillRadius = if (hypothesis.isPrimary) {
+            lerpFloat(start = 4.dp.toPx(), stop = 7.dp.toPx(), fraction = confidence)
+        } else {
+            lerpFloat(start = 5.dp.toPx(), stop = 6.5.dp.toPx(), fraction = confidence)
+        }
+
+        drawCircle(
+            color = mistColor.copy(alpha = haloAlpha),
+            radius = haloRadius,
+            center = center,
+        )
+        drawCircle(
+            color = toneColor.copy(alpha = fillAlpha),
+            radius = fillRadius,
+            center = center,
+        )
+
+        if (hypothesis.isPrimary) {
+            drawCircle(
+                color = toneColor.copy(alpha = 0.92f),
+                radius = fillRadius + 3.dp.toPx(),
+                center = center,
+                style = Stroke(width = 2.dp.toPx()),
+            )
+        }
+    }
 }
 
 private fun buildSmoothHistoryPath(history: List<ScreenPoint>): Path {

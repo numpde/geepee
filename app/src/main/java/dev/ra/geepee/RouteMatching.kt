@@ -2,6 +2,7 @@ package dev.ra.geepee
 
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 
@@ -52,6 +53,17 @@ private data class ScoredRouteCandidate(
     val score: Double,
 )
 
+internal data class RouteMatchDisplayHypothesis(
+    val analysis: RouteAnalysis,
+    val confidence: Float,
+    val isPrimary: Boolean,
+)
+
+internal data class RouteMatchResult(
+    val analysis: RouteAnalysis,
+    val hypotheses: List<RouteMatchDisplayHypothesis>,
+)
+
 internal class RouteMatcher(
     private val routeModel: RouteModel,
     private val config: RouteMatcherConfig = RouteMatcherConfig(),
@@ -64,7 +76,7 @@ internal class RouteMatcher(
         state = RouteMatcherState(hypotheses = emptyList())
     }
 
-    fun match(fix: LocationFix): RouteAnalysis {
+    fun match(fix: LocationFix): RouteMatchResult {
         val lastTimestamp = observations.lastOrNull()?.fix?.timestampMillis
         if (lastTimestamp != null && fix.timestampMillis <= lastTimestamp) {
             reset()
@@ -87,7 +99,10 @@ internal class RouteMatcher(
         )
 
         if (candidates.isEmpty()) {
-            return emptyRouteAnalysis(projectedFix)
+            return RouteMatchResult(
+                analysis = emptyRouteAnalysis(projectedFix),
+                hypotheses = emptyList(),
+            )
         }
 
         observations += RouteMatchObservation(
@@ -114,11 +129,21 @@ internal class RouteMatcher(
         } else {
             rankedCandidates.ifEmpty { listOf(ScoredRouteCandidate(analysis = matched, score = 0.0)) }
         }
-        val finalMatch = finalRankedCandidates.first().analysis
+        val selectedCandidates = selectPlausibleCandidates(finalRankedCandidates)
+        val finalMatch = selectedCandidates.first().analysis.withProgress(routeModel, fix)
         state = RouteMatcherState(
-            hypotheses = selectStateHypotheses(finalRankedCandidates),
+            hypotheses = selectedCandidates.map { candidate ->
+                RouteMatchHypothesis(
+                    nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
+                    routeMeters = candidate.analysis.routeMeters,
+                    score = candidate.score,
+                )
+            },
         )
-        return finalMatch.withProgress(routeModel, fix)
+        return RouteMatchResult(
+            analysis = finalMatch,
+            hypotheses = buildDisplayHypotheses(selectedCandidates, fix),
+        )
     }
 
     private fun trimCandidates(
@@ -211,41 +236,53 @@ internal class RouteMatcher(
             .sortedBy { it.score }
     }
 
-    private fun selectStateHypotheses(
+    private fun selectPlausibleCandidates(
         rankedCandidates: List<ScoredRouteCandidate>,
-    ): List<RouteMatchHypothesis> {
+    ): List<ScoredRouteCandidate> {
         if (rankedCandidates.isEmpty()) {
             return emptyList()
         }
 
         val bestScore = rankedCandidates.first().score
-        val selected = mutableListOf<RouteMatchHypothesis>()
+        val selected = mutableListOf<ScoredRouteCandidate>()
         for (candidate in rankedCandidates) {
             if (candidate.score - bestScore > config.hypothesisScoreMargin) {
                 break
             }
             if (selected.any { existing ->
-                    abs(existing.routeMeters - candidate.analysis.routeMeters) < config.hypothesisRouteSeparationMeters
+                    abs(existing.analysis.routeMeters - candidate.analysis.routeMeters) < config.hypothesisRouteSeparationMeters
                 }
             ) {
                 continue
             }
-            selected += RouteMatchHypothesis(
-                nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
-                routeMeters = candidate.analysis.routeMeters,
-                score = candidate.score,
-            )
+            selected += candidate
             if (selected.size >= config.maxStateHypotheses) {
                 break
             }
         }
         return selected.ifEmpty {
-            listOf(
-                RouteMatchHypothesis(
-                    nearestEdgeIndex = rankedCandidates.first().analysis.nearestEdgeIndex.takeIf { it >= 0 },
-                    routeMeters = rankedCandidates.first().analysis.routeMeters,
-                    score = rankedCandidates.first().score,
-                ),
+            listOf(rankedCandidates.first())
+        }
+    }
+
+    private fun buildDisplayHypotheses(
+        selectedCandidates: List<ScoredRouteCandidate>,
+        fix: LocationFix,
+    ): List<RouteMatchDisplayHypothesis> {
+        if (selectedCandidates.isEmpty()) {
+            return emptyList()
+        }
+
+        val bestScore = selectedCandidates.first().score
+        val rawWeights = selectedCandidates.map { candidate ->
+            exp(-(candidate.score - bestScore))
+        }
+        val totalWeight = rawWeights.sum().takeIf { it > 0.0 } ?: 1.0
+        return selectedCandidates.zip(rawWeights).mapIndexed { index, (candidate, weight) ->
+            RouteMatchDisplayHypothesis(
+                analysis = candidate.analysis.withProgress(routeModel, fix),
+                confidence = (weight / totalWeight).toFloat(),
+                isPrimary = index == 0,
             )
         }
     }

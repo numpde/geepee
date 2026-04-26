@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,6 +55,7 @@ internal fun GeePeeApp(
             onPickRoute = {
                 routeLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml", "*/*"))
             },
+            onToggleSetupOverviewMode = viewModel::toggleSetupOverviewMode,
             onStartMonitoring = {
                 if (state.hasLocationPermission) {
                     viewModel.startMonitoring()
@@ -70,6 +72,7 @@ internal fun GeePeeApp(
             onToggleBatterySaver = {
                 viewModel.setBatterySaverEnabled(!state.batterySaverEnabled)
             },
+            onDownloadTile = viewModel::downloadTile,
             onRequestScreenPinning = {
                 requestScreenPinning(context)
             },
@@ -86,8 +89,10 @@ private fun GeePeeScreen(
     onToggleOrientationMode: () -> Unit,
     onToggleDarkMode: () -> Unit,
     onPickRoute: () -> Unit,
+    onToggleSetupOverviewMode: () -> Unit,
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
+    onDownloadTile: (DownloadTileId, Long) -> Unit,
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
     onStopMonitoring: () -> Unit,
@@ -109,11 +114,42 @@ private fun GeePeeScreen(
             viewportWidthPx = viewportWidthPx,
             viewportHeightPx = viewportHeightPx,
         )
+        val showTileOverview = !movementMode && state.setupOverviewMode == SetupOverviewMode.Tiles
+        val overviewRouteModel = state.routeModel
+        val overviewBounds = setupViewportState.boundsOverride
+        val tileGridModel = if (showTileOverview && overviewRouteModel != null && overviewBounds != null) {
+            remember(
+                overviewRouteModel,
+                overviewBounds,
+                viewportWidthPx,
+                viewportHeightPx,
+                state.tileDownloads,
+                state.tileContextConfig,
+            ) {
+                buildTileGridRenderModel(
+                    routeModel = overviewRouteModel,
+                    bounds = overviewBounds,
+                    canvasWidth = viewportWidthPx,
+                    canvasHeight = viewportHeightPx,
+                    config = state.tileContextConfig,
+                    tileSnapshots = state.tileDownloads,
+                )
+            }
+        } else {
+            null
+        }
         val routeCanvasModifier = if (!movementMode && setupViewportState.isReady) {
             Modifier
                 .fillMaxSize()
-                .pointerInput(setupViewportState) {
+                .pointerInput(setupViewportState, tileGridModel, showTileOverview) {
                     detectTapGestures(
+                        onTap = { point ->
+                            if (showTileOverview) {
+                                tileGridModel?.tileAt(ScreenPoint(point.x, point.y))?.let { tile ->
+                                    onDownloadTile(tile.tileId, tile.estimatedBytes)
+                                }
+                            }
+                        },
                         onDoubleTap = {
                             setupViewportState.reset()
                         },
@@ -140,6 +176,12 @@ private fun GeePeeScreen(
             boundsOverride = if (movementMode) null else setupViewportState.boundsOverride,
             modifier = routeCanvasModifier,
         )
+        if (showTileOverview && tileGridModel != null) {
+            TileGridCanvas(
+                model = tileGridModel,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         if (movementMode) {
             MovementTopOverlay(
@@ -198,7 +240,9 @@ private fun GeePeeScreen(
             SetupActions(
                 hasRoute = state.routeModel != null,
                 sessionRunning = state.sessionRunning,
+                overviewMode = state.setupOverviewMode,
                 onPickRoute = onPickRoute,
+                onToggleOverviewMode = onToggleSetupOverviewMode,
                 onStartMonitoring = onStartMonitoring,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier
