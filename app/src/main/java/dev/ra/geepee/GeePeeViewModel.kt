@@ -173,7 +173,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     fun stopMonitoring() {
         applySessionTransition(sessionState.stop())
-        clearMapInfoFocus(clearCoordinator = true)
+        replaceMapInfoFocusAndClearCoordinator(focus = null)
         debugGpsEnabled = false
         routeLoadState = routeLoadState.clearIssue()
         syncTrackingState()
@@ -362,7 +362,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     fun toggleDebugGps() {
         debugGpsEnabled = !debugGpsEnabled
         if (!debugGpsEnabled) {
-            clearMapInfoFocus(clearCoordinator = true)
+            clearMapInfoFocusAndCoordinator()
             requestImmediateLocationRefresh()
         }
         recomputeUiState()
@@ -384,10 +384,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             batterySaverEnabled = appPreferences.batterySaverEnabled,
         )
         routeLoadState = routeLoadState.clearIssue()
-        replaceMapInfoFocus(
-            focus = focus,
-            clearCoordinator = true,
-        )
+        replaceMapInfoFocusAndClearCoordinator(focus)
         rebuildNearbyWaysAsync(force = true)
         recomputeUiState()
     }
@@ -410,10 +407,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         if (!mapInfoFocusChanged(previousFocus, focus)) {
             return
         }
-        replaceMapInfoFocus(
-            focus = focus,
-            clearCoordinator = false,
-        )
+        setMapInfoFocus(focus)
         rebuildNearbyWaysAsync(force = true)
     }
 
@@ -425,23 +419,22 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         recomputeUiState()
     }
 
-    private fun clearMapInfoFocus(clearCoordinator: Boolean) {
-        replaceMapInfoFocus(focus = null, clearCoordinator = clearCoordinator)
+    private fun clearMapInfoFocusAndCoordinator() {
+        replaceMapInfoFocusAndClearCoordinator(focus = null)
     }
 
-    private fun replaceMapInfoFocus(
-        focus: MapInfoFocus?,
-        clearCoordinator: Boolean,
-    ) {
+    private fun setMapInfoFocus(focus: MapInfoFocus?) {
         liveContextFocus = focus
-        if (clearCoordinator) {
-            routeContextCoordinator.clear()
-        }
+    }
+
+    private fun replaceMapInfoFocusAndClearCoordinator(focus: MapInfoFocus?) {
+        setMapInfoFocus(focus)
+        routeContextCoordinator.clear()
     }
 
     private fun resetRouteContextState() {
         routeContextState = RouteContextState()
-        clearMapInfoFocus(clearCoordinator = true)
+        clearMapInfoFocusAndCoordinator()
     }
 
     private fun currentLiveTrackingConfig(): LiveTrackingConfig {
