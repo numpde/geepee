@@ -53,11 +53,10 @@ internal fun RouteCanvas(
 
     Canvas(modifier = modifier) {
         val routeModel = state.routeModel ?: return@Canvas
-        val routeRotationDegrees = if (orientationMode == OrientationMode.CourseUp) {
-            -(state.compass?.headingDegrees?.toFloat() ?: 0f)
-        } else {
-            0f
-        }
+        val routeRotationDegrees = routeViewRotationDegrees(
+            orientationMode = orientationMode,
+            headingDegrees = state.compass?.headingDegrees,
+        )
         val renderModel = buildRouteRenderModel(
             routeModel = routeModel,
             analysis = state.analysis,

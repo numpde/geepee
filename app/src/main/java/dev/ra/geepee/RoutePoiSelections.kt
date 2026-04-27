@@ -20,11 +20,6 @@ internal fun selectRoutePoiSelections(
     canvasHeight: Float,
     boundsOverride: Bounds?,
 ): List<RoutePoiSelectionInfo> {
-    val routeRotationDegrees = if (orientationMode == OrientationMode.CourseUp) {
-        -(headingDegrees?.toFloat() ?: 0f)
-    } else {
-        0f
-    }
     val poiMarkers = buildRouteRenderModel(
         routeModel = routeModel,
         analysis = analysis,
@@ -36,7 +31,10 @@ internal fun selectRoutePoiSelections(
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
         lookAheadFraction = 0.0,
-        rotationDegrees = routeRotationDegrees,
+        rotationDegrees = routeViewRotationDegrees(
+            orientationMode = orientationMode,
+            headingDegrees = headingDegrees,
+        ),
         includeGradientPolylines = false,
         boundsOverride = boundsOverride,
     ).poiMarkers
