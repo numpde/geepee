@@ -85,7 +85,19 @@ internal class TileContextRepository(
         )
     }
 
-    fun buildSelectedTileDeletePlan(tileIds: Collection<DownloadTileId>): TileDeletePlan {
+    fun buildTileDeletePlan(
+        selectedTileIds: Collection<DownloadTileId>,
+        unusedPolicy: TilePrunePolicy,
+    ): TileDeletePlan {
+        val selectedPlan = buildSelectedTileDeletePlan(selectedTileIds)
+        return if (selectedPlan.tileIds.isNotEmpty()) {
+            selectedPlan
+        } else {
+            buildUnusedTileDeletePlan(unusedPolicy)
+        }
+    }
+
+    private fun buildSelectedTileDeletePlan(tileIds: Collection<DownloadTileId>): TileDeletePlan {
         val cachedTileIds = synchronized(this) {
             tileIds
                 .toSet()
@@ -99,7 +111,7 @@ internal class TileContextRepository(
         )
     }
 
-    fun buildUnusedTileDeletePlan(policy: TilePrunePolicy): TileDeletePlan {
+    private fun buildUnusedTileDeletePlan(policy: TilePrunePolicy): TileDeletePlan {
         val candidateTileIds = pruneCandidateTileIds(policy)
         return TileDeletePlan(
             mode = TileDeleteMode.Unused,

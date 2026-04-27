@@ -235,14 +235,10 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun buildTileDeletePlan(selectedTileIds: Set<DownloadTileId>): TileDeletePlan {
-        val cachedSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
-            tileDownloads[tileId]?.status == TileDownloadStatus.Cached
-        }
-        return if (cachedSelectedTileIds.isNotEmpty()) {
-            tileContextRepository.buildSelectedTileDeletePlan(cachedSelectedTileIds)
-        } else {
-            tileContextRepository.buildUnusedTileDeletePlan(deleteUnusedTilesPrunePolicy())
-        }
+        return tileContextRepository.buildTileDeletePlan(
+            selectedTileIds = selectedTileIds,
+            unusedPolicy = deleteUnusedTilesPrunePolicy(),
+        )
     }
 
     private fun deleteUnusedTilesPrunePolicy(): TilePrunePolicy {

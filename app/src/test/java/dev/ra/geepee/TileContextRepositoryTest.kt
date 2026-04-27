@@ -89,7 +89,7 @@ class TileContextRepositoryTest {
     }
 
     @Test
-    fun buildUnusedTileDeletePlanReportsCandidateTilesAndStoredBytes() {
+    fun buildTileDeletePlanFallsBackToUnusedPolicyWhenSelectionIsEmpty() {
         withRepositoryRoot { cacheRoot, repository ->
             val protectedPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             val deletablePack = syntheticRepositoryPack(
@@ -103,8 +103,9 @@ class TileContextRepositoryTest {
                 repository.loadRouteTileOverlayBundle(routeModel, deletablePack.tileId, DefaultTileContextConfig),
             )
 
-            val plan = repository.buildUnusedTileDeletePlan(
-                TilePrunePolicy(
+            val plan = repository.buildTileDeletePlan(
+                selectedTileIds = emptySet(),
+                unusedPolicy = TilePrunePolicy(
                     protectedTileIds = setOf(protectedPack.tileId),
                 ),
             )
@@ -130,22 +131,30 @@ class TileContextRepositoryTest {
     }
 
     @Test
-    fun buildSelectedTileDeletePlanReportsExactSelectedTilesAndIgnoresUnknownOnes() {
+    fun buildTileDeletePlanPrefersExplicitSelectedCachedTiles() {
         withRepositoryRoot { cacheRoot, repository ->
             val pack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
                 west = 21.0,
             )
+            val extraUnusedPack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 571, y = 355),
+                west = 21.02,
+            )
             val routeModel = loadRepositoryRouteModel()
             repository.storeTilePack(pack)
+            repository.storeTilePack(extraUnusedPack)
             requireNotNull(
                 repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
             )
 
-            val plan = repository.buildSelectedTileDeletePlan(
-                listOf(
+            val plan = repository.buildTileDeletePlan(
+                selectedTileIds = listOf(
                     pack.tileId,
                     DownloadTileId(zoom = 10, x = 999, y = 999),
+                ),
+                unusedPolicy = TilePrunePolicy(
+                    protectedTileIds = setOf(extraUnusedPack.tileId),
                 ),
             )
 
@@ -166,6 +175,33 @@ class TileContextRepositoryTest {
             assertEquals(setOf(pack.tileId), plan.tileIds)
             assertEquals(1, plan.tileCount)
             assertEquals(expectedBytes, plan.freedBytes)
+        }
+    }
+
+    @Test
+    fun buildTileDeletePlanFallsBackToUnusedPolicyWhenSelectionHasNoCachedTiles() {
+        withRepository { repository ->
+            val protectedPack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
+                west = 21.0,
+            )
+            val deletablePack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 571, y = 356),
+                west = 21.02,
+            )
+            repository.storeTilePack(protectedPack)
+            repository.storeTilePack(deletablePack)
+
+            val plan = repository.buildTileDeletePlan(
+                selectedTileIds = setOf(DownloadTileId(zoom = 10, x = 999, y = 999)),
+                unusedPolicy = TilePrunePolicy(
+                    protectedTileIds = setOf(protectedPack.tileId),
+                ),
+            )
+
+            assertEquals(TileDeleteMode.Unused, plan.mode)
+            assertEquals(setOf(deletablePack.tileId), plan.tileIds)
+            assertEquals(1, plan.tileCount)
         }
     }
 
