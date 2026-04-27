@@ -141,12 +141,18 @@ class RouteContextCoordinatorTest {
         val baseKey = buildNearbyWayQueryCacheKey(
             routeModel = routeModel,
             queryFocus = baseFocus,
-            loadedTileRevisions = revisions,
+            tileCoverage = NearbyWayTileCoverage(
+                localTileIds = emptySet(),
+                loadedTileRevisions = revisions,
+            ),
         )
         val nearbyKey = buildNearbyWayQueryCacheKey(
             routeModel = routeModel,
             queryFocus = nearbyFocus,
-            loadedTileRevisions = revisions,
+            tileCoverage = NearbyWayTileCoverage(
+                localTileIds = emptySet(),
+                loadedTileRevisions = revisions,
+            ),
         )
 
         assertEquals(baseKey, nearbyKey)
@@ -175,20 +181,26 @@ class RouteContextCoordinatorTest {
         val firstKey = buildNearbyWayQueryCacheKey(
             routeModel = routeModel,
             queryFocus = focus,
-            loadedTileRevisions = listOf(
-                NearbyWayLoadedTileRevision(
-                    tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
-                    updatedAtMillis = 123L,
+            tileCoverage = NearbyWayTileCoverage(
+                localTileIds = emptySet(),
+                loadedTileRevisions = listOf(
+                    NearbyWayLoadedTileRevision(
+                        tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
+                        updatedAtMillis = 123L,
+                    ),
                 ),
             ),
         )
         val secondKey = buildNearbyWayQueryCacheKey(
             routeModel = routeModel,
             queryFocus = focus,
-            loadedTileRevisions = listOf(
-                NearbyWayLoadedTileRevision(
-                    tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
-                    updatedAtMillis = 456L,
+            tileCoverage = NearbyWayTileCoverage(
+                localTileIds = emptySet(),
+                loadedTileRevisions = listOf(
+                    NearbyWayLoadedTileRevision(
+                        tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
+                        updatedAtMillis = 456L,
+                    ),
                 ),
             ),
         )
@@ -286,5 +298,38 @@ class RouteContextCoordinatorTest {
         )
 
         assertEquals(setOf(routeTile, cachedNeighborTile), warmTileIds)
+    }
+
+    @Test
+    fun buildNearbyWayTileCoverage_keepsOnlyCachedTilesSortedByTileId() {
+        val tileA = DownloadTileId(zoom = 10, x = 10, y = 20)
+        val tileB = DownloadTileId(zoom = 10, x = 9, y = 20)
+        val tileC = DownloadTileId(zoom = 10, x = 11, y = 20)
+
+        val coverage = buildNearbyWayTileCoverage(
+            localTileIds = linkedSetOf(tileA, tileB, tileC),
+            tileDownloads = mapOf(
+                tileA to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 20L,
+                ),
+                tileB to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Error,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 10L,
+                ),
+                tileC to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 30L,
+                ),
+            ),
+        )
+
+        assertEquals(setOf(tileA, tileB, tileC), coverage.localTileIds)
+        assertEquals(listOf(tileA, tileC).sortedBy(DownloadTileId::cacheKey), coverage.loadedTileIds)
+        assertEquals(3, coverage.localTileCount)
+        assertEquals(2, coverage.loadedLocalTileCount)
     }
 }

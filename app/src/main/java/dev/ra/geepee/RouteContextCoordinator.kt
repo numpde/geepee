@@ -16,6 +16,20 @@ internal data class NearbyWayLoadedTileRevision(
     val updatedAtMillis: Long,
 )
 
+internal data class NearbyWayTileCoverage(
+    val localTileIds: Set<DownloadTileId>,
+    val loadedTileRevisions: List<NearbyWayLoadedTileRevision>,
+) {
+    val localTileCount: Int
+        get() = localTileIds.size
+
+    val loadedLocalTileCount: Int
+        get() = loadedTileRevisions.size
+
+    val loadedTileIds: List<DownloadTileId>
+        get() = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId)
+}
+
 internal data class NearbyWayQueryCacheKey(
     val routeFingerprint: String,
     val localTileRevisions: List<NearbyWayLoadedTileRevision>,
@@ -138,21 +152,14 @@ internal class RouteContextCoordinator(
             config = tileContextConfig,
             defaultFocusWindowWidthMeters = defaultFocusWindowWidthMeters,
         )
-        val localTileIds = queryFocus.localTileIds
-        val loadedTileRevisions = localTileIds.mapNotNull { tileId ->
-            tileDownloads[tileId]
-                ?.takeIf { it.status == TileDownloadStatus.Cached }
-                ?.let { snapshot ->
-                    NearbyWayLoadedTileRevision(
-                        tileId = tileId,
-                        updatedAtMillis = snapshot.updatedAtMillis,
-                    )
-                }
-        }.sortedBy { it.tileId.cacheKey }
+        val tileCoverage = buildNearbyWayTileCoverage(
+            localTileIds = queryFocus.localTileIds,
+            tileDownloads = tileDownloads,
+        )
         val cacheKey = buildNearbyWayQueryCacheKey(
             routeModel = routeModel,
             queryFocus = queryFocus,
-            loadedTileRevisions = loadedTileRevisions,
+            tileCoverage = tileCoverage,
         )
         if (!force && nearbyWayQueryKey == cacheKey) {
             return
@@ -163,11 +170,10 @@ internal class RouteContextCoordinator(
             onResult(cachedResult)
             return
         }
-        val loadedLocalTileCount = loadedTileRevisions.size
         onStarted(
             LocalNearbyWayDebugStatus.loading(
-                localTileCount = localTileIds.size,
-                loadedLocalTileCount = loadedLocalTileCount,
+                localTileCount = tileCoverage.localTileCount,
+                loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
                 existingNearbyWayCount = existingLocalStatus?.nearbyWayCount ?: 0,
             ),
         )
@@ -176,7 +182,7 @@ internal class RouteContextCoordinator(
             val result = try {
                 val cachedBundles = tileContextRepository.peekCachedRouteTileOverlayBundles(
                     routeModel = routeModel,
-                    tileIds = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId),
+                    tileIds = tileCoverage.loadedTileIds,
                     config = tileContextConfig,
                 )
                 val cachedBundleTileIds = cachedBundles
@@ -194,9 +200,7 @@ internal class RouteContextCoordinator(
                         )
                     }
                 )
-                val missingOverlayTileIds = loadedTileRevisions
-                    .map(NearbyWayLoadedTileRevision::tileId)
-                    .filterNot(cachedBundleTileIds::contains)
+                val missingOverlayTileIds = tileCoverage.loadedTileIds.filterNot(cachedBundleTileIds::contains)
                 val runtimeFallbackNearbyWays = dedupeNearbyWaysByFeatureId(
                     tileContextRepository.loadRuntimePacks(missingOverlayTileIds).flatMap { runtimePack ->
                         queryTileRuntimeNearbyWays(
@@ -215,16 +219,16 @@ internal class RouteContextCoordinator(
                 }
                 val nearbyWays = dedupeNearbyWaysByFeatureId(overlayNearbyWays + runtimeFallbackNearbyWays)
                 RouteMapInfoState.resolvedNearbyWays(
-                    localTileCount = localTileIds.size,
-                    loadedLocalTileCount = loadedTileRevisions.size,
+                    localTileCount = tileCoverage.localTileCount,
+                    loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
                     nearbyWays = nearbyWays,
                 )
             } catch (error: Throwable) {
                 Log.e(logTag, "Nearby-way rebuild failed", error)
                 RouteMapInfoState.failedNearbyWays(
-                    localTileCount = localTileIds.size,
-                    loadedLocalTileCount = loadedLocalTileCount,
-                    hasVisibleTileData = loadedLocalTileCount > 0,
+                    localTileCount = tileCoverage.localTileCount,
+                    loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
+                    hasVisibleTileData = tileCoverage.loadedLocalTileCount > 0,
                     errorMessage = error.javaClass.simpleName,
                 )
             }
@@ -281,16 +285,36 @@ internal fun resolveNearbyWayQueryFocus(
     )
 }
 
+internal fun buildNearbyWayTileCoverage(
+    localTileIds: Set<DownloadTileId>,
+    tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
+): NearbyWayTileCoverage {
+    val loadedTileRevisions = localTileIds.mapNotNull { tileId ->
+        tileDownloads[tileId]
+            ?.takeIf { it.status == TileDownloadStatus.Cached }
+            ?.let { snapshot ->
+                NearbyWayLoadedTileRevision(
+                    tileId = tileId,
+                    updatedAtMillis = snapshot.updatedAtMillis,
+                )
+            }
+    }.sortedBy { it.tileId.cacheKey }
+    return NearbyWayTileCoverage(
+        localTileIds = localTileIds,
+        loadedTileRevisions = loadedTileRevisions,
+    )
+}
+
 internal fun buildNearbyWayQueryCacheKey(
     routeModel: RouteModel,
     queryFocus: NearbyWayQueryFocus,
-    loadedTileRevisions: List<NearbyWayLoadedTileRevision>,
+    tileCoverage: NearbyWayTileCoverage,
 ): NearbyWayQueryCacheKey {
     val projectedBounds = queryFocus.focus.projectedBounds
     val boundsBucketMeters = maxOf(25.0, queryFocus.focus.windowWidthMeters * 0.2)
     return NearbyWayQueryCacheKey(
         routeFingerprint = routeFingerprint(routeModel),
-        localTileRevisions = loadedTileRevisions,
+        localTileRevisions = tileCoverage.loadedTileRevisions,
         boundsMinXBucket = kotlin.math.floor(projectedBounds.minX / boundsBucketMeters).toInt(),
         boundsMaxXBucket = kotlin.math.floor(projectedBounds.maxX / boundsBucketMeters).toInt(),
         boundsMinYBucket = kotlin.math.floor(projectedBounds.minY / boundsBucketMeters).toInt(),
