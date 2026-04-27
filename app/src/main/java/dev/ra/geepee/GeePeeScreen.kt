@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -47,74 +46,6 @@ internal data class MovementViewState(
     val effectiveMapInfoFocus: MapInfoFocus?
         get() = if (mapInfoEnabled) viewportFocus else null
 }
-
-internal data class PreviewTileSelectionState(
-    val selectedTileIds: Set<DownloadTileId> = emptySet(),
-) {
-    val selectionModeActive: Boolean
-        get() = selectedTileIds.isNotEmpty()
-
-    fun retainCached(
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileSelectionState {
-        val retainedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
-            tileSnapshots[tileId]?.status == TileDownloadStatus.Cached
-        }
-        return if (retainedTileIds == selectedTileIds) {
-            this
-        } else {
-            copy(selectedTileIds = retainedTileIds)
-        }
-    }
-
-    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
-        if (tile == null) {
-            return PreviewTileTapResult(this)
-        }
-        return if (selectionModeActive) {
-            PreviewTileTapResult(toggleCachedTile(tile))
-        } else if (tile.isCached) {
-            PreviewTileTapResult(this)
-        } else {
-            PreviewTileTapResult(
-                selectionState = this,
-                downloadRequest = PreviewTileDownloadRequest(
-                    tileId = tile.tileId,
-                    estimatedBytes = tile.estimatedBytes,
-                ),
-            )
-        }
-    }
-
-    fun onLongPress(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        return toggleCachedTile(tile)
-    }
-
-    private fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        if (tile?.isCached != true) {
-            return this
-        }
-        val nextSelectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
-            if (!tileIds.add(tile.tileId)) {
-                tileIds.remove(tile.tileId)
-            }
-        }.toSet()
-        return copy(selectedTileIds = nextSelectedTileIds)
-    }
-}
-
-internal data class PreviewTileTapResult(
-    val selectionState: PreviewTileSelectionState,
-    val downloadRequest: PreviewTileDownloadRequest? = null,
-)
-
-internal data class PreviewTileDownloadRequest(
-    val tileId: DownloadTileId,
-    val estimatedBytes: Long,
-)
-
-private val TileGridDisplayTile.isCached: Boolean
-    get() = snapshot?.status == TileDownloadStatus.Cached
 
 @Composable
 internal fun GeePeeApp(
@@ -283,14 +214,11 @@ private fun GeePeeScreen(
         var tileSelectionState by remember(state.routeName, movementMode) {
             mutableStateOf(PreviewTileSelectionState())
         }
-        LaunchedEffect(state.tileDownloads, tileSelectionState) {
-            val retainedSelectionState = tileSelectionState.retainCached(state.tileDownloads)
-            if (retainedSelectionState != tileSelectionState) {
-                tileSelectionState = retainedSelectionState
-            }
+        val resolvedTileSelection = remember(tileSelectionState, state.tileDownloads) {
+            tileSelectionState.resolve(state.tileDownloads)
         }
-        val selectedTileIds = tileSelectionState.selectedTileIds
-        val deleteTilesLabel = deleteTilesActionLabel(selectedTileIds)
+        val selectedTileIds = resolvedTileSelection.selectedTileIds
+        val deleteTilesLabel = resolvedTileSelection.deleteTilesActionLabel
         var deleteTilesPlan by remember { mutableStateOf<TileDeletePlan?>(null) }
         LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
             movementViewState.effectiveMapInfoFocus?.let { focus ->
@@ -356,6 +284,7 @@ private fun GeePeeScreen(
                             if (showTileOverview) {
                                 val tapResult = tileSelectionState.onTap(
                                     tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                    state.tileDownloads,
                                 )
                                 tileSelectionState = tapResult.selectionState
                                 tapResult.downloadRequest?.let { request ->
@@ -385,6 +314,7 @@ private fun GeePeeScreen(
                             if (showTileOverview) {
                                 tileSelectionState = tileSelectionState.onLongPress(
                                     tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                    state.tileDownloads,
                                 )
                             }
                         },
@@ -553,7 +483,7 @@ private fun GeePeeScreen(
                 onConfirm = {
                     deleteTilesPlan = null
                     onExecuteTileDeletePlan(plan)
-                    tileSelectionState = PreviewTileSelectionState()
+                    tileSelectionState = tileSelectionState.clear()
                 },
                 onDismiss = { deleteTilesPlan = null },
             )
@@ -640,14 +570,6 @@ private fun tappedPoiSelections(
             compareBy<RoutePoiSelectionInfo> { it.distanceMeters ?: Double.POSITIVE_INFINITY }
                 .thenBy(RoutePoiSelectionInfo::title),
         )
-}
-
-internal fun deleteTilesActionLabel(selectedTileIds: Set<DownloadTileId>): String {
-    return if (selectedTileIds.isNotEmpty()) {
-        "Delete selected tiles"
-    } else {
-        "Delete unused tiles"
-    }
 }
 
 internal data class DeleteTilesDialogCopy(

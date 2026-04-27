@@ -6,15 +6,6 @@ import org.junit.Test
 
 class TileDeletePlanTest {
     @Test
-    fun deleteTilesActionLabelReflectsSelectionState() {
-        assertEquals("Delete unused tiles", deleteTilesActionLabel(emptySet()))
-        assertEquals(
-            "Delete selected tiles",
-            deleteTilesActionLabel(setOf(DownloadTileId(zoom = 10, x = 1, y = 2))),
-        )
-    }
-
-    @Test
     fun deleteTilesDialogCopyExplainsSelectedTileDeletion() {
         val copy = deleteTilesDialogCopy(
             TileDeletePlan(

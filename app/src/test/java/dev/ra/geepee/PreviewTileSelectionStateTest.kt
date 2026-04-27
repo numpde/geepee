@@ -1,0 +1,207 @@
+package dev.ra.geepee
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PreviewTileSelectionStateTest {
+    @Test
+    fun resolveUsesUnusedDeleteLabelWhenNothingIsSelected() {
+        val resolved = PreviewTileSelectionState().resolve(emptyMap())
+
+        assertEquals("Delete unused tiles", resolved.deleteTilesActionLabel)
+        assertTrue(!resolved.selectionModeActive)
+    }
+
+    @Test
+    fun resolveUsesSelectedDeleteLabelWhenSelectionRemains() {
+        val tileId = DownloadTileId(zoom = 10, x = 1, y = 2)
+
+        val resolved = PreviewTileSelectionState(setOf(tileId)).resolve(
+            mapOf(
+                tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 100_000L,
+                ),
+            ),
+        )
+
+        assertEquals("Delete selected tiles", resolved.deleteTilesActionLabel)
+        assertTrue(resolved.selectionModeActive)
+    }
+
+    @Test
+    fun onLongPressOnCachedTileStartsSelectionMode() {
+        val cachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
+            status = TileDownloadStatus.Cached,
+        )
+
+        val state = PreviewTileSelectionState().onLongPress(cachedTile, emptyMap())
+
+        assertEquals(setOf(cachedTile.tileId), state.selectedTileIds)
+    }
+
+    @Test
+    fun onTapOnCachedTileDoesNothingUntilSelectionModeIsActive() {
+        val cachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
+            status = TileDownloadStatus.Cached,
+        )
+
+        val result = PreviewTileSelectionState().onTap(cachedTile, emptyMap())
+
+        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertNull(result.downloadRequest)
+    }
+
+    @Test
+    fun onTapOnUncachedTileRequestsDownloadOutsideSelectionMode() {
+        val uncachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 3, y = 4),
+            status = null,
+            estimatedBytes = 123_000L,
+        )
+
+        val result = PreviewTileSelectionState().onTap(uncachedTile, emptyMap())
+
+        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertEquals(
+            PreviewTileDownloadRequest(
+                tileId = uncachedTile.tileId,
+                estimatedBytes = uncachedTile.estimatedBytes,
+            ),
+            result.downloadRequest,
+        )
+    }
+
+    @Test
+    fun onTapTogglesCachedTilesWhileSelectionModeIsActive() {
+        val firstTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
+            status = TileDownloadStatus.Cached,
+        )
+        val secondTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 5, y = 6),
+            status = TileDownloadStatus.Cached,
+        )
+
+        val initialState = PreviewTileSelectionState(setOf(firstTile.tileId))
+        val tileSnapshots = mapOf(
+            firstTile.tileId to requireNotNull(firstTile.snapshot),
+            secondTile.tileId to requireNotNull(secondTile.snapshot),
+        )
+
+        val secondTileResult = initialState.onTap(secondTile, tileSnapshots)
+        assertEquals(
+            setOf(firstTile.tileId, secondTile.tileId),
+            secondTileResult.selectionState.selectedTileIds,
+        )
+        assertNull(secondTileResult.downloadRequest)
+
+        val deselectResult = secondTileResult.selectionState.onTap(firstTile, tileSnapshots)
+        assertEquals(setOf(secondTile.tileId), deselectResult.selectionState.selectedTileIds)
+        assertNull(deselectResult.downloadRequest)
+    }
+
+    @Test
+    fun onTapOnUncachedTileDoesNothingDuringSelectionMode() {
+        val cachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
+            status = TileDownloadStatus.Cached,
+        )
+        val uncachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 7, y = 8),
+            status = null,
+            estimatedBytes = 321_000L,
+        )
+
+        val result = PreviewTileSelectionState(setOf(cachedTile.tileId)).onTap(
+            tile = uncachedTile,
+            tileSnapshots = mapOf(
+                cachedTile.tileId to requireNotNull(cachedTile.snapshot),
+            ),
+        )
+
+        assertEquals(setOf(cachedTile.tileId), result.selectionState.selectedTileIds)
+        assertNull(result.downloadRequest)
+    }
+
+    @Test
+    fun retainCachedDropsTilesThatAreNoLongerCached() {
+        val cachedTileId = DownloadTileId(zoom = 10, x = 1, y = 2)
+        val staleTileId = DownloadTileId(zoom = 10, x = 3, y = 4)
+
+        val state = PreviewTileSelectionState(setOf(cachedTileId, staleTileId)).retainCached(
+            tileSnapshots = mapOf(
+                cachedTileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 100_000L,
+                ),
+                staleTileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Downloading,
+                    estimatedBytes = 200_000L,
+                    downloadedBytes = 50_000L,
+                ),
+            ),
+        )
+
+        assertEquals(setOf(cachedTileId), state.selectedTileIds)
+    }
+
+    @Test
+    fun onTapNormalizesStaleSelectionBeforeHandlingTap() {
+        val staleTileId = DownloadTileId(zoom = 10, x = 3, y = 4)
+        val uncachedTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 7, y = 8),
+            status = null,
+            estimatedBytes = 321_000L,
+        )
+
+        val result = PreviewTileSelectionState(setOf(staleTileId)).onTap(
+            tile = uncachedTile,
+            tileSnapshots = mapOf(
+                staleTileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Downloading,
+                    estimatedBytes = 200_000L,
+                    downloadedBytes = 50_000L,
+                ),
+            ),
+        )
+
+        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertEquals(
+            PreviewTileDownloadRequest(
+                tileId = uncachedTile.tileId,
+                estimatedBytes = uncachedTile.estimatedBytes,
+            ),
+            result.downloadRequest,
+        )
+    }
+}
+
+private fun previewTile(
+    tileId: DownloadTileId,
+    status: TileDownloadStatus?,
+    estimatedBytes: Long = 180_000L,
+): TileGridDisplayTile {
+    return TileGridDisplayTile(
+        tileId = tileId,
+        screenRect = ScreenRect(0f, 0f, 10f, 10f),
+        routeMetrics = TileRouteMetrics(
+            intersectsRoute = true,
+            intersectingEdgeCount = 1,
+            intersectingRouteMeters = 100.0,
+        ),
+        snapshot = status?.let {
+            TileDownloadSnapshot(
+                status = it,
+                estimatedBytes = estimatedBytes,
+            )
+        },
+        selected = false,
+        estimatedBytes = estimatedBytes,
+        label = null,
+    )
+}
