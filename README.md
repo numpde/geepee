@@ -2,14 +2,26 @@
 
 GeePee is a narrow Android app for following a preloaded GPX route and noticing when you drift off it.
 
-It is intentionally not a map app. The main screen is just:
+It is intentionally not a general map app. The core screen stays focused on:
 
 - the local route slice
 - your position relative to the route
 - distance back to the route
-- a small amount of movement/status UI
+- a small amount of route-adjacent context and movement/status UI
 
 <img src="docs/screenshots/geepee-on-route.png" alt="GeePee on-route screen" width="280" />
+
+## Current Workflow
+
+1. Open a GPX file.
+2. In the pre-start route preview, tap route tiles to download route-context data for the parts you care about.
+3. Start monitoring and follow the route in the live view.
+
+Cached preview tiles can also be managed from that pre-start screen:
+
+- long-press a downloaded tile to enter tile-selection mode
+- tap other downloaded tiles to add/remove them
+- use the menu to delete the selected tiles, or delete unused tiles when nothing is selected
 
 ## Status
 
@@ -90,11 +102,11 @@ Replay a checked-in GPX route to a real phone over ADB:
 
 More examples are in [scripts/REPLAY.md](scripts/REPLAY.md).
 
-## OSM Route Context Pilot
+## Route Context Data
 
-There is also a reversible, dev-only pilot for fetching OSM route context without turning GeePee into a full map app.
+GeePee has an explicit route-context tile workflow. The pre-start preview can download small route-adjacent OSM tiles, and the repo also includes a script for building the same kind of data offline.
 
-It fetches:
+That context currently includes:
 
 - route-adjacent `highway=*` ways
 - derived junctions
@@ -156,6 +168,6 @@ GeePee is deliberately narrow:
 - no background location permission
 - no GPX copying into app storage
 
-The app now has an explicit route-context tile downloader. Network use happens only when you tap tiles in that pre-start screen.
+Network use for route context happens only when you explicitly download tiles from the pre-start route-preview screen or run the helper scripts yourself.
 
 See [AUDIT.md](AUDIT.md) for the audit-oriented overview.
