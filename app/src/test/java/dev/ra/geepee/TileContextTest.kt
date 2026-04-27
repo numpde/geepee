@@ -58,6 +58,66 @@ class TileContextTest {
     }
 
     @Test
+    fun tileGridRenderModelHidesOffRouteUndownloadedTilesButKeepsCachedOnes() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val routeMetrics = buildRouteTileMetricsIndex(
+            routeModel = route,
+            config = config,
+        )
+        val visibleBounds = Bounds(
+            minX = route.bounds.minX,
+            maxX = route.bounds.maxX,
+            minY = route.bounds.minY - 40_000.0,
+            maxY = route.bounds.maxY + 40_000.0,
+        )
+        val visibleTileIds = tilesIntersectingProjectedBounds(
+            projection = route.projection,
+            bounds = visibleBounds,
+            zoom = config.downloadZoom,
+        )
+        val offRouteTileId = requireNotNull(
+            visibleTileIds.firstOrNull { tileId -> routeMetrics[tileId] == null },
+        ) {
+            "Expected a viewport tile that does not intersect the route"
+        }
+
+        val withoutCache = buildTileGridRenderModel(
+            routeModel = route,
+            routeTileMetricsById = routeMetrics,
+            bounds = visibleBounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val withCachedOffRouteTile = buildTileGridRenderModel(
+            routeModel = route,
+            routeTileMetricsById = routeMetrics,
+            bounds = visibleBounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = mapOf(
+                offRouteTileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 123L,
+                ),
+            ),
+        )
+
+        assertFalse(withoutCache.tiles.any { it.tileId == offRouteTileId })
+        assertTrue(withCachedOffRouteTile.tiles.any { it.tileId == offRouteTileId })
+    }
+
+    @Test
     fun tileGridHitTestingReturnsVisibleTile() {
         val route = buildRouteModel(
             listOf(

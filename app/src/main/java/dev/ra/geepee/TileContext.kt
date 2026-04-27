@@ -238,6 +238,13 @@ internal data class TileGridRenderModel(
     }
 }
 
+private fun shouldDisplayTileInRouteView(
+    routeMetrics: TileRouteMetrics,
+    snapshot: TileDownloadSnapshot?,
+): Boolean {
+    return routeMetrics.intersectsRoute || snapshot?.status == TileDownloadStatus.Cached
+}
+
 internal fun normalizeOverpassTilePack(
     tileId: DownloadTileId,
     config: TileContextConfig,
@@ -388,7 +395,7 @@ internal fun buildTileGridRenderModel(
         zoom = config.downloadZoom,
     )
     val cachedAverageBytes = cachedAverageBytes(tileSnapshots)
-    val tiles = visibleTileIds.map { tileId ->
+    val tiles = visibleTileIds.mapNotNull { tileId ->
         val geoBounds = tileGeoBounds(tileId)
         val projectedBounds = projectedBoundsForGeoBounds(geoBounds, routeModel.projection)
         val screenRect = projectedBoundsToScreenRect(
@@ -399,6 +406,9 @@ internal fun buildTileGridRenderModel(
         )
         val routeMetrics = routeTileMetricsById[tileId] ?: EmptyTileRouteMetrics
         val snapshot = tileSnapshots[tileId]
+        if (!shouldDisplayTileInRouteView(routeMetrics, snapshot)) {
+            return@mapNotNull null
+        }
         val estimatedBytes = snapshot?.actualBytes
             ?: estimateTileBytes(routeMetrics, cachedAverageBytes)
         TileGridDisplayTile(
