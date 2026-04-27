@@ -395,7 +395,7 @@ internal fun queryTileRuntimeNearbyWays(
     routeModel: RouteModel,
     runtimePack: TileRuntimePack,
     focusGeoPoint: GeoPoint,
-    focusNearestEdgeIndex: Int,
+    focusHintEdgeIndexes: List<Int>,
     focusWindowWidthMeters: Double,
     focusBoundsOverride: Bounds? = null,
     config: TileContextConfig,
@@ -454,8 +454,8 @@ internal fun queryTileRuntimeNearbyWays(
                 haloMeters = config.wayHaloMeters,
                 continuationMeters = config.nearbyWayContinuationMeters,
                 focusBounds = projectedFocusBounds,
-                initialNearestEdgeIndex = focusNearestEdgeIndex.takeIf { it >= 0 },
-                restrictToHintWindow = focusNearestEdgeIndex >= 0,
+                initialNearestEdgeIndexes = focusHintEdgeIndexes,
+                restrictToHintWindow = focusHintEdgeIndexes.isNotEmpty(),
             )
         }
         .groupBy(RouteNearbyWaySnippet::featureId)

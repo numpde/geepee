@@ -7,7 +7,7 @@ import java.util.concurrent.Executors
 
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
-    val nearestEdgeIndex: Int,
+    val hintEdgeIndexes: List<Int>,
     val localTileIds: Set<DownloadTileId>,
 )
 
@@ -19,7 +19,6 @@ internal data class NearbyWayLoadedTileRevision(
 internal data class NearbyWayQueryCacheKey(
     val routeFingerprint: String,
     val localTileRevisions: List<NearbyWayLoadedTileRevision>,
-    val nearestEdgeIndex: Int,
     val boundsMinXBucket: Int,
     val boundsMaxXBucket: Int,
     val boundsMinYBucket: Int,
@@ -145,7 +144,7 @@ internal class RouteContextCoordinator(
                             routeModel = routeModel,
                             runtimePack = runtimePack,
                             focusGeoPoint = queryFocus.focus.centerGeoPoint,
-                            focusNearestEdgeIndex = queryFocus.nearestEdgeIndex,
+                            focusHintEdgeIndexes = queryFocus.hintEdgeIndexes,
                             focusWindowWidthMeters = queryFocus.focus.windowWidthMeters,
                             focusBoundsOverride = queryFocus.focus.projectedBounds,
                             config = tileContextConfig,
@@ -206,7 +205,7 @@ internal fun resolveNearbyWayQueryFocus(
         ) ?: routeModel.bounds,
     )
     val projectedFocusBounds = resolvedFocus.projectedBounds
-    val focusNearestEdgeIndex = if (
+    val fallbackNearestEdgeIndex = if (
         explicitFocus == null ||
         distanceBetweenGeoPointsMeters(resolvedFocus.centerGeoPoint, analysis.nearestGeoPoint) <= 3.0
     ) {
@@ -221,6 +220,15 @@ internal fun resolveNearbyWayQueryFocus(
                 config.nearbyWayContinuationMeters,
         ).nearestEdgeIndex
     }
+    val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
+        model = routeModel,
+        bounds = expandBounds(
+            projectedFocusBounds,
+            config.wayHaloMeters + config.nearbyWayContinuationMeters,
+        ),
+    ).ifEmpty {
+        listOfNotNull(fallbackNearestEdgeIndex.takeIf { it >= 0 })
+    }
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = expandBounds(
@@ -231,7 +239,7 @@ internal fun resolveNearbyWayQueryFocus(
     ).toSet()
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
-        nearestEdgeIndex = focusNearestEdgeIndex,
+        hintEdgeIndexes = focusHintEdgeIndexes,
         localTileIds = localTileIds,
     )
 }
@@ -246,7 +254,6 @@ internal fun buildNearbyWayQueryCacheKey(
     return NearbyWayQueryCacheKey(
         routeFingerprint = routeFingerprint(routeModel),
         localTileRevisions = loadedTileRevisions,
-        nearestEdgeIndex = queryFocus.nearestEdgeIndex,
         boundsMinXBucket = kotlin.math.floor(projectedBounds.minX / boundsBucketMeters).toInt(),
         boundsMaxXBucket = kotlin.math.floor(projectedBounds.maxX / boundsBucketMeters).toInt(),
         boundsMinYBucket = kotlin.math.floor(projectedBounds.minY / boundsBucketMeters).toInt(),

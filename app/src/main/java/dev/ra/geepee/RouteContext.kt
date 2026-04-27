@@ -204,12 +204,6 @@ internal fun buildRouteNearbyWays(
     focusGeoPoint: GeoPoint? = null,
     focusWindowWidthMeters: Double? = null,
 ): List<RouteNearbyWaySnippet> {
-    val focusNearestEdgeIndex = focusGeoPoint?.let { point ->
-        collectRouteCandidates(
-            model = routeModel,
-            projectedFix = projectGeoPointToRouteProjection(point, routeModel.projection),
-        ).minByOrNull(RouteAnalysis::offRouteMeters)?.nearestEdgeIndex
-    }
     val nearbyWayFocusBounds = nearbyWayFocusBounds(
         routeModel = routeModel,
         focusGeoPoint = focusGeoPoint,
@@ -217,6 +211,19 @@ internal fun buildRouteNearbyWays(
         haloMeters = config.wayHaloMeters,
         continuationMeters = config.nearbyWayContinuationMeters,
     )
+    val focusHintEdgeIndexes = nearbyWayFocusBounds?.let { bounds ->
+        routeEdgeIndexesIntersectingBounds(
+            model = routeModel,
+            bounds = expandBounds(bounds, config.wayHaloMeters + config.nearbyWayContinuationMeters),
+        )
+    }.orEmpty().ifEmpty {
+        focusGeoPoint?.let { point ->
+            collectRouteCandidates(
+                model = routeModel,
+                projectedFix = projectGeoPointToRouteProjection(point, routeModel.projection),
+            ).minByOrNull(RouteAnalysis::offRouteMeters)?.nearestEdgeIndex?.let(::listOf)
+        }.orEmpty()
+    }
     return collectNearbyWayFeatures(packs).values.flatMap { feature ->
         extractNearbyWaySnippets(
             routeModel = routeModel,
@@ -224,8 +231,8 @@ internal fun buildRouteNearbyWays(
             haloMeters = config.wayHaloMeters,
             continuationMeters = config.nearbyWayContinuationMeters,
             focusBounds = nearbyWayFocusBounds,
-            initialNearestEdgeIndex = focusNearestEdgeIndex,
-            restrictToHintWindow = focusNearestEdgeIndex != null,
+            initialNearestEdgeIndexes = focusHintEdgeIndexes,
+            restrictToHintWindow = focusHintEdgeIndexes.isNotEmpty(),
         )
     }
 }
@@ -365,7 +372,7 @@ internal fun extractNearbyWaySnippets(
     haloMeters: Double,
     continuationMeters: Double,
     focusBounds: Bounds? = null,
-    initialNearestEdgeIndex: Int? = null,
+    initialNearestEdgeIndexes: List<Int> = emptyList(),
     restrictToHintWindow: Boolean = false,
 ): List<RouteNearbyWaySnippet> {
     if (feature.geometry.size < 2) {
@@ -375,12 +382,12 @@ internal fun extractNearbyWaySnippets(
         routeModel = routeModel,
         featureId = feature.featureId,
         projectedPoints = feature.geometry.map { point ->
-        projectGeoPointToRouteProjection(point, routeModel.projection)
+            projectGeoPointToRouteProjection(point, routeModel.projection)
         },
         haloMeters = haloMeters,
         continuationMeters = continuationMeters,
         focusBounds = focusBounds,
-        initialNearestEdgeIndex = initialNearestEdgeIndex,
+        initialNearestEdgeIndexes = initialNearestEdgeIndexes,
         restrictToHintWindow = restrictToHintWindow,
     )
 }
@@ -392,7 +399,7 @@ internal fun extractNearbyWaySnippetsFromProjectedPoints(
     haloMeters: Double,
     continuationMeters: Double,
     focusBounds: Bounds? = null,
-    initialNearestEdgeIndex: Int? = null,
+    initialNearestEdgeIndexes: List<Int> = emptyList(),
     restrictToHintWindow: Boolean = false,
 ): List<RouteNearbyWaySnippet> {
     if (projectedPoints.size < 2) {
@@ -407,7 +414,7 @@ internal fun extractNearbyWaySnippetsFromProjectedPoints(
     val samples = buildNearbyWaySamples(
         routeModel = routeModel,
         projectedPoints = projectedPoints,
-        initialNearestEdgeIndex = initialNearestEdgeIndex,
+        initialNearestEdgeIndexes = initialNearestEdgeIndexes,
         maxHintDistanceMeters = haloMeters + continuationMeters,
         restrictToHintWindow = restrictToHintWindow,
     )
@@ -426,7 +433,7 @@ internal fun extractNearbyWaySnippetsFromProjectedPoints(
         val midpointSample = buildNearbyWaySample(
             routeModel = routeModel,
             point = midpoint,
-            previousNearestEdgeIndex = start.nearestEdgeIndex,
+            hintEdgeIndexes = (initialNearestEdgeIndexes + listOfNotNull(start.nearestEdgeIndex.takeIf { it >= 0 })).distinct(),
             maxHintDistanceMeters = haloMeters + continuationMeters,
             restrictToHintWindow = restrictToHintWindow,
         )
@@ -485,7 +492,7 @@ internal fun extractNearbyWaySnippetsFromProjectedPoints(
 private fun buildNearbyWaySamples(
     routeModel: RouteModel,
     projectedPoints: List<ProjectedPoint>,
-    initialNearestEdgeIndex: Int?,
+    initialNearestEdgeIndexes: List<Int>,
     maxHintDistanceMeters: Double,
     restrictToHintWindow: Boolean,
 ): List<NearbyWaySample> {
@@ -493,17 +500,21 @@ private fun buildNearbyWaySamples(
         return emptyList()
     }
     val samples = ArrayList<NearbyWaySample>(projectedPoints.size)
-    var previousNearestEdgeIndex: Int? = initialNearestEdgeIndex
+    val baseHintEdgeIndexes = initialNearestEdgeIndexes.filter { it in 0..routeModel.edges.lastIndex }.distinct()
+    var currentHintEdgeIndexes = baseHintEdgeIndexes
     projectedPoints.forEach { point ->
         val sample = buildNearbyWaySample(
             routeModel = routeModel,
             point = point,
-            previousNearestEdgeIndex = previousNearestEdgeIndex,
+            hintEdgeIndexes = currentHintEdgeIndexes,
             maxHintDistanceMeters = maxHintDistanceMeters,
             restrictToHintWindow = restrictToHintWindow,
         )
         samples += sample
-        previousNearestEdgeIndex = sample.nearestEdgeIndex.takeIf { it >= 0 }
+        currentHintEdgeIndexes = sample.nearestEdgeIndex
+            .takeIf { it >= 0 }
+            ?.let { (baseHintEdgeIndexes + it).distinct() }
+            ?: baseHintEdgeIndexes
     }
     return samples
 }
@@ -511,11 +522,10 @@ private fun buildNearbyWaySamples(
 private fun buildNearbyWaySample(
     routeModel: RouteModel,
     point: ProjectedPoint,
-    previousNearestEdgeIndex: Int? = null,
+    hintEdgeIndexes: List<Int> = emptyList(),
     maxHintDistanceMeters: Double,
     restrictToHintWindow: Boolean,
 ): NearbyWaySample {
-    val hintEdgeIndexes = previousNearestEdgeIndex?.let(::listOf).orEmpty()
     val analysis = if (restrictToHintWindow && hintEdgeIndexes.isNotEmpty()) {
         analyzeProjectedPointWithinHintWindow(
             model = routeModel,

@@ -74,15 +74,21 @@ class RouteTileOverlayRealTileTest {
             nearbyWayFocusGeoPoint = focusPoint,
             nearbyWayFocusWindowWidthMeters = 1_000.0,
         )
-        val focusNearestEdgeIndex = collectRouteCandidates(
+        val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
             model = fixture.routeModel,
-            projectedFix = projectGeoPointToRouteProjection(focusPoint, fixture.routeModel.projection),
-        ).minByOrNull(RouteAnalysis::offRouteMeters)?.nearestEdgeIndex ?: -1
+            bounds = nearbyWayFocusBounds(
+                routeModel = fixture.routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 1_000.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: fixture.routeModel.bounds,
+        )
         val runtimeNearbyWays = queryTileRuntimeNearbyWays(
             routeModel = fixture.routeModel,
             runtimePack = runtimePack,
             focusGeoPoint = focusPoint,
-            focusNearestEdgeIndex = focusNearestEdgeIndex,
+            focusHintEdgeIndexes = focusHintEdgeIndexes,
             focusWindowWidthMeters = 1_000.0,
             config = DefaultTileContextConfig,
         )

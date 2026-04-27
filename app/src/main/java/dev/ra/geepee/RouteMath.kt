@@ -355,6 +355,15 @@ internal fun analyzeProjectedPointWithinHintWindow(
     ).minByOrNull { it.offRouteMeters }
 }
 
+internal fun routeEdgeIndexesIntersectingBounds(
+    model: RouteModel,
+    bounds: Bounds,
+): List<Int> {
+    return model.edges.mapIndexedNotNull { index, edge ->
+        index.takeIf { boundsIntersect(edge.bounds, bounds) }
+    }
+}
+
 internal fun buildRouteRenderModel(
     routeModel: RouteModel,
     analysis: RouteAnalysis?,

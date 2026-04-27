@@ -39,7 +39,7 @@ class RouteContextCoordinatorTest {
 
         assertEquals(analysis.nearestGeoPoint, resolved.focus.centerGeoPoint)
         assertEquals(200.0, resolved.focus.windowWidthMeters, 0.0)
-        assertEquals(analysis.nearestEdgeIndex, resolved.nearestEdgeIndex)
+        assertTrue(resolved.hintEdgeIndexes.contains(analysis.nearestEdgeIndex))
         assertTrue(
             resolved.localTileIds.contains(
                 tileIdForGeoPoint(analysis.nearestGeoPoint, DefaultTileContextConfig.downloadZoom),
@@ -101,12 +101,12 @@ class RouteContextCoordinatorTest {
 
         assertEquals(explicitFocus.centerGeoPoint, resolved.focus.centerGeoPoint)
         assertEquals(explicitFocus.windowWidthMeters, resolved.focus.windowWidthMeters, 0.0)
+        assertTrue(resolved.hintEdgeIndexes.contains(1))
         assertTrue(
             resolved.localTileIds.contains(
                 tileIdForGeoPoint(explicitFocus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
             ),
         )
-        assertEquals(1, resolved.nearestEdgeIndex)
     }
 
     @Test
@@ -125,7 +125,7 @@ class RouteContextCoordinatorTest {
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
-            nearestEdgeIndex = 0,
+            hintEdgeIndexes = listOf(0),
             localTileIds = emptySet(),
         )
         val nearbyFocus = baseFocus.copy(
@@ -170,7 +170,7 @@ class RouteContextCoordinatorTest {
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
-            nearestEdgeIndex = 0,
+            hintEdgeIndexes = listOf(0),
             localTileIds = emptySet(),
         )
 
@@ -254,5 +254,56 @@ class RouteContextCoordinatorTest {
             ).toSet(),
             resolved.localTileIds,
         )
+        assertTrue(resolved.hintEdgeIndexes.contains(0))
+    }
+
+    @Test
+    fun resolveNearbyWayQueryFocus_usesAllVisibleRoutePassagesWithinViewport() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0, 0.01),
+                ),
+                listOf(
+                    GeoPoint(0.001, 0.0),
+                    GeoPoint(0.001, 0.01),
+                ),
+            ),
+        )
+        val analysis = analyzeLocationAgainstModel(
+            model = routeModel,
+            fix = LocationFix(
+                lat = 0.0,
+                lon = 0.001,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+        val explicitFocus = MapInfoFocus(
+            centerGeoPoint = GeoPoint(0.0005, 0.005),
+            windowWidthMeters = 200.0,
+            projectedBounds = projectedBoundsForGeoBounds(
+                bounds = GeoBounds(
+                    west = 0.0,
+                    south = -0.0005,
+                    east = 0.01,
+                    north = 0.0015,
+                ),
+                projection = routeModel.projection,
+            ),
+        )
+
+        val resolved = resolveNearbyWayQueryFocus(
+            routeModel = routeModel,
+            analysis = analysis,
+            explicitFocus = explicitFocus,
+            config = DefaultTileContextConfig,
+            defaultFocusWindowWidthMeters = 200.0,
+        )
+
+        assertEquals(routeModel.edges.indices.toList(), resolved.hintEdgeIndexes)
     }
 }
