@@ -288,12 +288,10 @@ internal fun nearbyWayRuntimeHintEdgeIndexes(
     focus: MapInfoFocus,
     config: TileContextConfig,
 ): List<Int> {
-    return routeEdgeIndexesIntersectingBounds(
-        model = routeModel,
-        bounds = expandedNearbyWayMapInfoBounds(
-            focus = focus,
-            config = config,
-        ),
+    return nearbyWayFocusRouteEdgeIndexes(
+        routeModel = routeModel,
+        focus = focus,
+        config = config,
     )
 }
 

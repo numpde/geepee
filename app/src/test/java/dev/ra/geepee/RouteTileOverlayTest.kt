@@ -123,8 +123,7 @@ class RouteTileOverlayTest {
             routeModel = routeModel,
             packs = listOf(sourcePack),
             config = DefaultTileContextConfig,
-            focusGeoPoint = focusPoint,
-            focusWindowWidthMeters = 250.0,
+            focus = focus,
         )
         val overlayNearbyWays = queryRouteTileOverlayNearbyWays(
             routeModel = routeModel,
@@ -169,8 +168,7 @@ class RouteTileOverlayTest {
             routeModel = routeModel,
             packs = listOf(sourcePack),
             config = DefaultTileContextConfig,
-            focusGeoPoint = focusPoint,
-            focusWindowWidthMeters = 250.0,
+            focus = focus,
         )
         val runtimeNearbyWays = queryTileRuntimeNearbyWays(
             routeModel = routeModel,

@@ -68,13 +68,23 @@ class RouteContextRealTileTest {
         val fixture = loadTiszaFixture()
         val pack = loadTileFixture("tile-context/10-571-356-local.json")
         val focusPoint = fixture.geoPoints[6_854]
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 1_000.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = fixture.routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 1_000.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: fixture.routeModel.bounds,
+        )
 
         val nearbyWays = buildRouteNearbyWays(
             routeModel = fixture.routeModel,
             packs = listOf(pack),
             config = DefaultTileContextConfig,
-            focusGeoPoint = focusPoint,
-            focusWindowWidthMeters = 1_000.0,
+            focus = focus,
         )
 
         assertTrue(

@@ -51,8 +51,7 @@ class RouteTileOverlayRealTileTest {
             routeModel = fixture.routeModel,
             packs = listOf(sourcePack),
             config = DefaultTileContextConfig,
-            nearbyWayFocusGeoPoint = focusPoint,
-            nearbyWayFocusWindowWidthMeters = 1_000.0,
+            nearbyWayFocus = focus,
         )
         val overlay = buildRouteTileOverlay(
             routeModel = fixture.routeModel,
@@ -92,8 +91,7 @@ class RouteTileOverlayRealTileTest {
             routeModel = fixture.routeModel,
             packs = listOf(sourcePack),
             config = DefaultTileContextConfig,
-            nearbyWayFocusGeoPoint = focusPoint,
-            nearbyWayFocusWindowWidthMeters = 1_000.0,
+            nearbyWayFocus = focus,
         )
         val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
             model = fixture.routeModel,

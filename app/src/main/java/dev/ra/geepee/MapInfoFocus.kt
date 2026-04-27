@@ -36,6 +36,20 @@ internal fun expandedNearbyWayMapInfoBounds(
     )
 }
 
+internal fun nearbyWayFocusRouteEdgeIndexes(
+    routeModel: RouteModel,
+    focus: MapInfoFocus,
+    config: TileContextConfig,
+): List<Int> {
+    return routeEdgeIndexesIntersectingBounds(
+        model = routeModel,
+        bounds = expandedNearbyWayMapInfoBounds(
+            focus = focus,
+            config = config,
+        ),
+    )
+}
+
 internal fun mapInfoFocusChanged(
     previous: MapInfoFocus?,
     current: MapInfoFocus,

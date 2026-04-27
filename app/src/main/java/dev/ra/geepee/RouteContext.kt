@@ -193,29 +193,16 @@ internal fun buildRouteNearbyWays(
     routeModel: RouteModel,
     packs: List<TileContextPack>,
     config: TileContextConfig,
-    focusGeoPoint: GeoPoint? = null,
-    focusWindowWidthMeters: Double? = null,
+    focus: MapInfoFocus? = null,
 ): List<RouteNearbyWaySnippet> {
-    val nearbyWayFocusBounds = nearbyWayFocusBounds(
-        routeModel = routeModel,
-        focusGeoPoint = focusGeoPoint,
-        focusWindowWidthMeters = focusWindowWidthMeters,
-        haloMeters = config.wayHaloMeters,
-        continuationMeters = config.nearbyWayContinuationMeters,
-    )
-    val focusHintEdgeIndexes = nearbyWayFocusBounds?.let { bounds ->
-        routeEdgeIndexesIntersectingBounds(
-            model = routeModel,
-            bounds = expandBounds(bounds, config.wayHaloMeters + config.nearbyWayContinuationMeters),
+    val nearbyWayFocusBounds = focus?.projectedBounds
+    val focusHintEdgeIndexes = focus?.let {
+        nearbyWayFocusRouteEdgeIndexes(
+            routeModel = routeModel,
+            focus = it,
+            config = config,
         )
-    }.orEmpty().ifEmpty {
-        focusGeoPoint?.let { point ->
-            collectRouteCandidates(
-                model = routeModel,
-                projectedFix = projectGeoPointToRouteProjection(point, routeModel.projection),
-            ).minByOrNull(RouteAnalysis::offRouteMeters)?.nearestEdgeIndex?.let(::listOf)
-        }.orEmpty()
-    }
+    }.orEmpty()
     return collectNearbyWayFeatures(packs).values.flatMap { feature ->
         extractNearbyWaySnippets(
             routeModel = routeModel,
@@ -233,8 +220,7 @@ internal fun buildRouteContext(
     routeModel: RouteModel,
     packs: List<TileContextPack>,
     config: TileContextConfig,
-    nearbyWayFocusGeoPoint: GeoPoint? = null,
-    nearbyWayFocusWindowWidthMeters: Double? = null,
+    nearbyWayFocus: MapInfoFocus? = null,
 ): RouteContext {
     return RouteContext(
         pois = buildRoutePois(
@@ -246,8 +232,7 @@ internal fun buildRouteContext(
             routeModel = routeModel,
             packs = packs,
             config = config,
-            focusGeoPoint = nearbyWayFocusGeoPoint,
-            focusWindowWidthMeters = nearbyWayFocusWindowWidthMeters,
+            focus = nearbyWayFocus,
         ),
     )
 }
