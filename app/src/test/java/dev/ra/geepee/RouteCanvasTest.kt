@@ -168,4 +168,37 @@ class RouteCanvasTest {
             ),
         )
     }
+
+    @Test
+    fun nearbyWaysStrokeWidthPxThinsAsViewZoomsOut() {
+        val density = 160f
+        assertTrue(
+            nearbyWaysStrokeWidthPx(
+                windowWidthMeters = RouteScale.Twenty.windowWidthMeters,
+                density = density,
+            ) >
+                nearbyWaysStrokeWidthPx(
+                    windowWidthMeters = RouteScale.TenKilometers.windowWidthMeters,
+                    density = density,
+                ),
+        )
+    }
+
+    @Test
+    fun nearbyWaysStrokeWidthPxIsInExpectedRange() {
+        val density = 160f
+        val widthAtFarZoom = nearbyWaysStrokeWidthPx(
+            windowWidthMeters = RouteScale.TenKilometers.windowWidthMeters,
+            density = density,
+        )
+
+        val widthAtNearZoom = nearbyWaysStrokeWidthPx(
+            windowWidthMeters = RouteScale.Ten.windowWidthMeters,
+            density = density,
+        )
+
+        assertTrue(widthAtFarZoom < widthAtNearZoom)
+        assertTrue(widthAtFarZoom >= 0.9f * density)
+        assertTrue(widthAtNearZoom <= 3.2f * density)
+    }
 }

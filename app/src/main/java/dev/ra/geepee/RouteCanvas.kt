@@ -102,7 +102,7 @@ internal fun RouteCanvas(
                 } else {
                     colors.nearbyWay.copy(alpha = 0.52f)
                 },
-                widthPx = 3.dp.toPx(),
+                widthPx = nearbyWaysStrokeWidthPx(windowWidthMeters, density = density.density),
             )
         }
         if (setupGradientMode) {
@@ -262,9 +262,6 @@ private fun DrawScope.drawNearbyWays(
     color: Color,
     widthPx: Float,
 ) {
-    val dashPathEffect = PathEffect.dashPathEffect(
-        intervals = floatArrayOf(widthPx * 3.2f, widthPx * 2.4f),
-    )
     polylines.forEach { polyline ->
         if (polyline.size < 2) {
             return@forEach
@@ -276,10 +273,18 @@ private fun DrawScope.drawNearbyWays(
                 width = widthPx,
                 cap = StrokeCap.Round,
                 join = StrokeJoin.Round,
-                pathEffect = dashPathEffect,
             ),
         )
     }
+}
+
+internal fun nearbyWaysStrokeWidthPx(windowWidthMeters: Double, density: Float): Float {
+    val nearestScale = closestRouteScale(windowWidthMeters.coerceAtLeast(1.0))
+    val normalized = nearestScale.ordinal.toFloat() / (RouteScale.entries.lastIndex.toFloat())
+    val minWidthDp = 0.95f
+    val maxWidthDp = 2.2f
+    val widthDp = maxWidthDp - (maxWidthDp - minWidthDp) * normalized
+    return widthDp * density
 }
 
 private fun DrawScope.drawRoutePoiMarkers(
