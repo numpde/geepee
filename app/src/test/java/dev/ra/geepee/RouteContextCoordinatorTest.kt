@@ -123,6 +123,7 @@ class RouteContextCoordinatorTest {
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
+            expandedProjectedBounds = Bounds(-65.0, 65.0, -65.0, 65.0),
             localTileIds = emptySet(),
             focusRouteEdgeIndexes = emptyList(),
         )
@@ -174,6 +175,7 @@ class RouteContextCoordinatorTest {
                 windowWidthMeters = 100.0,
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
+            expandedProjectedBounds = Bounds(-65.0, 65.0, -65.0, 65.0),
             localTileIds = emptySet(),
             focusRouteEdgeIndexes = emptyList(),
         )

@@ -7,6 +7,7 @@ import java.util.concurrent.Executors
 
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
+    val expandedProjectedBounds: Bounds,
     val localTileIds: Set<DownloadTileId>,
     val focusRouteEdgeIndexes: List<Int>,
 )
@@ -247,35 +248,29 @@ internal fun resolveNearbyWayQueryFocus(
     config: TileContextConfig,
     defaultFocusWindowWidthMeters: Double,
 ): NearbyWayQueryFocus {
-    val resolvedFocus = explicitFocus ?: MapInfoFocus(
-        centerGeoPoint = analysis.nearestGeoPoint,
-        windowWidthMeters = defaultFocusWindowWidthMeters,
-        projectedBounds = nearbyWayFocusBounds(
-            routeModel = routeModel,
-            focusGeoPoint = analysis.nearestGeoPoint,
-            focusWindowWidthMeters = defaultFocusWindowWidthMeters,
-            haloMeters = config.wayHaloMeters,
-            continuationMeters = config.nearbyWayContinuationMeters,
-        ) ?: routeModel.bounds,
+    val resolvedFocus = nearbyWayMapInfoFocusOrDefault(
+        explicitFocus = explicitFocus,
+        routeModel = routeModel,
+        analysis = analysis,
+        config = config,
+        defaultWindowWidthMeters = defaultFocusWindowWidthMeters,
     )
-    val projectedFocusBounds = resolvedFocus.projectedBounds
+    val expandedProjectedBounds = expandBounds(
+        resolvedFocus.projectedBounds,
+        config.wayHaloMeters + config.nearbyWayContinuationMeters,
+    )
     val focusRouteEdgeIndexes = routeEdgeIndexesIntersectingBounds(
         model = routeModel,
-        bounds = expandBounds(
-            projectedFocusBounds,
-            config.wayHaloMeters + config.nearbyWayContinuationMeters,
-        ),
+        bounds = expandedProjectedBounds,
     )
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
-        bounds = expandBounds(
-            projectedFocusBounds,
-            config.wayHaloMeters + config.nearbyWayContinuationMeters,
-        ),
+        bounds = expandedProjectedBounds,
         zoom = config.downloadZoom,
     ).toSet()
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
+        expandedProjectedBounds = expandedProjectedBounds,
         localTileIds = localTileIds,
         focusRouteEdgeIndexes = focusRouteEdgeIndexes,
     )

@@ -6,6 +6,26 @@ internal data class MapInfoFocus(
     val projectedBounds: Bounds,
 )
 
+internal fun nearbyWayMapInfoFocusOrDefault(
+    explicitFocus: MapInfoFocus?,
+    routeModel: RouteModel,
+    analysis: RouteAnalysis,
+    config: TileContextConfig,
+    defaultWindowWidthMeters: Double,
+): MapInfoFocus {
+    return explicitFocus ?: MapInfoFocus(
+        centerGeoPoint = analysis.nearestGeoPoint,
+        windowWidthMeters = defaultWindowWidthMeters,
+        projectedBounds = nearbyWayFocusBounds(
+            routeModel = routeModel,
+            focusGeoPoint = analysis.nearestGeoPoint,
+            focusWindowWidthMeters = defaultWindowWidthMeters,
+            haloMeters = config.wayHaloMeters,
+            continuationMeters = config.nearbyWayContinuationMeters,
+        ) ?: routeModel.bounds,
+    )
+}
+
 internal fun mapInfoFocusChanged(
     previous: MapInfoFocus?,
     current: MapInfoFocus,
