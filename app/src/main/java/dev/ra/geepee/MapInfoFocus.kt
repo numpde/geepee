@@ -26,6 +26,16 @@ internal fun nearbyWayMapInfoFocusOrDefault(
     )
 }
 
+internal fun expandedNearbyWayMapInfoBounds(
+    focus: MapInfoFocus,
+    config: TileContextConfig,
+): Bounds {
+    return expandBounds(
+        focus.projectedBounds,
+        config.wayHaloMeters + config.nearbyWayContinuationMeters,
+    )
+}
+
 internal fun mapInfoFocusChanged(
     previous: MapInfoFocus?,
     current: MapInfoFocus,

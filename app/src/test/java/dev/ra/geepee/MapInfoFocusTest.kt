@@ -220,4 +220,24 @@ class MapInfoFocusTest {
             focus.projectedBounds,
         )
     }
+
+    @Test
+    fun expandedNearbyWayMapInfoBounds_addsHaloAndContinuationPadding() {
+        val focus = MapInfoFocus(
+            centerGeoPoint = matchedPoint,
+            windowWidthMeters = 200.0,
+            projectedBounds = Bounds(-100.0, 100.0, -80.0, 80.0),
+        )
+
+        assertEquals(
+            expandBounds(
+                focus.projectedBounds,
+                DefaultTileContextConfig.wayHaloMeters + DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ),
+            expandedNearbyWayMapInfoBounds(
+                focus = focus,
+                config = DefaultTileContextConfig,
+            ),
+        )
+    }
 }

@@ -7,7 +7,6 @@ import java.util.concurrent.Executors
 
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
-    val expandedProjectedBounds: Bounds,
     val localTileIds: Set<DownloadTileId>,
     val focusRouteEdgeIndexes: List<Int>,
 )
@@ -255,9 +254,9 @@ internal fun resolveNearbyWayQueryFocus(
         config = config,
         defaultWindowWidthMeters = defaultFocusWindowWidthMeters,
     )
-    val expandedProjectedBounds = expandBounds(
-        resolvedFocus.projectedBounds,
-        config.wayHaloMeters + config.nearbyWayContinuationMeters,
+    val expandedProjectedBounds = expandedNearbyWayMapInfoBounds(
+        focus = resolvedFocus,
+        config = config,
     )
     val focusRouteEdgeIndexes = routeEdgeIndexesIntersectingBounds(
         model = routeModel,
@@ -270,7 +269,6 @@ internal fun resolveNearbyWayQueryFocus(
     ).toSet()
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
-        expandedProjectedBounds = expandedProjectedBounds,
         localTileIds = localTileIds,
         focusRouteEdgeIndexes = focusRouteEdgeIndexes,
     )
