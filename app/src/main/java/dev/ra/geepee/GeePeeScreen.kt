@@ -165,7 +165,7 @@ private fun GeePeeScreen(
         } else {
             setupViewportState.boundsOverride
         }
-        val currentWindowWidthMeters = movementViewportController?.currentWindowWidthMeters ?: state.routeScale.windowWidthMeters
+        val currentWindowWidthMeters = movementViewportFocus?.windowWidthMeters ?: state.routeScale.windowWidthMeters
         val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentLocationGeoPoint
         val poiTapRadiusPx = with(density) { 28.dp.toPx() }
         var selectedPois by remember(state.routeName, movementMode) {

@@ -44,14 +44,10 @@ internal fun rememberSetupViewportState(
 internal data class MovementViewportController(
     val activeViewportState: RouteViewportState,
     val viewportFocus: MapInfoFocus?,
-    val fallbackWindowWidthMeters: Double,
     val handleTransform: (ScreenPoint, ScreenPoint, Float) -> Unit,
     val handleDoubleTap: () -> Unit,
     val snapToNextScale: () -> RouteScale,
-) {
-    val currentWindowWidthMeters: Double
-        get() = viewportFocus?.windowWidthMeters ?: fallbackWindowWidthMeters
-}
+)
 
 @Composable
 internal fun rememberMovementViewportController(
@@ -153,7 +149,6 @@ internal fun rememberMovementViewportController(
     return MovementViewportController(
         activeViewportState = activeViewportState,
         viewportFocus = viewportFocus,
-        fallbackWindowWidthMeters = routeScale.windowWidthMeters,
         handleTransform = { centroid, pan, zoomChange ->
             if (!debugGpsEnabled) {
                 liveFollowEnabled = false
