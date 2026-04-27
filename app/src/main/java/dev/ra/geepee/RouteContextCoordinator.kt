@@ -28,6 +28,31 @@ internal data class NearbyWayTileCoverage(
 
     val loadedTileIds: List<DownloadTileId>
         get() = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId)
+
+    fun loadingStatus(existingNearbyWayCount: Int): LocalNearbyWayDebugStatus {
+        return LocalNearbyWayDebugStatus.loading(
+            localTileCount = localTileCount,
+            loadedLocalTileCount = loadedLocalTileCount,
+            existingNearbyWayCount = existingNearbyWayCount,
+        )
+    }
+
+    fun resolvedMapInfo(nearbyWays: List<RouteNearbyWaySnippet>): RouteMapInfoState {
+        return RouteMapInfoState.resolvedNearbyWays(
+            localTileCount = localTileCount,
+            loadedLocalTileCount = loadedLocalTileCount,
+            nearbyWays = nearbyWays,
+        )
+    }
+
+    fun failedMapInfo(errorMessage: String): RouteMapInfoState {
+        return RouteMapInfoState.failedNearbyWays(
+            localTileCount = localTileCount,
+            loadedLocalTileCount = loadedLocalTileCount,
+            hasVisibleTileData = loadedLocalTileCount > 0,
+            errorMessage = errorMessage,
+        )
+    }
 }
 
 internal data class NearbyWayQueryCacheKey(
@@ -170,13 +195,7 @@ internal class RouteContextCoordinator(
             onResult(cachedResult)
             return
         }
-        onStarted(
-            LocalNearbyWayDebugStatus.loading(
-                localTileCount = tileCoverage.localTileCount,
-                loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
-                existingNearbyWayCount = existingLocalStatus?.nearbyWayCount ?: 0,
-            ),
-        )
+        onStarted(tileCoverage.loadingStatus(existingLocalStatus?.nearbyWayCount ?: 0))
         val requestId = ++nearbyWayRequestId
         nearbyWayExecutor.execute {
             val result = try {
@@ -214,19 +233,10 @@ internal class RouteContextCoordinator(
                     warmRouteTileOverlays(routeModel, missingOverlayTileIds)
                 }
                 val nearbyWays = dedupeNearbyWaysByFeatureId(overlayNearbyWays + runtimeFallbackNearbyWays)
-                RouteMapInfoState.resolvedNearbyWays(
-                    localTileCount = tileCoverage.localTileCount,
-                    loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
-                    nearbyWays = nearbyWays,
-                )
+                tileCoverage.resolvedMapInfo(nearbyWays)
             } catch (error: Throwable) {
                 Log.e(logTag, "Nearby-way rebuild failed", error)
-                RouteMapInfoState.failedNearbyWays(
-                    localTileCount = tileCoverage.localTileCount,
-                    loadedLocalTileCount = tileCoverage.loadedLocalTileCount,
-                    hasVisibleTileData = tileCoverage.loadedLocalTileCount > 0,
-                    errorMessage = error.javaClass.simpleName,
-                )
+                tileCoverage.failedMapInfo(error.javaClass.simpleName)
             }
             callbackExecutor.execute {
                 if (requestId == nearbyWayRequestId && nearbyWayQueryKey == cacheKey) {

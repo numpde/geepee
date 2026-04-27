@@ -1,6 +1,7 @@
 package dev.ra.geepee
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -331,5 +332,37 @@ class RouteContextCoordinatorTest {
         assertEquals(listOf(tileA, tileC).sortedBy(DownloadTileId::cacheKey), coverage.loadedTileIds)
         assertEquals(3, coverage.localTileCount)
         assertEquals(2, coverage.loadedLocalTileCount)
+    }
+
+    @Test
+    fun nearbyWayTileCoverage_buildsConsistentStatusViews() {
+        val coverage = NearbyWayTileCoverage(
+            localTileIds = setOf(
+                DownloadTileId(zoom = 10, x = 1, y = 1),
+                DownloadTileId(zoom = 10, x = 2, y = 1),
+            ),
+            loadedTileRevisions = listOf(
+                NearbyWayLoadedTileRevision(
+                    tileId = DownloadTileId(zoom = 10, x = 2, y = 1),
+                    updatedAtMillis = 123L,
+                ),
+            ),
+        )
+
+        val loading = coverage.loadingStatus(existingNearbyWayCount = 4)
+        assertEquals(2, loading.localTileCount)
+        assertEquals(1, loading.loadedLocalTileCount)
+        assertEquals(4, loading.nearbyWayCount)
+
+        val resolved = coverage.resolvedMapInfo(emptyList())
+        assertEquals(2, resolved.localNearbyWays?.localTileCount)
+        assertEquals(1, resolved.localNearbyWays?.loadedLocalTileCount)
+        assertTrue(resolved.nearbyWays.isEmpty())
+
+        val failed = coverage.failedMapInfo("Boom")
+        assertEquals(2, failed.localNearbyWays?.localTileCount)
+        assertEquals(1, failed.localNearbyWays?.loadedLocalTileCount)
+        assertEquals("Boom", failed.localNearbyWays?.errorMessage)
+        assertFalse(failed.localNearbyWays?.hasVisibleTileData == false)
     }
 }
