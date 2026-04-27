@@ -12,47 +12,6 @@ internal data class PreviewTileUiState(
             resolvedSelection = selectionState.resolve(tileSnapshots),
         )
     }
-
-    fun onTap(
-        tile: TileGridDisplayTile?,
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileTapTransition {
-        val tapResult = selectionState.resolve(tileSnapshots).onTap(tile)
-        return PreviewTileTapTransition(
-            uiState = copy(selectionState = tapResult.selectionState),
-            downloadRequest = tapResult.downloadRequest,
-        )
-    }
-
-    fun onLongPress(
-        tile: TileGridDisplayTile?,
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileUiState {
-        return copy(
-            selectionState = selectionState.resolve(tileSnapshots).onLongPress(tile),
-        )
-    }
-
-    fun requestDelete(
-        buildPlan: (Set<DownloadTileId>) -> TileDeletePlan,
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileUiState {
-        val selectedTileIds = selectionState.resolve(tileSnapshots).selectedTileIds
-        return copy(pendingDeletePlan = buildPlan(selectedTileIds))
-    }
-
-    fun dismissDelete(): PreviewTileUiState = copy(pendingDeletePlan = null)
-
-    fun confirmDelete(): PreviewTileDeleteConfirmation? {
-        val plan = pendingDeletePlan ?: return null
-        return PreviewTileDeleteConfirmation(
-            plan = plan,
-            nextState = copy(
-                selectionState = selectionState.clear(),
-                pendingDeletePlan = null,
-            ),
-        )
-    }
 }
 
 internal data class PreviewTileSelectionState(
@@ -148,6 +107,41 @@ internal data class ResolvedPreviewTileUiState(
 
     val pendingDeletePlan: TileDeletePlan?
         get() = uiState.pendingDeletePlan
+
+    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapTransition {
+        val tapResult = resolvedSelection.onTap(tile)
+        return PreviewTileTapTransition(
+            uiState = uiState.copy(selectionState = tapResult.selectionState),
+            downloadRequest = tapResult.downloadRequest,
+        )
+    }
+
+    fun onLongPress(tile: TileGridDisplayTile?): PreviewTileUiState {
+        return uiState.copy(
+            selectionState = resolvedSelection.onLongPress(tile),
+        )
+    }
+
+    fun requestDelete(
+        buildPlan: (Set<DownloadTileId>) -> TileDeletePlan,
+    ): PreviewTileUiState {
+        return uiState.copy(
+            pendingDeletePlan = buildPlan(selectedTileIds),
+        )
+    }
+
+    fun dismissDelete(): PreviewTileUiState = uiState.copy(pendingDeletePlan = null)
+
+    fun confirmDelete(): PreviewTileDeleteConfirmation? {
+        val plan = uiState.pendingDeletePlan ?: return null
+        return PreviewTileDeleteConfirmation(
+            plan = plan,
+            nextState = uiState.copy(
+                selectionState = uiState.selectionState.clear(),
+                pendingDeletePlan = null,
+            ),
+        )
+    }
 }
 
 internal data class PreviewTileTapResult(

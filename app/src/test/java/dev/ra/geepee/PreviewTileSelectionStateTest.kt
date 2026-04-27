@@ -7,7 +7,7 @@ import org.junit.Test
 
 class PreviewTileSelectionStateTest {
     @Test
-    fun previewTileUiStateRequestDeleteUsesNormalizedSelectedTiles() {
+    fun resolvedPreviewTileUiStateRequestDeleteUsesNormalizedSelectedTiles() {
         val cachedTileId = DownloadTileId(zoom = 10, x = 1, y = 2)
         val staleTileId = DownloadTileId(zoom = 10, x = 3, y = 4)
         val snapshot = TileDownloadSnapshot(
@@ -15,8 +15,10 @@ class PreviewTileSelectionStateTest {
             estimatedBytes = 100_000L,
         )
 
-        val uiState = PreviewTileUiState(
+        val nextState = PreviewTileUiState(
             selectionState = PreviewTileSelectionState(setOf(cachedTileId, staleTileId)),
+        ).resolve(
+            tileSnapshots = mapOf(cachedTileId to snapshot),
         ).requestDelete(
             buildPlan = { selectedTileIds ->
                 TileDeletePlan(
@@ -25,25 +27,24 @@ class PreviewTileSelectionStateTest {
                     freedBytes = 200_000L,
                 )
             },
-            tileSnapshots = mapOf(cachedTileId to snapshot),
         )
 
-        assertEquals(setOf(cachedTileId), requireNotNull(uiState.pendingDeletePlan).tileIds)
+        assertEquals(setOf(cachedTileId), requireNotNull(nextState.pendingDeletePlan).tileIds)
     }
 
     @Test
-    fun previewTileUiStateConfirmDeleteClearsSelectionAndPlan() {
+    fun resolvedPreviewTileUiStateConfirmDeleteClearsSelectionAndPlan() {
         val tileId = DownloadTileId(zoom = 10, x = 1, y = 2)
-        val uiState = PreviewTileUiState(
-            selectionState = PreviewTileSelectionState(setOf(tileId)),
-            pendingDeletePlan = TileDeletePlan(
-                mode = TileDeleteMode.Selected,
-                tileIds = setOf(tileId),
-                freedBytes = 100_000L,
-            ),
+        val confirmation = requireNotNull(
+            PreviewTileUiState(
+                selectionState = PreviewTileSelectionState(setOf(tileId)),
+                pendingDeletePlan = TileDeletePlan(
+                    mode = TileDeleteMode.Selected,
+                    tileIds = setOf(tileId),
+                    freedBytes = 100_000L,
+                ),
+            ).resolve(emptyMap()).confirmDelete(),
         )
-
-        val confirmation = requireNotNull(uiState.confirmDelete())
 
         assertEquals(setOf(tileId), confirmation.plan.tileIds)
         assertEquals(emptySet<DownloadTileId>(), confirmation.nextState.selectionState.selectedTileIds)
@@ -51,18 +52,16 @@ class PreviewTileSelectionStateTest {
     }
 
     @Test
-    fun previewTileUiStateDismissDeleteClearsOnlyPendingPlan() {
+    fun resolvedPreviewTileUiStateDismissDeleteClearsOnlyPendingPlan() {
         val tileId = DownloadTileId(zoom = 10, x = 1, y = 2)
-        val uiState = PreviewTileUiState(
+        val dismissedState = PreviewTileUiState(
             selectionState = PreviewTileSelectionState(setOf(tileId)),
             pendingDeletePlan = TileDeletePlan(
                 mode = TileDeleteMode.Selected,
                 tileIds = setOf(tileId),
                 freedBytes = 100_000L,
             ),
-        )
-
-        val dismissedState = uiState.dismissDelete()
+        ).resolve(emptyMap()).dismissDelete()
 
         assertEquals(setOf(tileId), dismissedState.selectionState.selectedTileIds)
         assertNull(dismissedState.pendingDeletePlan)

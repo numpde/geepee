@@ -281,9 +281,8 @@ private fun GeePeeScreen(
                         policy = routeCanvasTapPolicy,
                         onTap = { point ->
                             if (showTileOverview) {
-                                val tapTransition = previewTileUiState.onTap(
+                                val tapTransition = resolvedPreviewTileUiState.onTap(
                                     tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
-                                    tileSnapshots = state.tileDownloads,
                                 )
                                 previewTileUiState = tapTransition.uiState
                                 tapTransition.downloadRequest?.let { request ->
@@ -311,9 +310,8 @@ private fun GeePeeScreen(
                         },
                         onLongPress = { point ->
                             if (showTileOverview) {
-                                previewTileUiState = previewTileUiState.onLongPress(
+                                previewTileUiState = resolvedPreviewTileUiState.onLongPress(
                                     tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
-                                    tileSnapshots = state.tileDownloads,
                                 )
                             }
                         },
@@ -394,9 +392,8 @@ private fun GeePeeScreen(
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
                         onDeleteTiles = {
-                            previewTileUiState = previewTileUiState.requestDelete(
+                            previewTileUiState = resolvedPreviewTileUiState.requestDelete(
                                 buildPlan = onBuildTileDeletePlan,
-                                tileSnapshots = state.tileDownloads,
                             )
                         },
                         deleteTilesLabel = deleteTilesLabel,
@@ -468,9 +465,8 @@ private fun GeePeeScreen(
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
                 onDeleteTiles = {
-                    previewTileUiState = previewTileUiState.requestDelete(
+                    previewTileUiState = resolvedPreviewTileUiState.requestDelete(
                         buildPlan = onBuildTileDeletePlan,
-                        tileSnapshots = state.tileDownloads,
                     )
                 },
                 deleteTilesLabel = deleteTilesLabel,
@@ -486,12 +482,12 @@ private fun GeePeeScreen(
             DeleteTilesDialog(
                 plan = plan,
                 onConfirm = {
-                    previewTileUiState.confirmDelete()?.let { confirmation ->
+                    resolvedPreviewTileUiState.confirmDelete()?.let { confirmation ->
                         onExecuteTileDeletePlan(confirmation.plan)
                         previewTileUiState = confirmation.nextState
                     }
                 },
-                onDismiss = { previewTileUiState = previewTileUiState.dismissDelete() },
+                onDismiss = { previewTileUiState = resolvedPreviewTileUiState.dismissDelete() },
             )
         }
     }
