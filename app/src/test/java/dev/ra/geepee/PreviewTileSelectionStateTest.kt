@@ -38,7 +38,9 @@ class PreviewTileSelectionStateTest {
             status = TileDownloadStatus.Cached,
         )
 
-        val state = PreviewTileSelectionState().onLongPress(cachedTile, emptyMap())
+        val state = PreviewTileSelectionState()
+            .resolve(emptyMap())
+            .onLongPress(cachedTile)
 
         assertEquals(setOf(cachedTile.tileId), state.selectedTileIds)
     }
@@ -50,7 +52,9 @@ class PreviewTileSelectionStateTest {
             status = TileDownloadStatus.Cached,
         )
 
-        val result = PreviewTileSelectionState().onTap(cachedTile, emptyMap())
+        val result = PreviewTileSelectionState()
+            .resolve(emptyMap())
+            .onTap(cachedTile)
 
         assertEquals(PreviewTileSelectionState(), result.selectionState)
         assertNull(result.downloadRequest)
@@ -64,7 +68,9 @@ class PreviewTileSelectionStateTest {
             estimatedBytes = 123_000L,
         )
 
-        val result = PreviewTileSelectionState().onTap(uncachedTile, emptyMap())
+        val result = PreviewTileSelectionState()
+            .resolve(emptyMap())
+            .onTap(uncachedTile)
 
         assertEquals(PreviewTileSelectionState(), result.selectionState)
         assertEquals(
@@ -93,14 +99,18 @@ class PreviewTileSelectionStateTest {
             secondTile.tileId to requireNotNull(secondTile.snapshot),
         )
 
-        val secondTileResult = initialState.onTap(secondTile, tileSnapshots)
+        val secondTileResult = initialState
+            .resolve(tileSnapshots)
+            .onTap(secondTile)
         assertEquals(
             setOf(firstTile.tileId, secondTile.tileId),
             secondTileResult.selectionState.selectedTileIds,
         )
         assertNull(secondTileResult.downloadRequest)
 
-        val deselectResult = secondTileResult.selectionState.onTap(firstTile, tileSnapshots)
+        val deselectResult = secondTileResult.selectionState
+            .resolve(tileSnapshots)
+            .onTap(firstTile)
         assertEquals(setOf(secondTile.tileId), deselectResult.selectionState.selectedTileIds)
         assertNull(deselectResult.downloadRequest)
     }
@@ -117,12 +127,13 @@ class PreviewTileSelectionStateTest {
             estimatedBytes = 321_000L,
         )
 
-        val result = PreviewTileSelectionState(setOf(cachedTile.tileId)).onTap(
-            tile = uncachedTile,
-            tileSnapshots = mapOf(
+        val result = PreviewTileSelectionState(setOf(cachedTile.tileId))
+            .resolve(
+                mapOf(
                 cachedTile.tileId to requireNotNull(cachedTile.snapshot),
-            ),
-        )
+                ),
+            )
+            .onTap(uncachedTile)
 
         assertEquals(setOf(cachedTile.tileId), result.selectionState.selectedTileIds)
         assertNull(result.downloadRequest)
@@ -159,16 +170,17 @@ class PreviewTileSelectionStateTest {
             estimatedBytes = 321_000L,
         )
 
-        val result = PreviewTileSelectionState(setOf(staleTileId)).onTap(
-            tile = uncachedTile,
-            tileSnapshots = mapOf(
+        val result = PreviewTileSelectionState(setOf(staleTileId))
+            .resolve(
+                mapOf(
                 staleTileId to TileDownloadSnapshot(
                     status = TileDownloadStatus.Downloading,
                     estimatedBytes = 200_000L,
                     downloadedBytes = 50_000L,
                 ),
-            ),
-        )
+                ),
+            )
+            .onTap(uncachedTile)
 
         assertEquals(PreviewTileSelectionState(), result.selectionState)
         assertEquals(

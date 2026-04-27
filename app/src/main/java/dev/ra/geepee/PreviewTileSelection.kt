@@ -20,42 +20,12 @@ internal data class PreviewTileSelectionState(
         tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
     ): ResolvedPreviewTileSelectionState {
         val normalizedState = retainCached(tileSnapshots)
-        return ResolvedPreviewTileSelectionState(normalizedState.selectedTileIds)
-    }
-
-    fun onTap(
-        tile: TileGridDisplayTile?,
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileTapResult {
-        val normalizedState = retainCached(tileSnapshots)
-        if (tile == null) {
-            return PreviewTileTapResult(normalizedState)
-        }
-        return if (normalizedState.resolve(tileSnapshots).selectionModeActive) {
-            PreviewTileTapResult(normalizedState.toggleCachedTile(tile))
-        } else if (tile.isCached) {
-            PreviewTileTapResult(normalizedState)
-        } else {
-            PreviewTileTapResult(
-                selectionState = normalizedState,
-                downloadRequest = PreviewTileDownloadRequest(
-                    tileId = tile.tileId,
-                    estimatedBytes = tile.estimatedBytes,
-                ),
-            )
-        }
-    }
-
-    fun onLongPress(
-        tile: TileGridDisplayTile?,
-        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): PreviewTileSelectionState {
-        return retainCached(tileSnapshots).toggleCachedTile(tile)
+        return ResolvedPreviewTileSelectionState(normalizedState)
     }
 
     fun clear(): PreviewTileSelectionState = PreviewTileSelectionState()
 
-    private fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
+    internal fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
         if (tile?.isCached != true) {
             return this
         }
@@ -69,8 +39,11 @@ internal data class PreviewTileSelectionState(
 }
 
 internal data class ResolvedPreviewTileSelectionState(
-    val selectedTileIds: Set<DownloadTileId>,
+    private val selectionState: PreviewTileSelectionState,
 ) {
+    val selectedTileIds: Set<DownloadTileId>
+        get() = selectionState.selectedTileIds
+
     val selectionModeActive: Boolean
         get() = selectedTileIds.isNotEmpty()
 
@@ -80,6 +53,29 @@ internal data class ResolvedPreviewTileSelectionState(
         } else {
             "Delete unused tiles"
         }
+
+    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
+        if (tile == null) {
+            return PreviewTileTapResult(selectionState)
+        }
+        return if (selectionModeActive) {
+            PreviewTileTapResult(selectionState.toggleCachedTile(tile))
+        } else if (tile.isCached) {
+            PreviewTileTapResult(selectionState)
+        } else {
+            PreviewTileTapResult(
+                selectionState = selectionState,
+                downloadRequest = PreviewTileDownloadRequest(
+                    tileId = tile.tileId,
+                    estimatedBytes = tile.estimatedBytes,
+                ),
+            )
+        }
+    }
+
+    fun onLongPress(tile: TileGridDisplayTile?): PreviewTileSelectionState {
+        return selectionState.toggleCachedTile(tile)
+    }
 }
 
 internal data class PreviewTileTapResult(

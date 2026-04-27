@@ -282,9 +282,8 @@ private fun GeePeeScreen(
                         policy = routeCanvasTapPolicy,
                         onTap = { point ->
                             if (showTileOverview) {
-                                val tapResult = tileSelectionState.onTap(
+                                val tapResult = resolvedTileSelection.onTap(
                                     tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
-                                    state.tileDownloads,
                                 )
                                 tileSelectionState = tapResult.selectionState
                                 tapResult.downloadRequest?.let { request ->
@@ -312,9 +311,8 @@ private fun GeePeeScreen(
                         },
                         onLongPress = { point ->
                             if (showTileOverview) {
-                                tileSelectionState = tileSelectionState.onLongPress(
+                                tileSelectionState = resolvedTileSelection.onLongPress(
                                     tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
-                                    state.tileDownloads,
                                 )
                             }
                         },
