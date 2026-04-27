@@ -1,5 +1,6 @@
 package dev.ra.geepee
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -74,6 +75,28 @@ class GeePeeScreenStateTest {
         assertEquals(RouteScale.FiveHundred.windowWidthMeters, state.windowWidthMeters, 0.0)
         assertEquals(fallbackPoint, state.openInPoint)
         assertNull(state.effectiveMapInfoFocus)
+    }
+
+    @Test
+    fun isBoundedDoubleTap_acceptsNearbySecondTap() {
+        assertTrue(
+            isBoundedDoubleTap(
+                firstTapPosition = Offset(100f, 100f),
+                secondTapPosition = Offset(120f, 110f),
+                maxDistancePx = 32f,
+            ),
+        )
+    }
+
+    @Test
+    fun isBoundedDoubleTap_rejectsFarSecondTap() {
+        assertTrue(
+            !isBoundedDoubleTap(
+                firstTapPosition = Offset(100f, 100f),
+                secondTapPosition = Offset(180f, 100f),
+                maxDistancePx = 32f,
+            ),
+        )
     }
 
     @Test

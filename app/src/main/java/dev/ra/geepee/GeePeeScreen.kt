@@ -4,8 +4,11 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -22,11 +25,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.pow
 
 internal data class MovementViewState(
     val viewportFocus: MapInfoFocus?,
@@ -113,8 +121,18 @@ internal data class PreviewTileDownloadRequest(
     val estimatedBytes: Long,
 )
 
+internal data class RouteCanvasTapPolicy(
+    val maxDoubleTapDistancePx: Float,
+)
+
 private val TileGridDisplayTile.isCached: Boolean
     get() = snapshot?.status == TileDownloadStatus.Cached
+
+private sealed interface PressOutcome {
+    data class Up(val position: Offset) : PressOutcome
+    data class LongPress(val position: Offset) : PressOutcome
+    data object Cancelled : PressOutcome
+}
 
 @Composable
 internal fun GeePeeApp(
@@ -272,6 +290,11 @@ private fun GeePeeScreen(
             )
         }
         val poiTapRadiusPx = with(density) { 28.dp.toPx() }
+        val routeCanvasTapPolicy = remember(density) {
+            RouteCanvasTapPolicy(
+                maxDoubleTapDistancePx = with(density) { 32.dp.toPx() },
+            )
+        }
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
@@ -344,8 +367,9 @@ private fun GeePeeScreen(
         val routeCanvasModifier = if (activeViewportState.isReady) {
             Modifier
                 .fillMaxSize()
-                .pointerInput(activeViewportState, tileGridModel, showTileOverview) {
-                    detectTapGestures(
+                .pointerInput(activeViewportState, tileGridModel, showTileOverview, routeCanvasTapPolicy) {
+                    detectRouteCanvasTapGestures(
+                        policy = routeCanvasTapPolicy,
                         onTap = { point ->
                             if (showTileOverview) {
                                 val tapResult = tileSelectionState.onTap(
@@ -553,6 +577,91 @@ private fun GeePeeScreen(
             )
         }
     }
+}
+
+private suspend fun PointerInputScope.detectRouteCanvasTapGestures(
+    policy: RouteCanvasTapPolicy,
+    onTap: (Offset) -> Unit,
+    onDoubleTap: (Offset) -> Unit,
+    onLongPress: (Offset) -> Unit = {},
+) {
+    awaitEachGesture {
+        var pendingDown = awaitFirstDown()
+        while (true) {
+            when (val firstPressOutcome = awaitPressOutcome(pendingDown)) {
+                PressOutcome.Cancelled -> return@awaitEachGesture
+                is PressOutcome.LongPress -> {
+                    onLongPress(firstPressOutcome.position)
+                    waitForUpOrCancellation()
+                    return@awaitEachGesture
+                }
+                is PressOutcome.Up -> {
+                    val secondDown = awaitSecondDownOrNull()
+                    if (secondDown == null) {
+                        onTap(firstPressOutcome.position)
+                        return@awaitEachGesture
+                    }
+                    if (!isBoundedDoubleTap(
+                            firstTapPosition = firstPressOutcome.position,
+                            secondTapPosition = secondDown.position,
+                            maxDistancePx = policy.maxDoubleTapDistancePx,
+                        )
+                    ) {
+                        onTap(firstPressOutcome.position)
+                        pendingDown = secondDown
+                        continue
+                    }
+                    when (awaitPressOutcome(secondDown)) {
+                        PressOutcome.Cancelled -> {
+                            onTap(firstPressOutcome.position)
+                            return@awaitEachGesture
+                        }
+                        is PressOutcome.LongPress -> {
+                            onTap(firstPressOutcome.position)
+                            onLongPress(secondDown.position)
+                            waitForUpOrCancellation()
+                            return@awaitEachGesture
+                        }
+                        is PressOutcome.Up -> {
+                            onDoubleTap(secondDown.position)
+                            return@awaitEachGesture
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun AwaitPointerEventScope.awaitPressOutcome(
+    down: androidx.compose.ui.input.pointer.PointerInputChange,
+): PressOutcome {
+    val longPressTimeoutMillis = viewConfiguration.longPressTimeoutMillis
+    return withTimeoutOrNull(longPressTimeoutMillis) {
+        val up = waitForUpOrCancellation()
+        if (up == null) {
+            PressOutcome.Cancelled
+        } else {
+            PressOutcome.Up(up.position)
+        }
+    } ?: PressOutcome.LongPress(down.position)
+}
+
+private suspend fun AwaitPointerEventScope.awaitSecondDownOrNull():
+    androidx.compose.ui.input.pointer.PointerInputChange? {
+    return withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+        awaitFirstDown()
+    }
+}
+
+internal fun isBoundedDoubleTap(
+    firstTapPosition: Offset,
+    secondTapPosition: Offset,
+    maxDistancePx: Float,
+): Boolean {
+    val dx = firstTapPosition.x - secondTapPosition.x
+    val dy = firstTapPosition.y - secondTapPosition.y
+    return dx.pow(2) + dy.pow(2) <= maxDistancePx.pow(2)
 }
 
 internal fun buildMovementViewState(
