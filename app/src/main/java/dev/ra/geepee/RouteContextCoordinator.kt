@@ -57,10 +57,14 @@ internal data class NearbyWayTileCoverage(
 internal data class NearbyWayQueryCacheKey(
     val routeFingerprint: String,
     val localTileRevisions: List<NearbyWayLoadedTileRevision>,
-    val boundsMinXBucket: Int,
-    val boundsMaxXBucket: Int,
-    val boundsMinYBucket: Int,
-    val boundsMaxYBucket: Int,
+    val focusBoundsBucket: NearbyWayFocusBoundsBucket,
+)
+
+internal data class NearbyWayFocusBoundsBucket(
+    val minXBucket: Int,
+    val maxXBucket: Int,
+    val minYBucket: Int,
+    val maxYBucket: Int,
 )
 
 private const val NEARBY_WAY_RESULT_CACHE_LIMIT = 64
@@ -308,15 +312,21 @@ internal fun buildNearbyWayQueryCacheKey(
     queryFocus: NearbyWayQueryFocus,
     tileCoverage: NearbyWayTileCoverage,
 ): NearbyWayQueryCacheKey {
-    val projectedBounds = queryFocus.focus.projectedBounds
-    val boundsBucketMeters = maxOf(25.0, queryFocus.focus.windowWidthMeters * 0.2)
     return NearbyWayQueryCacheKey(
         routeFingerprint = routeFingerprint(routeModel),
         localTileRevisions = tileCoverage.loadedTileRevisions,
-        boundsMinXBucket = kotlin.math.floor(projectedBounds.minX / boundsBucketMeters).toInt(),
-        boundsMaxXBucket = kotlin.math.floor(projectedBounds.maxX / boundsBucketMeters).toInt(),
-        boundsMinYBucket = kotlin.math.floor(projectedBounds.minY / boundsBucketMeters).toInt(),
-        boundsMaxYBucket = kotlin.math.floor(projectedBounds.maxY / boundsBucketMeters).toInt(),
+        focusBoundsBucket = nearbyWayFocusBoundsBucket(queryFocus.focus),
+    )
+}
+
+internal fun nearbyWayFocusBoundsBucket(focus: MapInfoFocus): NearbyWayFocusBoundsBucket {
+    val projectedBounds = focus.projectedBounds
+    val boundsBucketMeters = maxOf(25.0, focus.windowWidthMeters * 0.2)
+    return NearbyWayFocusBoundsBucket(
+        minXBucket = kotlin.math.floor(projectedBounds.minX / boundsBucketMeters).toInt(),
+        maxXBucket = kotlin.math.floor(projectedBounds.maxX / boundsBucketMeters).toInt(),
+        minYBucket = kotlin.math.floor(projectedBounds.minY / boundsBucketMeters).toInt(),
+        maxYBucket = kotlin.math.floor(projectedBounds.maxY / boundsBucketMeters).toInt(),
     )
 }
 
