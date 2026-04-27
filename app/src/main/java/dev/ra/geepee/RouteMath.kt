@@ -619,8 +619,18 @@ internal fun transformRouteViewport(
     centroid: ScreenPoint,
     pan: ScreenPoint,
     zoomChange: Float,
+    rotationDegrees: Double = 0.0,
     minimumWidthMeters: Double = minimumViewportWidthMeters(contentBounds),
 ): RouteViewport {
+    val normalizedCentroid = rotateScreenPoint(
+        point = centroid,
+        center = ScreenPoint(
+            x = (canvasWidth / 2.0).toFloat(),
+            y = (canvasHeight / 2.0).toFloat(),
+        ),
+        rotationDegrees = -rotationDegrees,
+    )
+    val unrotatedPan = rotateScreenVector(pan = pan, angleDegrees = -rotationDegrees)
     val currentBounds = routeViewportBounds(
         viewport = viewport,
         canvasWidth = canvasWidth,
@@ -638,15 +648,15 @@ internal fun transformRouteViewport(
     )
     val nextHeightMeters = nextWidthMeters * (canvasHeight / canvasWidth)
     val centroidWorld = projectedPointFromScreenPoint(
-        point = centroid,
+        point = normalizedCentroid,
         bounds = currentBounds,
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
     )
-    val centroidXFraction = (centroid.x / canvasWidth.toFloat()).toDouble().coerceIn(0.0, 1.0)
-    val centroidYFraction = (centroid.y / canvasHeight.toFloat()).toDouble().coerceIn(0.0, 1.0)
-    val panXMeters = pan.x.toDouble() / canvasWidth * nextWidthMeters
-    val panYMeters = pan.y.toDouble() / canvasHeight * nextHeightMeters
+    val centroidXFraction = (normalizedCentroid.x / canvasWidth.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    val centroidYFraction = (normalizedCentroid.y / canvasHeight.toFloat()).toDouble().coerceIn(0.0, 1.0)
+    val panXMeters = unrotatedPan.x.toDouble() / canvasWidth * nextWidthMeters
+    val panYMeters = unrotatedPan.y.toDouble() / canvasHeight * nextHeightMeters
     val unclamped = RouteViewport(
         centerX = centroidWorld.x - (centroidXFraction - 0.5) * nextWidthMeters - panXMeters,
         centerY = centroidWorld.y - (0.5 - centroidYFraction) * nextHeightMeters + panYMeters,
@@ -659,6 +669,19 @@ internal fun transformRouteViewport(
         canvasHeight = canvasHeight,
         minimumWidthMeters = minimumWidthMeters,
     )
+}
+
+private fun rotateScreenVector(
+    pan: ScreenPoint,
+    angleDegrees: Double,
+): ScreenPoint {
+    if (angleDegrees == 0.0) {
+        return pan
+    }
+    val radians = Math.toRadians(angleDegrees)
+    val rotatedX = pan.x * cos(radians) - pan.y * sin(radians)
+    val rotatedY = pan.x * sin(radians) + pan.y * cos(radians)
+    return ScreenPoint(rotatedX.toFloat(), rotatedY.toFloat())
 }
 
 internal fun geoBoundsForProjectedBounds(

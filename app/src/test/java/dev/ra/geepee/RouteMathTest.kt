@@ -697,6 +697,94 @@ class RouteMathTest {
     }
 
     @Test
+    fun transformRouteViewportRespectsRotationAroundCentroid() {
+        val contentBounds = Bounds(
+            minX = -200.0,
+            maxX = 200.0,
+            minY = -200.0,
+            maxY = 200.0,
+        )
+        val viewport = RouteViewport(
+            centerX = 0.0,
+            centerY = 0.0,
+            widthMeters = 120.0,
+        )
+        val centroid = ScreenPoint(300f, 180f)
+        val pan = ScreenPoint(75f, -45f)
+        val rotationDegrees = 90.0
+        val canvasWidth = 1000.0
+        val canvasHeight = 1000.0
+
+        val rotatedPan = rotateScreenVectorForTest(pan, angleDegrees = -rotationDegrees)
+        val rotatedCentroid = rotateScreenPointForTest(
+            point = centroid,
+            center = ScreenPoint((canvasWidth / 2.0).toFloat(), (canvasHeight / 2.0).toFloat()),
+            rotationDegrees = -rotationDegrees,
+        )
+        val rotatedTransform = transformRouteViewport(
+            viewport = viewport,
+            contentBounds = contentBounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            centroid = centroid,
+            pan = pan,
+            zoomChange = 1f,
+            rotationDegrees = rotationDegrees,
+        )
+        val equivalentUnrotatedTransform = transformRouteViewport(
+            viewport = viewport,
+            contentBounds = contentBounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            centroid = rotatedCentroid,
+            pan = rotatedPan,
+            zoomChange = 1f,
+        )
+
+        assertEquals(equivalentUnrotatedTransform.centerX, rotatedTransform.centerX, 0.001)
+        assertEquals(equivalentUnrotatedTransform.centerY, rotatedTransform.centerY, 0.001)
+        assertEquals(equivalentUnrotatedTransform.widthMeters, rotatedTransform.widthMeters, 0.001)
+    }
+
+    @Test
+    fun transformRouteViewportRotationMatchesExpectedVectorDirection() {
+        val contentBounds = Bounds(
+            minX = 0.0,
+            maxX = 500.0,
+            minY = 0.0,
+            maxY = 500.0,
+        )
+        val viewport = RouteViewport(
+            centerX = 250.0,
+            centerY = 250.0,
+            widthMeters = 200.0,
+        )
+        val centroid = ScreenPoint(500f, 500f)
+        val rotatedTransform = transformRouteViewport(
+            viewport = viewport,
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+            centroid = centroid,
+            pan = ScreenPoint(80f, 40f),
+            zoomChange = 1f,
+            rotationDegrees = 90.0,
+        )
+        val noRotationTransform = transformRouteViewport(
+            viewport = viewport,
+            contentBounds = contentBounds,
+            canvasWidth = 1000.0,
+            canvasHeight = 1000.0,
+            centroid = centroid,
+            pan = rotateScreenVectorForTest(ScreenPoint(80f, 40f), angleDegrees = -90.0),
+            zoomChange = 1f,
+        )
+
+        assertEquals(noRotationTransform.centerX, rotatedTransform.centerX, 0.001)
+        assertEquals(noRotationTransform.centerY, rotatedTransform.centerY, 0.001)
+    }
+
+    @Test
     fun renderModelBiasesVisibleWindowForwardAlongRoute() {
         val route = buildRouteModel(
             listOf(
@@ -877,5 +965,35 @@ class RouteMathTest {
             .toSet()
 
         assertEquals(route.edges.indices.toSet(), indexedEdges)
+    }
+
+    private fun rotateScreenPointForTest(
+        point: ScreenPoint,
+        center: ScreenPoint,
+        rotationDegrees: Double,
+    ): ScreenPoint {
+        if (rotationDegrees == 0.0) {
+            return point
+        }
+        val radians = Math.toRadians(rotationDegrees)
+        val dx = point.x - center.x
+        val dy = point.y - center.y
+        return ScreenPoint(
+            x = (center.x + (dx * kotlin.math.cos(radians) - dy * kotlin.math.sin(radians))).toFloat(),
+            y = (center.y + (dx * kotlin.math.sin(radians) + dy * kotlin.math.cos(radians))).toFloat(),
+        )
+    }
+
+    private fun rotateScreenVectorForTest(
+        pan: ScreenPoint,
+        angleDegrees: Double,
+    ): ScreenPoint {
+        if (angleDegrees == 0.0) {
+            return pan
+        }
+        val radians = Math.toRadians(angleDegrees)
+        val rotatedX = pan.x * kotlin.math.cos(radians) - pan.y * kotlin.math.sin(radians)
+        val rotatedY = pan.x * kotlin.math.sin(radians) + pan.y * kotlin.math.cos(radians)
+        return ScreenPoint(rotatedX.toFloat(), rotatedY.toFloat())
     }
 }

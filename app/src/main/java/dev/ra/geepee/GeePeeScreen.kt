@@ -149,6 +149,10 @@ private fun GeePeeScreen(
             viewportHeightPx = viewportHeightPx,
         )
         val movementViewportController = if (movementMode) {
+            val routeRotationDegrees = routeViewRotationDegrees(
+                orientationMode = state.orientationMode,
+                headingDegrees = state.compass?.headingDegrees,
+            ).toDouble()
             rememberMovementViewportController(
                 routeModel = state.routeModel,
                 analysis = state.analysis,
@@ -156,6 +160,7 @@ private fun GeePeeScreen(
                 viewportWidthPx = viewportWidthPx,
                 viewportHeightPx = viewportHeightPx,
                 debugGpsEnabled = state.debugGpsEnabled,
+                routeRotationDegrees = routeRotationDegrees,
                 minimumWidthMetersOverride = 6.0,
             )
         } else {

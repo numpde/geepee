@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 
 @Composable
@@ -62,6 +63,7 @@ internal fun rememberMovementViewportController(
     viewportWidthPx: Float,
     viewportHeightPx: Float,
     debugGpsEnabled: Boolean,
+    routeRotationDegrees: Double,
     minimumWidthMetersOverride: Double = 6.0,
 ): MovementViewportController {
     val resetViewport = routeModel?.let { model ->
@@ -107,6 +109,7 @@ internal fun rememberMovementViewportController(
     val anchorPoint = resetViewport?.let { viewport ->
         ProjectedPoint(viewport.centerX, viewport.centerY)
     }
+    val currentRouteRotationDegrees by rememberUpdatedState(routeRotationDegrees)
     LaunchedEffect(debugGpsEnabled, anchorPoint, liveCameraMode) {
         if (!debugGpsEnabled && liveCameraMode == MovementCameraMode.FollowAnchor) {
             anchorPoint?.let(liveViewportState::recenterOn)
@@ -144,6 +147,7 @@ internal fun rememberMovementViewportController(
                 centroid = centroid,
                 pan = pan,
                 zoomChange = zoomChange,
+                rotationDegrees = currentRouteRotationDegrees,
             )
         },
         handleDoubleTap = {
@@ -196,6 +200,7 @@ internal class RouteViewportState(
         centroid: ScreenPoint,
         pan: ScreenPoint,
         zoomChange: Float,
+        rotationDegrees: Double = 0.0,
     ) {
         val currentContentBounds = contentBounds ?: return
         val currentViewport = viewport ?: fittedViewport() ?: return
@@ -207,6 +212,7 @@ internal class RouteViewportState(
             centroid = centroid,
             pan = pan,
             zoomChange = zoomChange,
+            rotationDegrees = rotationDegrees,
             minimumWidthMeters = effectiveMinimumWidthMeters(currentContentBounds),
         )
     }
