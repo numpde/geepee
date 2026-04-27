@@ -1,6 +1,5 @@
 package dev.ra.geepee
 
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -78,50 +77,32 @@ internal fun SetupActions(
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var routeMenuExpanded by remember { mutableStateOf(false) }
+    val showMenu = hasRoute || hasCachedTiles
 
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(modifier = Modifier.weight(1f)) {
-            ActionButton(
-                label = if (!hasRoute) "Load route" else "Change route",
-                onClick = onPickRoute,
-                onLongClick = if (hasRoute || hasCachedTiles) {
-                    { routeMenuExpanded = true }
-                } else {
-                    null
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            DropdownMenu(
-                expanded = routeMenuExpanded,
-                onDismissRequest = { routeMenuExpanded = false },
-            ) {
-                DropdownMenuItem(
-                    text = { Text(text = "Reverse route") },
-                    onClick = {
-                        routeMenuExpanded = false
-                        onReverseRoute()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = "Delete unused tiles") },
-                    onClick = {
-                        routeMenuExpanded = false
-                        onDeleteUnusedTiles()
-                    },
-                    enabled = hasCachedTiles,
-                )
-            }
-        }
+        ActionButton(
+            label = if (!hasRoute) "Load route" else "Change route",
+            onClick = onPickRoute,
+            modifier = Modifier.weight(1f),
+        )
         if (hasRoute) {
             ActionButton(
                 label = if (sessionRunning) "Stop" else "Start",
                 onClick = if (sessionRunning) onStopMonitoring else onStartMonitoring,
                 modifier = Modifier.weight(1f),
                 emphasized = true,
+            )
+        }
+        if (showMenu) {
+            SetupMenu(
+                hasRoute = hasRoute,
+                hasCachedTiles = hasCachedTiles,
+                onReverseRoute = onReverseRoute,
+                onDeleteUnusedTiles = onDeleteUnusedTiles,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -131,16 +112,13 @@ internal fun SetupActions(
 private fun ActionButton(
     label: String,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     emphasized: Boolean = false,
 ) {
     val colors = geePeeColors()
     Surface(
-        modifier = modifier.combinedClickable(
-            onClick = onClick,
-            onLongClick = onLongClick,
-        ),
+        onClick = onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         color = if (emphasized) colors.ink else colors.mist.copy(alpha = 0.92f),
         contentColor = if (emphasized) colors.mist else colors.ink,
@@ -155,6 +133,47 @@ private fun ActionButton(
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetupMenu(
+    hasRoute: Boolean,
+    hasCachedTiles: Boolean,
+    onReverseRoute: () -> Unit,
+    onDeleteUnusedTiles: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        ActionButton(
+            label = "Menu",
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            if (hasRoute) {
+                DropdownMenuItem(
+                    text = { Text(text = "Reverse route") },
+                    onClick = {
+                        expanded = false
+                        onReverseRoute()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(text = "Delete unused tiles") },
+                onClick = {
+                    expanded = false
+                    onDeleteUnusedTiles()
+                },
+                enabled = hasCachedTiles,
             )
         }
     }
