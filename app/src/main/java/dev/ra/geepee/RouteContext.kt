@@ -45,12 +45,44 @@ internal data class RouteMapInfoState(
     val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
 )
 
+internal fun LocalNearbyWayDebugStatus.finishLoading(
+    nearbyWayCount: Int = this.nearbyWayCount,
+    errorMessage: String? = this.errorMessage,
+): LocalNearbyWayDebugStatus {
+    return copy(
+        nearbyWaysLoading = false,
+        nearbyWayCount = nearbyWayCount,
+        errorMessage = errorMessage,
+    )
+}
+
 internal fun RouteMapInfoState.withStatus(status: LocalNearbyWayDebugStatus?): RouteMapInfoState {
     return copy(localNearbyWays = status)
 }
 
 internal fun RouteMapInfoState.withNearbyWays(nearbyWays: List<RouteNearbyWaySnippet>): RouteMapInfoState {
     return copy(nearbyWays = nearbyWays)
+}
+
+internal fun RouteMapInfoState.clearNearbyWayResult(): RouteMapInfoState {
+    return copy(
+        localNearbyWays = localNearbyWays?.finishLoading(
+            nearbyWayCount = 0,
+            errorMessage = null,
+        ),
+        nearbyWays = emptyList(),
+    )
+}
+
+internal fun RouteMapInfoState.beginNearbyWayLoad(status: LocalNearbyWayDebugStatus): RouteMapInfoState {
+    return copy(localNearbyWays = status)
+}
+
+internal fun RouteMapInfoState.completeNearbyWayLoad(result: RouteMapInfoState): RouteMapInfoState {
+    return copy(
+        localNearbyWays = result.localNearbyWays?.finishLoading(),
+        nearbyWays = result.nearbyWays,
+    )
 }
 
 internal data class RouteContextState(

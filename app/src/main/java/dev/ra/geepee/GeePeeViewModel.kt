@@ -518,15 +518,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
         val analysis = routeRuntimeState.currentAnalysis ?: run {
             routeContextState = routeContextState.withMapInfo(
-                routeContextState.mapInfo
-                    .withNearbyWays(emptyList())
-                    .withStatus(
-                        routeContextState.mapInfo.localNearbyWays?.copy(
-                            nearbyWayCount = 0,
-                            nearbyWaysLoading = false,
-                            errorMessage = null,
-                        ),
-                    ),
+                routeContextState.mapInfo.clearNearbyWayResult(),
             )
             return
         }
@@ -540,13 +532,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             force = force,
             onStarted = { startedStatus ->
                 routeContextState = routeContextState.withMapInfo(
-                    routeContextState.mapInfo.withStatus(startedStatus),
+                    routeContextState.mapInfo.beginNearbyWayLoad(startedStatus),
                 )
                 recomputeUiState()
             },
             onResult = { result ->
                 routeContextState = routeContextState.withMapInfo(
-                    result.withStatus(result.localNearbyWays?.copy(nearbyWaysLoading = false)),
+                    routeContextState.mapInfo.completeNearbyWayLoad(result),
                 )
                 recomputeUiState()
             },

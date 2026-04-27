@@ -131,6 +131,63 @@ class RouteContextTest {
         assertEquals(status, state.mapInfo.localNearbyWays)
     }
 
+    @Test
+    fun routeMapInfoStateClearsNearbyWayResultWithoutDroppingTileStatus() {
+        val status = LocalNearbyWayDebugStatus(
+            localTileCount = 4,
+            loadedLocalTileCount = 2,
+            hasVisibleTileData = true,
+            nearbyWaysLoading = true,
+            nearbyWayCount = 3,
+            errorMessage = "Old",
+        )
+
+        val cleared = RouteMapInfoState(
+            localNearbyWays = status,
+            nearbyWays = listOf(dummyNearbyWay()),
+        ).clearNearbyWayResult()
+
+        assertTrue(cleared.nearbyWays.isEmpty())
+        assertEquals(
+            status.copy(
+                nearbyWaysLoading = false,
+                nearbyWayCount = 0,
+                errorMessage = null,
+            ),
+            cleared.localNearbyWays,
+        )
+    }
+
+    @Test
+    fun routeMapInfoStateCompletesNearbyWayLoadFromResult() {
+        val previous = RouteMapInfoState(
+            localNearbyWays = LocalNearbyWayDebugStatus(
+                localTileCount = 4,
+                loadedLocalTileCount = 1,
+                hasVisibleTileData = true,
+                nearbyWaysLoading = true,
+            ),
+        )
+        val result = RouteMapInfoState(
+            localNearbyWays = LocalNearbyWayDebugStatus(
+                localTileCount = 4,
+                loadedLocalTileCount = 2,
+                hasVisibleTileData = true,
+                nearbyWaysLoading = true,
+                nearbyWayCount = 1,
+            ),
+            nearbyWays = listOf(dummyNearbyWay()),
+        )
+
+        val completed = previous.completeNearbyWayLoad(result)
+
+        assertEquals(listOf(dummyNearbyWay()), completed.nearbyWays)
+        assertEquals(
+            result.localNearbyWays?.copy(nearbyWaysLoading = false),
+            completed.localNearbyWays,
+        )
+    }
+
     private fun tilePack(vararg features: TileContextFeature): TileContextPack {
         return TileContextPack(
             tileId = DownloadTileId(zoom = 10, x = 0, y = 0),
