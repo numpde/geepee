@@ -45,25 +45,12 @@ internal fun buildRouteTileOverlay(
     routeModel: RouteModel,
     runtimePack: TileRuntimePack,
     config: TileContextConfig,
-    focusGeoPoint: GeoPoint? = null,
-    focusWindowWidthMeters: Double? = null,
 ): RouteTileOverlay {
     val projectedTileBounds = runtimeGeoBoundsToProjectedBounds(runtimePack.runtimeBounds, routeModel.projection)
-    val overlayFocusBounds = if (focusGeoPoint != null && focusWindowWidthMeters != null) {
-        nearbyWayFocusBounds(
-            routeModel = routeModel,
-            focusGeoPoint = focusGeoPoint,
-            focusWindowWidthMeters = focusWindowWidthMeters,
-            haloMeters = config.wayHaloMeters,
-            continuationMeters = config.nearbyWayContinuationMeters,
-        ) ?: projectedTileBounds
-    } else {
-        projectedTileBounds
-    }
     val routeRelevantLeafIndexes = routeRelevantLeafIndexes(
         routeModel = routeModel,
         runtimePack = runtimePack,
-        focusBounds = overlayFocusBounds,
+        focusBounds = projectedTileBounds,
         config = config,
     )
     val context = RouteContext(
@@ -77,7 +64,7 @@ internal fun buildRouteTileOverlay(
             routeModel = routeModel,
             runtimePack = runtimePack,
             routeRelevantLeafIndexes = routeRelevantLeafIndexes,
-            focusBounds = overlayFocusBounds,
+            focusBounds = projectedTileBounds,
             config = config,
         ),
     )
