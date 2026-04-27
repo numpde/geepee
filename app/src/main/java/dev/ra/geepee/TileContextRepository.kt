@@ -115,21 +115,6 @@ internal class TileContextRepository(
         )
     }
 
-    fun peekCachedRouteTileOverlayBundle(
-        routeModel: RouteModel,
-        tileId: DownloadTileId,
-        config: TileContextConfig,
-    ): RouteTileOverlayBundle? {
-        val routeFingerprint = routeFingerprint(routeModel)
-        return loadRouteTileOverlayBundle(
-            routeModel = routeModel,
-            routeFingerprint = routeFingerprint,
-            tileId = tileId,
-            config = config,
-            loadMode = RouteTileOverlayLoadMode.CachedOnly,
-        )
-    }
-
     private fun loadRouteTileOverlayBundle(
         routeModel: RouteModel,
         routeFingerprint: String,
