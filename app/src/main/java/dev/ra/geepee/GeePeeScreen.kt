@@ -48,6 +48,74 @@ internal data class MovementViewState(
         get() = if (mapInfoEnabled) viewportFocus else null
 }
 
+internal data class PreviewTileSelectionState(
+    val selectedTileIds: Set<DownloadTileId> = emptySet(),
+) {
+    val selectionModeActive: Boolean
+        get() = selectedTileIds.isNotEmpty()
+
+    fun retainCached(
+        tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+    ): PreviewTileSelectionState {
+        val retainedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
+            tileSnapshots[tileId]?.status == TileDownloadStatus.Cached
+        }
+        return if (retainedTileIds == selectedTileIds) {
+            this
+        } else {
+            copy(selectedTileIds = retainedTileIds)
+        }
+    }
+
+    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
+        if (tile == null) {
+            return PreviewTileTapResult(this)
+        }
+        return if (selectionModeActive) {
+            PreviewTileTapResult(toggleCachedTile(tile))
+        } else if (tile.isCached) {
+            PreviewTileTapResult(this)
+        } else {
+            PreviewTileTapResult(
+                selectionState = this,
+                downloadRequest = PreviewTileDownloadRequest(
+                    tileId = tile.tileId,
+                    estimatedBytes = tile.estimatedBytes,
+                ),
+            )
+        }
+    }
+
+    fun onLongPress(tile: TileGridDisplayTile?): PreviewTileSelectionState {
+        return toggleCachedTile(tile)
+    }
+
+    private fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
+        if (tile?.isCached != true) {
+            return this
+        }
+        val nextSelectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
+            if (!tileIds.add(tile.tileId)) {
+                tileIds.remove(tile.tileId)
+            }
+        }.toSet()
+        return copy(selectedTileIds = nextSelectedTileIds)
+    }
+}
+
+internal data class PreviewTileTapResult(
+    val selectionState: PreviewTileSelectionState,
+    val downloadRequest: PreviewTileDownloadRequest? = null,
+)
+
+internal data class PreviewTileDownloadRequest(
+    val tileId: DownloadTileId,
+    val estimatedBytes: Long,
+)
+
+private val TileGridDisplayTile.isCached: Boolean
+    get() = snapshot?.status == TileDownloadStatus.Cached
+
 @Composable
 internal fun GeePeeApp(
     viewModel: GeePeeViewModel,
@@ -207,13 +275,17 @@ private fun GeePeeScreen(
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
-        var selectedTileIds by remember(state.routeName, movementMode) {
-            mutableStateOf(emptySet<DownloadTileId>())
+        var tileSelectionState by remember(state.routeName, movementMode) {
+            mutableStateOf(PreviewTileSelectionState())
         }
-        val effectiveSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
-            state.tileDownloads[tileId]?.status == TileDownloadStatus.Cached
+        LaunchedEffect(state.tileDownloads, tileSelectionState) {
+            val retainedSelectionState = tileSelectionState.retainCached(state.tileDownloads)
+            if (retainedSelectionState != tileSelectionState) {
+                tileSelectionState = retainedSelectionState
+            }
         }
-        val deleteTilesLabel = deleteTilesActionLabel(effectiveSelectedTileIds)
+        val selectedTileIds = tileSelectionState.selectedTileIds
+        val deleteTilesLabel = deleteTilesActionLabel(selectedTileIds)
         var deleteTilesPlan by remember { mutableStateOf<TileDeletePlan?>(null) }
         LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
             movementViewState.effectiveMapInfoFocus?.let { focus ->
@@ -240,7 +312,7 @@ private fun GeePeeScreen(
                 viewportWidthPx,
                 viewportHeightPx,
                 state.tileDownloads,
-                effectiveSelectedTileIds,
+                selectedTileIds,
                 state.tileContextConfig,
             ) {
                 buildTileGridRenderModel(
@@ -251,7 +323,7 @@ private fun GeePeeScreen(
                     canvasHeight = viewportHeightPx,
                     config = state.tileContextConfig,
                     tileSnapshots = state.tileDownloads,
-                    selectedTileIds = effectiveSelectedTileIds,
+                    selectedTileIds = selectedTileIds,
                 )
             }
         } else {
@@ -276,16 +348,12 @@ private fun GeePeeScreen(
                     detectTapGestures(
                         onTap = { point ->
                             if (showTileOverview) {
-                                tileGridModel?.tileAt(ScreenPoint(point.x, point.y))?.let { tile ->
-                                    if (tile.snapshot?.status == TileDownloadStatus.Cached) {
-                                        selectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
-                                            if (!tileIds.add(tile.tileId)) {
-                                                tileIds.remove(tile.tileId)
-                                            }
-                                        }.toSet()
-                                    } else {
-                                        onDownloadTile(tile.tileId, tile.estimatedBytes)
-                                    }
+                                val tapResult = tileSelectionState.onTap(
+                                    tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                )
+                                tileSelectionState = tapResult.selectionState
+                                tapResult.downloadRequest?.let { request ->
+                                    onDownloadTile(request.tileId, request.estimatedBytes)
                                 }
                             } else if (movementMode) {
                                 selectedPois = tappedPoiSelections(
@@ -305,6 +373,13 @@ private fun GeePeeScreen(
                                 movementViewportController?.handleDoubleTap?.invoke()
                             } else {
                                 activeViewportState.reset()
+                            }
+                        },
+                        onLongPress = { point ->
+                            if (showTileOverview) {
+                                tileSelectionState = tileSelectionState.onLongPress(
+                                    tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                )
                             }
                         },
                     )
@@ -384,7 +459,7 @@ private fun GeePeeScreen(
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
                         onDeleteTiles = {
-                            deleteTilesPlan = onBuildTileDeletePlan(effectiveSelectedTileIds)
+                            deleteTilesPlan = onBuildTileDeletePlan(selectedTileIds)
                         },
                         deleteTilesLabel = deleteTilesLabel,
                         onRequestScreenPinning = onRequestScreenPinning,
@@ -455,7 +530,7 @@ private fun GeePeeScreen(
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
                 onDeleteTiles = {
-                    deleteTilesPlan = onBuildTileDeletePlan(effectiveSelectedTileIds)
+                    deleteTilesPlan = onBuildTileDeletePlan(selectedTileIds)
                 },
                 deleteTilesLabel = deleteTilesLabel,
                 onStartMonitoring = onStartMonitoring,
@@ -472,7 +547,7 @@ private fun GeePeeScreen(
                 onConfirm = {
                     deleteTilesPlan = null
                     onExecuteTileDeletePlan(plan)
-                    selectedTileIds = emptySet()
+                    tileSelectionState = PreviewTileSelectionState()
                 },
                 onDismiss = { deleteTilesPlan = null },
             )
