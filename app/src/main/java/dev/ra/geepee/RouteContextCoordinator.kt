@@ -8,7 +8,6 @@ import java.util.concurrent.Executors
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
     val localTileIds: Set<DownloadTileId>,
-    val focusRouteEdgeIndexes: List<Int>,
 )
 
 internal data class NearbyWayLoadedTileRevision(
@@ -218,13 +217,18 @@ internal class RouteContextCoordinator(
                     }
                 )
                 val missingOverlayTileIds = tileCoverage.loadedTileIds.filterNot(cachedBundleTileIds::contains)
+                val focusRouteEdgeIndexes = nearbyWayRuntimeHintEdgeIndexes(
+                    routeModel = routeModel,
+                    focus = queryFocus.focus,
+                    config = tileContextConfig,
+                )
                 val runtimeFallbackNearbyWays = dedupeNearbyWaysByFeatureId(
                     tileContextRepository.loadRuntimePacks(missingOverlayTileIds).flatMap { runtimePack ->
                         queryTileRuntimeNearbyWays(
                             routeModel = routeModel,
                             runtimePack = runtimePack,
                             focus = queryFocus.focus,
-                            focusHintEdgeIndexes = queryFocus.focusRouteEdgeIndexes,
+                            focusHintEdgeIndexes = focusRouteEdgeIndexes,
                             config = tileContextConfig,
                         )
                     }
@@ -268,10 +272,6 @@ internal fun resolveNearbyWayQueryFocus(
         focus = resolvedFocus,
         config = config,
     )
-    val focusRouteEdgeIndexes = routeEdgeIndexesIntersectingBounds(
-        model = routeModel,
-        bounds = expandedProjectedBounds,
-    )
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = expandedProjectedBounds,
@@ -280,7 +280,20 @@ internal fun resolveNearbyWayQueryFocus(
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
         localTileIds = localTileIds,
-        focusRouteEdgeIndexes = focusRouteEdgeIndexes,
+    )
+}
+
+internal fun nearbyWayRuntimeHintEdgeIndexes(
+    routeModel: RouteModel,
+    focus: MapInfoFocus,
+    config: TileContextConfig,
+): List<Int> {
+    return routeEdgeIndexesIntersectingBounds(
+        model = routeModel,
+        bounds = expandedNearbyWayMapInfoBounds(
+            focus = focus,
+            config = config,
+        ),
     )
 }
 

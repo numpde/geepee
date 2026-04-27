@@ -125,7 +125,6 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
-            focusRouteEdgeIndexes = emptyList(),
         )
         val nearbyFocus = baseFocus.copy(
             focus = baseFocus.focus.copy(
@@ -176,7 +175,6 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
-            focusRouteEdgeIndexes = emptyList(),
         )
 
         val firstKey = buildNearbyWayQueryCacheKey(
@@ -264,6 +262,47 @@ class RouteContextCoordinatorTest {
                 zoom = DefaultTileContextConfig.downloadZoom,
             ).toSet(),
             resolved.localTileIds,
+        )
+    }
+
+    @Test
+    fun nearbyWayRuntimeHintEdgeIndexes_areDerivedFromExpandedFocusBounds() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0, 0.5),
+                    GeoPoint(0.5, 0.5),
+                ),
+            ),
+        )
+        val focus = MapInfoFocus(
+            centerGeoPoint = GeoPoint(0.0, 0.2),
+            windowWidthMeters = 100.0,
+            projectedBounds = projectedBoundsForGeoBounds(
+                bounds = GeoBounds(
+                    west = 0.0,
+                    south = -0.01,
+                    east = 0.4,
+                    north = 0.01,
+                ),
+                projection = routeModel.projection,
+            ),
+        )
+
+        assertEquals(
+            routeEdgeIndexesIntersectingBounds(
+                model = routeModel,
+                bounds = expandedNearbyWayMapInfoBounds(
+                    focus = focus,
+                    config = DefaultTileContextConfig,
+                ),
+            ),
+            nearbyWayRuntimeHintEdgeIndexes(
+                routeModel = routeModel,
+                focus = focus,
+                config = DefaultTileContextConfig,
+            ),
         )
     }
 
