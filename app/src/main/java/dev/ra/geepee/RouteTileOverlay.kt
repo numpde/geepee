@@ -338,6 +338,7 @@ internal fun queryRouteTileOverlayNearbyWays(
     bundle: RouteTileOverlayBundle,
     focusGeoPoint: GeoPoint,
     focusWindowWidthMeters: Double,
+    focusBoundsOverride: Bounds? = null,
     config: TileContextConfig,
 ): List<RouteNearbyWaySnippet> {
     if (bundle.overlay.context.nearbyWays.isEmpty()) {
@@ -347,6 +348,7 @@ internal fun queryRouteTileOverlayNearbyWays(
         runtimePack = bundle.runtimePack,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
+        focusProjectedBounds = focusBoundsOverride,
         projection = routeModel.projection,
         config = config,
     )
@@ -367,28 +369,20 @@ internal fun queryRouteTileOverlayNearbyWays(
         return emptyList()
     }
 
-    val projectedFocusBounds = overlayNearbyWayFocusBounds(
+    val projectedFocusBounds = focusBoundsOverride ?: overlayNearbyWayFocusBounds(
         routeModel = routeModel,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
         haloMeters = config.wayHaloMeters,
         continuationMeters = config.nearbyWayContinuationMeters,
     )
-    return candidateNearbyWayIndexes
+    return dedupeNearbyWaysByFeatureId(
+        candidateNearbyWayIndexes
         .map { index -> bundle.overlay.context.nearbyWays[index] }
         .filter { nearbyWay ->
             boundsIntersect(nearbyWay.bounds, expandBounds(projectedFocusBounds, config.wayHaloMeters))
         }
-        .groupBy(RouteNearbyWaySnippet::featureId)
-        .values
-        .map { snippets ->
-            snippets.maxBy { snippet ->
-                snippet.points.zipWithNext().sumOf { (start, end) ->
-                    kotlin.math.hypot(end.x - start.x, end.y - start.y)
-                }
-            }
-        }
-        .sortedBy(RouteNearbyWaySnippet::featureId)
+    )
 }
 
 internal fun queryTileRuntimeNearbyWays(
@@ -444,7 +438,8 @@ internal fun queryTileRuntimeNearbyWays(
         .filter { segment ->
             tileRuntimeBoundsIntersect(segment.bounds, localExpandedFocusBounds)
         }
-    val nearbyWays = candidateSegments.flatMap { segment ->
+    val nearbyWays = dedupeNearbyWaysByFeatureId(
+        candidateSegments.flatMap { segment ->
             extractNearbyWaySnippetsFromProjectedPoints(
                 routeModel = routeModel,
                 featureId = segment.sourceFeatureId,
@@ -458,17 +453,22 @@ internal fun queryTileRuntimeNearbyWays(
                 restrictToHintWindow = focusHintEdgeIndexes.isNotEmpty(),
             )
         }
+    )
+    return nearbyWays
+}
+
+private fun dedupeNearbyWaysByFeatureId(snippets: List<RouteNearbyWaySnippet>): List<RouteNearbyWaySnippet> {
+    return snippets
         .groupBy(RouteNearbyWaySnippet::featureId)
         .values
-        .map { snippets ->
-            snippets.maxBy { snippet ->
+        .map { featureSnippets ->
+            featureSnippets.maxBy { snippet ->
                 snippet.points.zipWithNext().sumOf { (start, end) ->
                     kotlin.math.hypot(end.x - start.x, end.y - start.y)
                 }
             }
         }
         .sortedBy(RouteNearbyWaySnippet::featureId)
-    return nearbyWays
 }
 
 internal fun routeFingerprint(routeModel: RouteModel): String {
