@@ -135,14 +135,6 @@ internal fun LocalNearbyWayDebugStatus.finishLoading(
     )
 }
 
-internal fun RouteMapInfoState.withStatus(status: LocalNearbyWayDebugStatus?): RouteMapInfoState {
-    return copy(localNearbyWays = status)
-}
-
-internal fun RouteMapInfoState.withNearbyWays(nearbyWays: List<RouteNearbyWaySnippet>): RouteMapInfoState {
-    return copy(nearbyWays = nearbyWays)
-}
-
 internal fun RouteMapInfoState.clearNearbyWayResult(): RouteMapInfoState {
     return copy(
         localNearbyWays = localNearbyWays?.finishLoading(

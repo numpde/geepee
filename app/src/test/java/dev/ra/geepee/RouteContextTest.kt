@@ -121,9 +121,10 @@ class RouteContextTest {
         val state = RouteContextState()
             .withPois(listOf(dummyPoi()))
             .withMapInfo(
-                RouteMapInfoState()
-                    .withNearbyWays(listOf(dummyNearbyWay()))
-                    .withStatus(status),
+                RouteMapInfoState(
+                    localNearbyWays = status,
+                    nearbyWays = listOf(dummyNearbyWay()),
+                ),
             )
 
         assertEquals(1, state.pois.size)
