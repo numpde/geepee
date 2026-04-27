@@ -32,7 +32,7 @@ internal fun TileGridCanvas(
     val density = LocalDensity.current
     val labelPaint = remember(density, colors.ink) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colors.ink.copy(alpha = 0.9f).toArgb()
+            color = colors.ink.copy(alpha = 0.68f).toArgb()
             textAlign = Paint.Align.CENTER
             textSize = with(density) { 12.sp.toPx() }
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -67,7 +67,7 @@ private fun DrawScope.drawTileCell(
     val showProgress = visualStyle == TileGridVisualStyle.Preview
 
     val routeFill = if (showFills && tile.routeMetrics.intersectsRoute) {
-        colors.ink.copy(alpha = 0.05f)
+        colors.ink.copy(alpha = 0.025f)
     } else {
         Color.Transparent
     }
@@ -82,9 +82,9 @@ private fun DrawScope.drawTileCell(
 
     val stateFill = if (showFills) {
         when (state) {
-            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.2f)
-            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.18f)
-            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.18f)
+            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
+            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.1f)
+            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.1f)
             null -> Color.Transparent
         }
     } else {
@@ -100,13 +100,13 @@ private fun DrawScope.drawTileCell(
     }
 
     val borderColor = when (state) {
-        TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.72f)
-        TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.8f)
-        TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.82f)
+        TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
+        TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.52f)
+        TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.54f)
         null -> if (tile.routeMetrics.intersectsRoute) {
-            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.24f else 0.14f)
+            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.14f else 0.08f)
         } else {
-            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.1f else 0.06f)
+            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.06f else 0.035f)
         }
     }
     drawRoundRect(
@@ -116,8 +116,8 @@ private fun DrawScope.drawTileCell(
         cornerRadius = cornerRadius,
         style = androidx.compose.ui.graphics.drawscope.Stroke(
             width = when (visualStyle) {
-                TileGridVisualStyle.Preview -> if (tile.routeMetrics.intersectsRoute) 2.dp.toPx() else 1.dp.toPx()
-                TileGridVisualStyle.LiveOverlay -> if (tile.routeMetrics.intersectsRoute) 1.25.dp.toPx() else 1.dp.toPx()
+                TileGridVisualStyle.Preview -> if (tile.routeMetrics.intersectsRoute) 1.5.dp.toPx() else 0.8.dp.toPx()
+                TileGridVisualStyle.LiveOverlay -> if (tile.routeMetrics.intersectsRoute) 1.dp.toPx() else 0.7.dp.toPx()
             },
         ),
     )
