@@ -33,7 +33,8 @@ internal data class RouteContext(
 
 internal data class LocalNearbyWayDebugStatus(
     val localTileCount: Int = 0,
-    val loadedLocalTileCount: Int = 0,
+    val downloadedLocalTileCount: Int = 0,
+    val overlayReadyLocalTileCount: Int = 0,
     val hasVisibleTileData: Boolean? = null,
     val nearbyWaysLoading: Boolean = false,
     val nearbyWayCount: Int = 0,
@@ -42,41 +43,49 @@ internal data class LocalNearbyWayDebugStatus(
     companion object {
         fun loading(
             localTileCount: Int,
-            loadedLocalTileCount: Int,
+            downloadedLocalTileCount: Int,
+            overlayReadyLocalTileCount: Int,
             existingNearbyWayCount: Int,
         ): LocalNearbyWayDebugStatus {
-            val hasVisibleTileData = loadedLocalTileCount > 0
+            val hasVisibleTileData = overlayReadyLocalTileCount > 0
             return LocalNearbyWayDebugStatus(
                 localTileCount = localTileCount,
-                loadedLocalTileCount = loadedLocalTileCount,
+                downloadedLocalTileCount = downloadedLocalTileCount,
+                overlayReadyLocalTileCount = overlayReadyLocalTileCount,
                 hasVisibleTileData = hasVisibleTileData,
-                nearbyWaysLoading = hasVisibleTileData,
+                nearbyWaysLoading = downloadedLocalTileCount > overlayReadyLocalTileCount,
                 nearbyWayCount = if (hasVisibleTileData) existingNearbyWayCount else 0,
             )
         }
 
         fun resolved(
             localTileCount: Int,
-            loadedLocalTileCount: Int,
+            downloadedLocalTileCount: Int,
+            overlayReadyLocalTileCount: Int,
             nearbyWayCount: Int,
+            nearbyWaysLoading: Boolean = false,
         ): LocalNearbyWayDebugStatus {
             return LocalNearbyWayDebugStatus(
                 localTileCount = localTileCount,
-                loadedLocalTileCount = loadedLocalTileCount,
-                hasVisibleTileData = loadedLocalTileCount > 0,
+                downloadedLocalTileCount = downloadedLocalTileCount,
+                overlayReadyLocalTileCount = overlayReadyLocalTileCount,
+                hasVisibleTileData = overlayReadyLocalTileCount > 0,
+                nearbyWaysLoading = nearbyWaysLoading,
                 nearbyWayCount = nearbyWayCount,
             )
         }
 
         fun failed(
             localTileCount: Int,
-            loadedLocalTileCount: Int,
+            downloadedLocalTileCount: Int,
+            overlayReadyLocalTileCount: Int,
             hasVisibleTileData: Boolean,
             errorMessage: String,
         ): LocalNearbyWayDebugStatus {
             return LocalNearbyWayDebugStatus(
                 localTileCount = localTileCount,
-                loadedLocalTileCount = loadedLocalTileCount,
+                downloadedLocalTileCount = downloadedLocalTileCount,
+                overlayReadyLocalTileCount = overlayReadyLocalTileCount,
                 hasVisibleTileData = hasVisibleTileData,
                 nearbyWayCount = 0,
                 errorMessage = errorMessage,
@@ -92,14 +101,18 @@ internal data class RouteMapInfoState(
     companion object {
         fun resolvedNearbyWays(
             localTileCount: Int,
-            loadedLocalTileCount: Int,
+            downloadedLocalTileCount: Int,
+            overlayReadyLocalTileCount: Int,
             nearbyWays: List<RouteNearbyWaySnippet>,
+            nearbyWaysLoading: Boolean = false,
         ): RouteMapInfoState {
             return RouteMapInfoState(
                 localNearbyWays = LocalNearbyWayDebugStatus.resolved(
                     localTileCount = localTileCount,
-                    loadedLocalTileCount = loadedLocalTileCount,
+                    downloadedLocalTileCount = downloadedLocalTileCount,
+                    overlayReadyLocalTileCount = overlayReadyLocalTileCount,
                     nearbyWayCount = nearbyWays.size,
+                    nearbyWaysLoading = nearbyWaysLoading,
                 ),
                 nearbyWays = nearbyWays,
             )
@@ -107,14 +120,16 @@ internal data class RouteMapInfoState(
 
         fun failedNearbyWays(
             localTileCount: Int,
-            loadedLocalTileCount: Int,
+            downloadedLocalTileCount: Int,
+            overlayReadyLocalTileCount: Int,
             hasVisibleTileData: Boolean,
             errorMessage: String,
         ): RouteMapInfoState {
             return RouteMapInfoState(
                 localNearbyWays = LocalNearbyWayDebugStatus.failed(
                     localTileCount = localTileCount,
-                    loadedLocalTileCount = loadedLocalTileCount,
+                    downloadedLocalTileCount = downloadedLocalTileCount,
+                    overlayReadyLocalTileCount = overlayReadyLocalTileCount,
                     hasVisibleTileData = hasVisibleTileData,
                     errorMessage = errorMessage,
                 ),
@@ -151,7 +166,7 @@ internal fun RouteMapInfoState.beginNearbyWayLoad(status: LocalNearbyWayDebugSta
 
 internal fun RouteMapInfoState.completeNearbyWayLoad(result: RouteMapInfoState): RouteMapInfoState {
     return copy(
-        localNearbyWays = result.localNearbyWays?.finishLoading(),
+        localNearbyWays = result.localNearbyWays,
         nearbyWays = result.nearbyWays,
     )
 }

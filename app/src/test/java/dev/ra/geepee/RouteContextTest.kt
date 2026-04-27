@@ -114,7 +114,8 @@ class RouteContextTest {
     fun routeContextStateKeepsLocalMapInfoTogether() {
         val status = LocalNearbyWayDebugStatus(
             localTileCount = 4,
-            loadedLocalTileCount = 2,
+            downloadedLocalTileCount = 2,
+            overlayReadyLocalTileCount = 1,
             hasVisibleTileData = true,
             nearbyWaysLoading = true,
         )
@@ -136,7 +137,8 @@ class RouteContextTest {
     fun routeMapInfoStateClearsNearbyWayResultWithoutDroppingTileStatus() {
         val status = LocalNearbyWayDebugStatus(
             localTileCount = 4,
-            loadedLocalTileCount = 2,
+            downloadedLocalTileCount = 2,
+            overlayReadyLocalTileCount = 1,
             hasVisibleTileData = true,
             nearbyWaysLoading = true,
             nearbyWayCount = 3,
@@ -164,7 +166,8 @@ class RouteContextTest {
         val previous = RouteMapInfoState(
             localNearbyWays = LocalNearbyWayDebugStatus(
                 localTileCount = 4,
-                loadedLocalTileCount = 1,
+                downloadedLocalTileCount = 1,
+                overlayReadyLocalTileCount = 0,
                 hasVisibleTileData = true,
                 nearbyWaysLoading = true,
             ),
@@ -172,7 +175,8 @@ class RouteContextTest {
         val result = RouteMapInfoState(
             localNearbyWays = LocalNearbyWayDebugStatus(
                 localTileCount = 4,
-                loadedLocalTileCount = 2,
+                downloadedLocalTileCount = 2,
+                overlayReadyLocalTileCount = 1,
                 hasVisibleTileData = true,
                 nearbyWaysLoading = true,
                 nearbyWayCount = 1,
@@ -184,7 +188,7 @@ class RouteContextTest {
 
         assertEquals(listOf(dummyNearbyWay()), completed.nearbyWays)
         assertEquals(
-            result.localNearbyWays?.copy(nearbyWaysLoading = false),
+            result.localNearbyWays,
             completed.localNearbyWays,
         )
     }
@@ -193,12 +197,14 @@ class RouteContextTest {
     fun localNearbyWayDebugStatusLoadingReflectsVisibleTileAvailability() {
         val withData = LocalNearbyWayDebugStatus.loading(
             localTileCount = 4,
-            loadedLocalTileCount = 2,
+            downloadedLocalTileCount = 2,
+            overlayReadyLocalTileCount = 1,
             existingNearbyWayCount = 3,
         )
         val withoutData = LocalNearbyWayDebugStatus.loading(
             localTileCount = 4,
-            loadedLocalTileCount = 0,
+            downloadedLocalTileCount = 0,
+            overlayReadyLocalTileCount = 0,
             existingNearbyWayCount = 3,
         )
 
@@ -215,12 +221,14 @@ class RouteContextTest {
     fun localNearbyWayDebugStatusResolvedAndFailedShareAvailabilitySemantics() {
         val resolved = LocalNearbyWayDebugStatus.resolved(
             localTileCount = 4,
-            loadedLocalTileCount = 2,
+            downloadedLocalTileCount = 2,
+            overlayReadyLocalTileCount = 1,
             nearbyWayCount = 1,
         )
         val failed = LocalNearbyWayDebugStatus.failed(
             localTileCount = 4,
-            loadedLocalTileCount = 0,
+            downloadedLocalTileCount = 1,
+            overlayReadyLocalTileCount = 0,
             hasVisibleTileData = false,
             errorMessage = "Boom",
         )
@@ -240,7 +248,8 @@ class RouteContextTest {
 
         val state = RouteMapInfoState.resolvedNearbyWays(
             localTileCount = 4,
-            loadedLocalTileCount = 2,
+            downloadedLocalTileCount = 2,
+            overlayReadyLocalTileCount = 1,
             nearbyWays = nearbyWays,
         )
 
@@ -253,7 +262,8 @@ class RouteContextTest {
     fun routeMapInfoStateFailedNearbyWaysUsesOwnedFailureShape() {
         val state = RouteMapInfoState.failedNearbyWays(
             localTileCount = 4,
-            loadedLocalTileCount = 1,
+            downloadedLocalTileCount = 1,
+            overlayReadyLocalTileCount = 0,
             hasVisibleTileData = true,
             errorMessage = "Boom",
         )

@@ -69,13 +69,23 @@ internal fun mapInfoAvailabilityText(status: LocalNearbyWayDebugStatus?): String
     status.errorMessage?.let {
         return "Map info for this view: unavailable"
     }
-    val hasVisibleTileData = status.hasVisibleTileData ?: return null
-    if (!hasVisibleTileData) {
+    if (status.downloadedLocalTileCount == 0) {
         return "Map info for this view: not downloaded"
     }
-    return when {
-        status.nearbyWaysLoading -> "Map info for this view: loading…"
-        status.localTileCount > 0 && status.loadedLocalTileCount < status.localTileCount -> "Map info for this view: partly available"
-        else -> "Map info for this view: available"
+    if (status.nearbyWaysLoading) {
+        return "Map info for this view: loading…"
+    }
+    val hasVisibleTileData = status.hasVisibleTileData ?: return null
+    if (!hasVisibleTileData) {
+        return "Map info for this view: unavailable"
+    }
+    return if (
+        status.localTileCount > 0 &&
+        (status.downloadedLocalTileCount < status.localTileCount ||
+            status.overlayReadyLocalTileCount < status.downloadedLocalTileCount)
+    ) {
+        "Map info for this view: partly available"
+    } else {
+        "Map info for this view: available"
     }
 }

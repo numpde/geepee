@@ -106,7 +106,8 @@ class UiProjectionTest {
             mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
-                    loadedLocalTileCount = 3,
+                    downloadedLocalTileCount = 0,
+                    overlayReadyLocalTileCount = 0,
                     hasVisibleTileData = false,
                 ),
             ),
@@ -117,8 +118,9 @@ class UiProjectionTest {
             mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
-                    loadedLocalTileCount = 3,
-                    hasVisibleTileData = true,
+                    downloadedLocalTileCount = 3,
+                    overlayReadyLocalTileCount = 0,
+                    hasVisibleTileData = false,
                     nearbyWaysLoading = true,
                 ),
             ),
@@ -130,7 +132,8 @@ class UiProjectionTest {
                 LocalNearbyWayDebugStatus(
                     nearbyWayCount = 2,
                     localTileCount = 9,
-                    loadedLocalTileCount = 9,
+                    downloadedLocalTileCount = 9,
+                    overlayReadyLocalTileCount = 9,
                     hasVisibleTileData = true,
                 ),
             ),
@@ -141,7 +144,8 @@ class UiProjectionTest {
             mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
-                    loadedLocalTileCount = 5,
+                    downloadedLocalTileCount = 5,
+                    overlayReadyLocalTileCount = 3,
                     hasVisibleTileData = true,
                 ),
             ),
@@ -189,7 +193,8 @@ class UiProjectionTest {
                     mapInfo = RouteMapInfoState(
                         localNearbyWays = LocalNearbyWayDebugStatus(
                             localTileCount = 1,
-                            loadedLocalTileCount = 1,
+                            downloadedLocalTileCount = 1,
+                            overlayReadyLocalTileCount = 1,
                             hasVisibleTileData = true,
                         ),
                         nearbyWays = listOf(nearbyWay),

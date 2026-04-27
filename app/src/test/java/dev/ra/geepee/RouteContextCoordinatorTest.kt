@@ -390,18 +390,25 @@ class RouteContextCoordinatorTest {
 
         val loading = coverage.loadingStatus(existingNearbyWayCount = 4)
         assertEquals(2, loading.localTileCount)
-        assertEquals(1, loading.loadedLocalTileCount)
-        assertEquals(4, loading.nearbyWayCount)
+        assertEquals(1, loading.downloadedLocalTileCount)
+        assertEquals(0, loading.overlayReadyLocalTileCount)
+        assertEquals(0, loading.nearbyWayCount)
+        assertEquals(true, loading.nearbyWaysLoading)
 
-        val resolved = coverage.resolvedMapInfo(emptyList())
+        val resolved = coverage.resolvedMapInfo(
+            nearbyWays = emptyList(),
+            overlayReadyLocalTileCount = 1,
+        )
         assertEquals(2, resolved.localNearbyWays?.localTileCount)
-        assertEquals(1, resolved.localNearbyWays?.loadedLocalTileCount)
+        assertEquals(1, resolved.localNearbyWays?.downloadedLocalTileCount)
+        assertEquals(1, resolved.localNearbyWays?.overlayReadyLocalTileCount)
         assertTrue(resolved.nearbyWays.isEmpty())
 
         val failed = coverage.failedMapInfo("Boom")
         assertEquals(2, failed.localNearbyWays?.localTileCount)
-        assertEquals(1, failed.localNearbyWays?.loadedLocalTileCount)
+        assertEquals(1, failed.localNearbyWays?.downloadedLocalTileCount)
+        assertEquals(0, failed.localNearbyWays?.overlayReadyLocalTileCount)
         assertEquals("Boom", failed.localNearbyWays?.errorMessage)
-        assertFalse(failed.localNearbyWays?.hasVisibleTileData == false)
+        assertEquals(false, failed.localNearbyWays?.hasVisibleTileData)
     }
 }
