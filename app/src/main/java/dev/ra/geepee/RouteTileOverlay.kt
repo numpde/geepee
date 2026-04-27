@@ -36,6 +36,11 @@ private data class OverlayRoutePoiCandidate(
     val offsetMeters: Double,
 )
 
+private data class NearbyWayQueryWindow(
+    val projectedBounds: Bounds,
+    val localBounds: TileRuntimeLocalBounds,
+)
+
 internal fun buildRouteTileOverlay(
     routeModel: RouteModel,
     runtimePack: TileRuntimePack,
@@ -474,17 +479,17 @@ internal fun queryRouteTileOverlayNearbyWays(
     if (bundle.overlay.context.nearbyWays.isEmpty()) {
         return emptyList()
     }
-    val localFocusBounds = localFocusBounds(
+    val queryWindow = buildNearbyWayQueryWindow(
         runtimePack = bundle.runtimePack,
+        routeModel = routeModel,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
         focusProjectedBounds = focusBoundsOverride,
-        projection = routeModel.projection,
         config = config,
     )
     val candidateLeafIndexes = bundle.runtimePack.quadtreeNodes
         .filter { node ->
-            node.isLeaf && tileRuntimeBoundsIntersect(node.bounds, localFocusBounds)
+            node.isLeaf && tileRuntimeBoundsIntersect(node.bounds, queryWindow.localBounds)
         }
         .map(TileRuntimeQuadtreeNode::nodeIndex)
         .toSet()
@@ -498,19 +503,11 @@ internal fun queryRouteTileOverlayNearbyWays(
     if (candidateNearbyWayIndexes.isEmpty()) {
         return emptyList()
     }
-
-    val projectedFocusBounds = focusBoundsOverride ?: overlayNearbyWayFocusBounds(
-        routeModel = routeModel,
-        focusGeoPoint = focusGeoPoint,
-        focusWindowWidthMeters = focusWindowWidthMeters,
-        haloMeters = config.wayHaloMeters,
-        continuationMeters = config.nearbyWayContinuationMeters,
-    )
     return dedupeNearbyWaysByFeatureId(
         candidateNearbyWayIndexes
         .map { index -> bundle.overlay.context.nearbyWays[index] }
         .filter { nearbyWay ->
-            boundsIntersect(nearbyWay.bounds, expandBounds(projectedFocusBounds, config.wayHaloMeters))
+            boundsIntersect(nearbyWay.bounds, expandBounds(queryWindow.projectedBounds, config.wayHaloMeters))
         }
     )
 }
@@ -527,18 +524,18 @@ internal fun queryTileRuntimeNearbyWays(
     if (runtimePack.waySegments.isEmpty()) {
         return emptyList()
     }
-    val localFocusBounds = localFocusBounds(
+    val queryWindow = buildNearbyWayQueryWindow(
         runtimePack = runtimePack,
+        routeModel = routeModel,
         focusGeoPoint = focusGeoPoint,
         focusWindowWidthMeters = focusWindowWidthMeters,
         focusProjectedBounds = focusBoundsOverride,
-        projection = routeModel.projection,
         config = config,
     )
     val seedLeafIndexes = runtimePack.quadtreeNodes
         .asSequence()
         .filter { node ->
-            node.isLeaf && tileRuntimeBoundsIntersect(node.bounds, localFocusBounds)
+            node.isLeaf && tileRuntimeBoundsIntersect(node.bounds, queryWindow.localBounds)
         }
         .map(TileRuntimeQuadtreeNode::nodeIndex)
         .toList()
@@ -554,14 +551,11 @@ internal fun queryTileRuntimeNearbyWays(
         return emptyList()
     }
 
-    val projectedFocusBounds = focusBoundsOverride ?: overlayNearbyWayFocusBounds(
-        routeModel = routeModel,
-        focusGeoPoint = focusGeoPoint,
-        focusWindowWidthMeters = focusWindowWidthMeters,
-        haloMeters = config.wayHaloMeters,
-        continuationMeters = config.nearbyWayContinuationMeters,
+    val localExpandedFocusBounds = expandTileRuntimeLocalBounds(
+        queryWindow.localBounds,
+        runtimePack.coordinateScale,
+        config.wayHaloMeters,
     )
-    val localExpandedFocusBounds = expandTileRuntimeLocalBounds(localFocusBounds, runtimePack.coordinateScale, config.wayHaloMeters)
     val segmentsById = runtimePack.waySegments.associateBy(TileRuntimeWaySegment::segmentId)
     val candidateSegments = candidateSegmentIds
         .mapNotNull(segmentsById::get)
@@ -578,7 +572,7 @@ internal fun queryTileRuntimeNearbyWays(
                 },
                 haloMeters = config.wayHaloMeters,
                 continuationMeters = config.nearbyWayContinuationMeters,
-                focusBounds = projectedFocusBounds,
+                focusBounds = queryWindow.projectedBounds,
                 initialNearestEdgeIndexes = focusHintEdgeIndexes,
                 restrictToHintWindow = focusHintEdgeIndexes.isNotEmpty(),
             )
@@ -644,28 +638,28 @@ private fun readRouteTileOverlayIntList(data: DataInputStream): List<Int> {
     }
 }
 
-private fun localFocusBounds(
+private fun buildNearbyWayQueryWindow(
     runtimePack: TileRuntimePack,
+    routeModel: RouteModel,
     focusGeoPoint: GeoPoint,
     focusWindowWidthMeters: Double,
     focusProjectedBounds: Bounds? = null,
-    projection: Projection,
     config: TileContextConfig,
-): TileRuntimeLocalBounds {
-    focusProjectedBounds?.let { projectedBounds ->
-        return tileRuntimeProjectedBoundsToLocalBounds(runtimePack, projectedBounds, projection)
-    }
-    val focusPoint = tileRuntimeGeoPointToLocalPoint(runtimePack, focusGeoPoint)
-    val focusRadiusMeters = max(
-        (config.wayHaloMeters + config.nearbyWayContinuationMeters) * 1.35,
-        max(250.0, min(focusWindowWidthMeters * 0.35, 1_200.0)),
+) : NearbyWayQueryWindow {
+    val projectedBounds = focusProjectedBounds ?: overlayNearbyWayFocusBounds(
+        routeModel = routeModel,
+        focusGeoPoint = focusGeoPoint,
+        focusWindowWidthMeters = focusWindowWidthMeters,
+        haloMeters = config.wayHaloMeters,
+        continuationMeters = config.nearbyWayContinuationMeters,
     )
-    val radiusUnits = kotlin.math.ceil(focusRadiusMeters * runtimePack.coordinateScale).toInt()
-    return TileRuntimeLocalBounds(
-        minX = focusPoint.x - radiusUnits,
-        minY = focusPoint.y - radiusUnits,
-        maxX = focusPoint.x + radiusUnits,
-        maxY = focusPoint.y + radiusUnits,
+    return NearbyWayQueryWindow(
+        projectedBounds = projectedBounds,
+        localBounds = tileRuntimeProjectedBoundsToLocalBounds(
+            runtimePack = runtimePack,
+            bounds = projectedBounds,
+            projection = routeModel.projection,
+        ),
     )
 }
 
