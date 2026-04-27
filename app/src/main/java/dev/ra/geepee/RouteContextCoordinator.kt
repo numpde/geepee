@@ -174,9 +174,10 @@ internal class RouteContextCoordinator(
         val requestId = ++nearbyWayRequestId
         nearbyWayExecutor.execute {
             val result = try {
-                val cachedBundles = tileContextRepository.loadCachedRouteTileOverlayBundles(
+                val cachedBundles = tileContextRepository.peekCachedRouteTileOverlayBundles(
                     routeModel = routeModel,
                     tileIds = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId),
+                    config = tileContextConfig,
                 )
                 val cachedBundleTileIds = cachedBundles
                     .map { bundle -> bundle.overlay.tileId }

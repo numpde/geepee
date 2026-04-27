@@ -46,6 +46,35 @@ class TileContextRepositoryTest {
     }
 
     @Test
+    fun cachedOnlyOverlayLoadDoesNotBuildMissingOverlay() {
+        withRepository { repository ->
+            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            repository.storeTilePack(pack)
+            val routeModel = loadRepositoryRouteModel()
+
+            val cachedOnlyBeforeBuild = repository.peekCachedRouteTileOverlayBundles(
+                routeModel = routeModel,
+                tileIds = listOf(pack.tileId),
+                config = DefaultTileContextConfig,
+            )
+            val built = repository.loadRouteTileOverlayBundles(
+                routeModel = routeModel,
+                tileIds = listOf(pack.tileId),
+                config = DefaultTileContextConfig,
+            )
+            val cachedOnlyAfterBuild = repository.peekCachedRouteTileOverlayBundles(
+                routeModel = routeModel,
+                tileIds = listOf(pack.tileId),
+                config = DefaultTileContextConfig,
+            )
+
+            assertTrue(cachedOnlyBeforeBuild.isEmpty())
+            assertEquals(1, built.size)
+            assertEquals(1, cachedOnlyAfterBuild.size)
+        }
+    }
+
+    @Test
     fun concurrentRouteTileOverlayLoadsShareSingleOverlayBuild() {
         withRepository { repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")

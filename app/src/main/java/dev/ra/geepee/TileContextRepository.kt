@@ -28,6 +28,11 @@ private const val TILE_CONTEXT_REPOSITORY_LOG_TAG = "TileContextRepository"
 private const val TILE_RUNTIME_MEMORY_CACHE_LIMIT = 32
 private const val ROUTE_TILE_OVERLAY_MEMORY_CACHE_LIMIT = 96
 
+private enum class RouteTileOverlayLoadMode {
+    CachedOnly,
+    BuildIfMissing,
+}
+
 internal class TileContextRepository(
     private val cacheRoot: File,
 ) {
@@ -106,6 +111,22 @@ internal class TileContextRepository(
             routeFingerprint = routeFingerprint,
             tileId = tileId,
             config = config,
+            loadMode = RouteTileOverlayLoadMode.BuildIfMissing,
+        )
+    }
+
+    fun peekCachedRouteTileOverlayBundle(
+        routeModel: RouteModel,
+        tileId: DownloadTileId,
+        config: TileContextConfig,
+    ): RouteTileOverlayBundle? {
+        val routeFingerprint = routeFingerprint(routeModel)
+        return loadRouteTileOverlayBundle(
+            routeModel = routeModel,
+            routeFingerprint = routeFingerprint,
+            tileId = tileId,
+            config = config,
+            loadMode = RouteTileOverlayLoadMode.CachedOnly,
         )
     }
 
@@ -114,6 +135,7 @@ internal class TileContextRepository(
         routeFingerprint: String,
         tileId: DownloadTileId,
         config: TileContextConfig,
+        loadMode: RouteTileOverlayLoadMode,
     ): RouteTileOverlayBundle? {
         val runtimePack = loadRuntimePack(tileId) ?: return null
         val cacheKey = RouteTileOverlayCacheKey(
@@ -127,6 +149,17 @@ internal class TileContextRepository(
             }
         }
         val overlayFile = routeOverlayFileFor(cacheKey)
+        if (loadMode == RouteTileOverlayLoadMode.CachedOnly) {
+            val cachedOverlay = if (overlayFile.exists()) {
+                runCatching {
+                    routeTileOverlayFromByteArray(overlayFile.readBytes())
+                }.getOrNull()
+            } else {
+                null
+            }
+            cachedOverlay?.let(::cacheRouteTileOverlay)
+            return cachedOverlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
+        }
         val overlayTask: FutureTask<RouteTileOverlay?>
         val createdTask: Boolean
         synchronized(derivedCacheLock) {
@@ -187,48 +220,26 @@ internal class TileContextRepository(
                 routeFingerprint = routeFingerprint,
                 tileId = tileId,
                 config = config,
+                loadMode = RouteTileOverlayLoadMode.BuildIfMissing,
             )
         }
     }
 
-    fun loadCachedRouteTileOverlayBundles(
+    fun peekCachedRouteTileOverlayBundles(
         routeModel: RouteModel,
         tileIds: Collection<DownloadTileId>,
+        config: TileContextConfig,
     ): List<RouteTileOverlayBundle> {
         val routeFingerprint = routeFingerprint(routeModel)
         return tileIds.mapNotNull { tileId ->
-            loadCachedRouteTileOverlayBundle(
+            loadRouteTileOverlayBundle(
+                routeModel = routeModel,
                 routeFingerprint = routeFingerprint,
                 tileId = tileId,
+                config = config,
+                loadMode = RouteTileOverlayLoadMode.CachedOnly,
             )
         }
-    }
-
-    private fun loadCachedRouteTileOverlayBundle(
-        routeFingerprint: String,
-        tileId: DownloadTileId,
-    ): RouteTileOverlayBundle? {
-        val runtimePack = loadRuntimePack(tileId) ?: return null
-        val cacheKey = RouteTileOverlayCacheKey(
-            routeFingerprint = routeFingerprint,
-            tileId = runtimePack.tileId,
-            fetchedAtMillis = runtimePack.fetchedAtMillis,
-        )
-        synchronized(derivedCacheLock) {
-            routeTileOverlayCache[cacheKey]?.let { cachedOverlay ->
-                return RouteTileOverlayBundle(runtimePack = runtimePack, overlay = cachedOverlay)
-            }
-        }
-        val overlayFile = routeOverlayFileFor(cacheKey)
-        val overlay = if (overlayFile.exists()) {
-            runCatching {
-                routeTileOverlayFromByteArray(overlayFile.readBytes())
-            }.getOrNull()
-        } else {
-            null
-        }
-        overlay?.let(::cacheRouteTileOverlay)
-        return overlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
     }
 
     internal fun storeTilePack(pack: TileContextPack) {
