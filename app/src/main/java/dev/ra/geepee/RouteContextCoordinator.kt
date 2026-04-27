@@ -128,14 +128,11 @@ internal class RouteContextCoordinator(
             return
         }
         val loadedLocalTileCount = loadedTileRevisions.size
-        val hasVisibleTileData = loadedLocalTileCount > 0
         onStarted(
-            LocalNearbyWayDebugStatus(
+            LocalNearbyWayDebugStatus.loading(
                 localTileCount = localTileIds.size,
                 loadedLocalTileCount = loadedLocalTileCount,
-                hasVisibleTileData = hasVisibleTileData,
-                nearbyWaysLoading = hasVisibleTileData,
-                nearbyWayCount = if (hasVisibleTileData) existingLocalStatus?.nearbyWayCount ?: 0 else 0,
+                existingNearbyWayCount = existingLocalStatus?.nearbyWayCount ?: 0,
             ),
         )
         val requestId = ++nearbyWayRequestId
@@ -165,10 +162,9 @@ internal class RouteContextCoordinator(
                     }
                     .sortedBy(RouteNearbyWaySnippet::featureId)
                 RouteMapInfoState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
+                    localNearbyWays = LocalNearbyWayDebugStatus.resolved(
                         localTileCount = localTileIds.size,
                         loadedLocalTileCount = runtimePacks.size,
-                        hasVisibleTileData = runtimePacks.isNotEmpty(),
                         nearbyWayCount = nearbyWays.size,
                     ),
                     nearbyWays = nearbyWays,
@@ -176,11 +172,10 @@ internal class RouteContextCoordinator(
             } catch (error: Throwable) {
                 Log.e(logTag, "Nearby-way rebuild failed", error)
                 RouteMapInfoState(
-                    localNearbyWays = LocalNearbyWayDebugStatus(
+                    localNearbyWays = LocalNearbyWayDebugStatus.failed(
                         localTileCount = localTileIds.size,
                         loadedLocalTileCount = loadedLocalTileCount,
-                        hasVisibleTileData = hasVisibleTileData,
-                        nearbyWayCount = 0,
+                        hasVisibleTileData = loadedLocalTileCount > 0,
                         errorMessage = error.javaClass.simpleName,
                     ),
                     nearbyWays = emptyList(),

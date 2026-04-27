@@ -38,7 +38,52 @@ internal data class LocalNearbyWayDebugStatus(
     val nearbyWaysLoading: Boolean = false,
     val nearbyWayCount: Int = 0,
     val errorMessage: String? = null,
-)
+) {
+    companion object {
+        fun loading(
+            localTileCount: Int,
+            loadedLocalTileCount: Int,
+            existingNearbyWayCount: Int,
+        ): LocalNearbyWayDebugStatus {
+            val hasVisibleTileData = loadedLocalTileCount > 0
+            return LocalNearbyWayDebugStatus(
+                localTileCount = localTileCount,
+                loadedLocalTileCount = loadedLocalTileCount,
+                hasVisibleTileData = hasVisibleTileData,
+                nearbyWaysLoading = hasVisibleTileData,
+                nearbyWayCount = if (hasVisibleTileData) existingNearbyWayCount else 0,
+            )
+        }
+
+        fun resolved(
+            localTileCount: Int,
+            loadedLocalTileCount: Int,
+            nearbyWayCount: Int,
+        ): LocalNearbyWayDebugStatus {
+            return LocalNearbyWayDebugStatus(
+                localTileCount = localTileCount,
+                loadedLocalTileCount = loadedLocalTileCount,
+                hasVisibleTileData = loadedLocalTileCount > 0,
+                nearbyWayCount = nearbyWayCount,
+            )
+        }
+
+        fun failed(
+            localTileCount: Int,
+            loadedLocalTileCount: Int,
+            hasVisibleTileData: Boolean,
+            errorMessage: String,
+        ): LocalNearbyWayDebugStatus {
+            return LocalNearbyWayDebugStatus(
+                localTileCount = localTileCount,
+                loadedLocalTileCount = loadedLocalTileCount,
+                hasVisibleTileData = hasVisibleTileData,
+                nearbyWayCount = 0,
+                errorMessage = errorMessage,
+            )
+        }
+    }
+}
 
 internal data class RouteMapInfoState(
     val localNearbyWays: LocalNearbyWayDebugStatus? = null,

@@ -188,6 +188,51 @@ class RouteContextTest {
         )
     }
 
+    @Test
+    fun localNearbyWayDebugStatusLoadingReflectsVisibleTileAvailability() {
+        val withData = LocalNearbyWayDebugStatus.loading(
+            localTileCount = 4,
+            loadedLocalTileCount = 2,
+            existingNearbyWayCount = 3,
+        )
+        val withoutData = LocalNearbyWayDebugStatus.loading(
+            localTileCount = 4,
+            loadedLocalTileCount = 0,
+            existingNearbyWayCount = 3,
+        )
+
+        assertEquals(true, withData.hasVisibleTileData)
+        assertEquals(true, withData.nearbyWaysLoading)
+        assertEquals(3, withData.nearbyWayCount)
+
+        assertEquals(false, withoutData.hasVisibleTileData)
+        assertEquals(false, withoutData.nearbyWaysLoading)
+        assertEquals(0, withoutData.nearbyWayCount)
+    }
+
+    @Test
+    fun localNearbyWayDebugStatusResolvedAndFailedShareAvailabilitySemantics() {
+        val resolved = LocalNearbyWayDebugStatus.resolved(
+            localTileCount = 4,
+            loadedLocalTileCount = 2,
+            nearbyWayCount = 1,
+        )
+        val failed = LocalNearbyWayDebugStatus.failed(
+            localTileCount = 4,
+            loadedLocalTileCount = 0,
+            hasVisibleTileData = false,
+            errorMessage = "Boom",
+        )
+
+        assertEquals(true, resolved.hasVisibleTileData)
+        assertEquals(false, resolved.nearbyWaysLoading)
+        assertEquals(1, resolved.nearbyWayCount)
+
+        assertEquals(false, failed.hasVisibleTileData)
+        assertEquals("Boom", failed.errorMessage)
+        assertEquals(0, failed.nearbyWayCount)
+    }
+
     private fun tilePack(vararg features: TileContextFeature): TileContextPack {
         return TileContextPack(
             tileId = DownloadTileId(zoom = 10, x = 0, y = 0),
