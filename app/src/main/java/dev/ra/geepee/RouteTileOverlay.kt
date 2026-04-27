@@ -457,7 +457,7 @@ internal fun queryTileRuntimeNearbyWays(
     return nearbyWays
 }
 
-private fun dedupeNearbyWaysByFeatureId(snippets: List<RouteNearbyWaySnippet>): List<RouteNearbyWaySnippet> {
+internal fun dedupeNearbyWaysByFeatureId(snippets: List<RouteNearbyWaySnippet>): List<RouteNearbyWaySnippet> {
     return snippets
         .groupBy(RouteNearbyWaySnippet::featureId)
         .values

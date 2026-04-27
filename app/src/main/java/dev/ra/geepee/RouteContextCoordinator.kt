@@ -7,7 +7,6 @@ import java.util.concurrent.Executors
 
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
-    val hintEdgeIndexes: List<Int>,
     val localTileIds: Set<DownloadTileId>,
 )
 
@@ -137,32 +136,26 @@ internal class RouteContextCoordinator(
         val requestId = ++nearbyWayRequestId
         nearbyWayExecutor.execute {
             val result = try {
-                val runtimePacks = tileContextRepository.loadRuntimePacks(localTileIds)
-                val nearbyWays = runtimePacks
-                    .flatMap { runtimePack ->
-                        queryTileRuntimeNearbyWays(
+                val bundles = tileContextRepository.loadRouteTileOverlayBundles(
+                    routeModel = routeModel,
+                    tileIds = localTileIds,
+                    config = tileContextConfig,
+                )
+                val nearbyWays = dedupeNearbyWaysByFeatureId(
+                    bundles.flatMap { bundle ->
+                        queryRouteTileOverlayNearbyWays(
                             routeModel = routeModel,
-                            runtimePack = runtimePack,
+                            bundle = bundle,
                             focusGeoPoint = queryFocus.focus.centerGeoPoint,
-                            focusHintEdgeIndexes = queryFocus.hintEdgeIndexes,
                             focusWindowWidthMeters = queryFocus.focus.windowWidthMeters,
                             focusBoundsOverride = queryFocus.focus.projectedBounds,
                             config = tileContextConfig,
                         )
                     }
-                    .groupBy(RouteNearbyWaySnippet::featureId)
-                    .values
-                    .map { snippets ->
-                        snippets.maxBy { snippet ->
-                            snippet.points.zipWithNext().sumOf { (start, end) ->
-                                kotlin.math.hypot(end.x - start.x, end.y - start.y)
-                            }
-                        }
-                    }
-                    .sortedBy(RouteNearbyWaySnippet::featureId)
+                )
                 RouteMapInfoState.resolvedNearbyWays(
                     localTileCount = localTileIds.size,
-                    loadedLocalTileCount = runtimePacks.size,
+                    loadedLocalTileCount = bundles.size,
                     nearbyWays = nearbyWays,
                 )
             } catch (error: Throwable) {
@@ -205,30 +198,6 @@ internal fun resolveNearbyWayQueryFocus(
         ) ?: routeModel.bounds,
     )
     val projectedFocusBounds = resolvedFocus.projectedBounds
-    val fallbackNearestEdgeIndex = if (
-        explicitFocus == null ||
-        distanceBetweenGeoPointsMeters(resolvedFocus.centerGeoPoint, analysis.nearestGeoPoint) <= 3.0
-    ) {
-        analysis.nearestEdgeIndex
-    } else {
-        analyzeProjectedPointNearRouteHint(
-            model = routeModel,
-            projectedFix = projectGeoPointToRouteProjection(resolvedFocus.centerGeoPoint, routeModel.projection),
-            hintEdgeIndexes = listOfNotNull(analysis.nearestEdgeIndex.takeIf { it >= 0 }),
-            maxHintDistanceMeters = resolvedFocus.windowWidthMeters / 2.0 +
-                config.wayHaloMeters +
-                config.nearbyWayContinuationMeters,
-        ).nearestEdgeIndex
-    }
-    val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
-        model = routeModel,
-        bounds = expandBounds(
-            projectedFocusBounds,
-            config.wayHaloMeters + config.nearbyWayContinuationMeters,
-        ),
-    ).ifEmpty {
-        listOfNotNull(fallbackNearestEdgeIndex.takeIf { it >= 0 })
-    }
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = expandBounds(
@@ -239,7 +208,6 @@ internal fun resolveNearbyWayQueryFocus(
     ).toSet()
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
-        hintEdgeIndexes = focusHintEdgeIndexes,
         localTileIds = localTileIds,
     )
 }
