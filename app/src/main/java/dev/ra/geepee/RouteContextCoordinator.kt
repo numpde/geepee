@@ -161,24 +161,18 @@ internal class RouteContextCoordinator(
                         }
                     }
                     .sortedBy(RouteNearbyWaySnippet::featureId)
-                RouteMapInfoState(
-                    localNearbyWays = LocalNearbyWayDebugStatus.resolved(
-                        localTileCount = localTileIds.size,
-                        loadedLocalTileCount = runtimePacks.size,
-                        nearbyWayCount = nearbyWays.size,
-                    ),
+                RouteMapInfoState.resolvedNearbyWays(
+                    localTileCount = localTileIds.size,
+                    loadedLocalTileCount = runtimePacks.size,
                     nearbyWays = nearbyWays,
                 )
             } catch (error: Throwable) {
                 Log.e(logTag, "Nearby-way rebuild failed", error)
-                RouteMapInfoState(
-                    localNearbyWays = LocalNearbyWayDebugStatus.failed(
-                        localTileCount = localTileIds.size,
-                        loadedLocalTileCount = loadedLocalTileCount,
-                        hasVisibleTileData = loadedLocalTileCount > 0,
-                        errorMessage = error.javaClass.simpleName,
-                    ),
-                    nearbyWays = emptyList(),
+                RouteMapInfoState.failedNearbyWays(
+                    localTileCount = localTileIds.size,
+                    loadedLocalTileCount = loadedLocalTileCount,
+                    hasVisibleTileData = loadedLocalTileCount > 0,
+                    errorMessage = error.javaClass.simpleName,
                 )
             }
             callbackExecutor.execute {

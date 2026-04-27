@@ -88,7 +88,41 @@ internal data class LocalNearbyWayDebugStatus(
 internal data class RouteMapInfoState(
     val localNearbyWays: LocalNearbyWayDebugStatus? = null,
     val nearbyWays: List<RouteNearbyWaySnippet> = emptyList(),
-)
+) {
+    companion object {
+        fun resolvedNearbyWays(
+            localTileCount: Int,
+            loadedLocalTileCount: Int,
+            nearbyWays: List<RouteNearbyWaySnippet>,
+        ): RouteMapInfoState {
+            return RouteMapInfoState(
+                localNearbyWays = LocalNearbyWayDebugStatus.resolved(
+                    localTileCount = localTileCount,
+                    loadedLocalTileCount = loadedLocalTileCount,
+                    nearbyWayCount = nearbyWays.size,
+                ),
+                nearbyWays = nearbyWays,
+            )
+        }
+
+        fun failedNearbyWays(
+            localTileCount: Int,
+            loadedLocalTileCount: Int,
+            hasVisibleTileData: Boolean,
+            errorMessage: String,
+        ): RouteMapInfoState {
+            return RouteMapInfoState(
+                localNearbyWays = LocalNearbyWayDebugStatus.failed(
+                    localTileCount = localTileCount,
+                    loadedLocalTileCount = loadedLocalTileCount,
+                    hasVisibleTileData = hasVisibleTileData,
+                    errorMessage = errorMessage,
+                ),
+                nearbyWays = emptyList(),
+            )
+        }
+    }
+}
 
 internal fun LocalNearbyWayDebugStatus.finishLoading(
     nearbyWayCount: Int = this.nearbyWayCount,

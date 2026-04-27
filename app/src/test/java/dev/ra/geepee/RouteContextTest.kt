@@ -233,6 +233,36 @@ class RouteContextTest {
         assertEquals(0, failed.nearbyWayCount)
     }
 
+    @Test
+    fun routeMapInfoStateResolvedNearbyWaysUsesNearbyWayCountFromPayload() {
+        val nearbyWays = listOf(dummyNearbyWay(), dummyNearbyWay().copy(featureId = "way/test-2"))
+
+        val state = RouteMapInfoState.resolvedNearbyWays(
+            localTileCount = 4,
+            loadedLocalTileCount = 2,
+            nearbyWays = nearbyWays,
+        )
+
+        assertEquals(nearbyWays, state.nearbyWays)
+        assertEquals(2, state.localNearbyWays?.nearbyWayCount)
+        assertEquals(true, state.localNearbyWays?.hasVisibleTileData)
+    }
+
+    @Test
+    fun routeMapInfoStateFailedNearbyWaysUsesOwnedFailureShape() {
+        val state = RouteMapInfoState.failedNearbyWays(
+            localTileCount = 4,
+            loadedLocalTileCount = 1,
+            hasVisibleTileData = true,
+            errorMessage = "Boom",
+        )
+
+        assertTrue(state.nearbyWays.isEmpty())
+        assertEquals("Boom", state.localNearbyWays?.errorMessage)
+        assertEquals(true, state.localNearbyWays?.hasVisibleTileData)
+        assertEquals(0, state.localNearbyWays?.nearbyWayCount)
+    }
+
     private fun tilePack(vararg features: TileContextFeature): TileContextPack {
         return TileContextPack(
             tileId = DownloadTileId(zoom = 10, x = 0, y = 0),
