@@ -570,48 +570,13 @@ private fun tappedPoiSelections(
         )
 }
 
-internal data class DeleteTilesDialogCopy(
-    val title: String,
-    val message: String,
-)
-
-internal fun deleteTilesDialogCopy(plan: TileDeletePlan): DeleteTilesDialogCopy {
-    val actionText = if (plan.tileCount == 0) {
-        "Nothing would be deleted right now."
-    } else {
-        "This will delete ${plan.tileCount} downloaded tiles and free ${formatStorageMegabytes(plan.freedBytes)}."
-    }
-    return when (plan.mode) {
-        TileDeleteMode.Selected -> DeleteTilesDialogCopy(
-            title = plan.mode.confirmTitle,
-            message = buildString {
-                append("This will delete exactly the selected downloaded tiles, even if they are on the current route or were used recently.")
-                append("\n\n")
-                append("Derived map-info cache for those tiles will also be removed.")
-                append("\n\n")
-                append(actionText)
-            },
-        )
-        TileDeleteMode.Unused -> DeleteTilesDialogCopy(
-            title = plan.mode.confirmTitle,
-            message = buildString {
-                append("This removes downloaded tiles that are not needed for the current route or current view, are not being downloaded, and were not used recently.")
-                append("\n\n")
-                append("Derived map-info cache for those tiles will also be removed.")
-                append("\n\n")
-                append(actionText)
-            },
-        )
-    }
-}
-
 @Composable
 private fun DeleteTilesDialog(
     plan: TileDeletePlan,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val copy = remember(plan) { deleteTilesDialogCopy(plan) }
+    val copy = remember(plan) { plan.dialogCopy }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {

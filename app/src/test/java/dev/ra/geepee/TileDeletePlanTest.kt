@@ -15,13 +15,12 @@ class TileDeletePlanTest {
 
     @Test
     fun deleteTilesDialogCopyExplainsSelectedTileDeletion() {
-        val copy = deleteTilesDialogCopy(
-            TileDeletePlan(
-                mode = TileDeleteMode.Selected,
-                tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
-                freedBytes = 2_400_000L,
-            ),
+        val copy = TileDeletePlan(
+            mode = TileDeleteMode.Selected,
+            tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
+            freedBytes = 2_400_000L,
         )
+            .dialogCopy
 
         assertEquals("Delete selected tiles?", copy.title)
         assertTrue(copy.message.contains("selected downloaded tiles"))
@@ -31,13 +30,12 @@ class TileDeletePlanTest {
 
     @Test
     fun deleteTilesDialogCopyExplainsUnusedTileDeletion() {
-        val copy = deleteTilesDialogCopy(
-            TileDeletePlan(
-                mode = TileDeleteMode.Unused,
-                tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
-                freedBytes = 1_200_000L,
-            ),
+        val copy = TileDeletePlan(
+            mode = TileDeleteMode.Unused,
+            tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
+            freedBytes = 1_200_000L,
         )
+            .dialogCopy
 
         assertEquals("Delete unused tiles?", copy.title)
         assertTrue(copy.message.contains("not needed for the current route or current view"))
