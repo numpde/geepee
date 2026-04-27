@@ -75,11 +75,13 @@ internal fun SetupActions(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ActionButton(
-            label = if (!hasRoute) "Load route" else "Change route",
-            onClick = onPickRoute,
-            modifier = Modifier.weight(1f),
-        )
+        if (!hasRoute) {
+            ActionButton(
+                label = "Open GPX",
+                onClick = onPickRoute,
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (hasRoute) {
             ActionButton(
                 label = if (sessionRunning) "Stop" else "Start",
@@ -92,6 +94,7 @@ internal fun SetupActions(
             SetupMenu(
                 hasRoute = hasRoute,
                 hasCachedTiles = hasCachedTiles,
+                onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
                 onDeleteUnusedTiles = onDeleteUnusedTiles,
                 modifier = Modifier.weight(1f),
@@ -134,6 +137,7 @@ private fun ActionButton(
 private fun SetupMenu(
     hasRoute: Boolean,
     hasCachedTiles: Boolean,
+    onPickRoute: () -> Unit,
     onReverseRoute: () -> Unit,
     onDeleteUnusedTiles: () -> Unit,
     modifier: Modifier = Modifier,
@@ -150,6 +154,13 @@ private fun SetupMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
+            DropdownMenuItem(
+                text = { Text(text = "Open GPX") },
+                onClick = {
+                    expanded = false
+                    onPickRoute()
+                },
+            )
             if (hasRoute) {
                 DropdownMenuItem(
                     text = { Text(text = "Reverse route") },

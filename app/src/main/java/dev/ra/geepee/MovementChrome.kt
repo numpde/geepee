@@ -436,7 +436,7 @@ internal fun MovementMenu(
                 },
             )
             DropdownMenuItem(
-                text = { Text(text = "Change route") },
+                text = { Text(text = "Open GPX") },
                 onClick = {
                     expanded = false
                     onPickRoute()
