@@ -64,66 +64,48 @@ internal fun rememberMovementViewportController(
     debugGpsEnabled: Boolean,
     minimumWidthMetersOverride: Double = 6.0,
 ): MovementViewportController {
+    val resetViewport = routeModel?.let { model ->
+        initialMovementViewport(
+            routeModel = model,
+            analysis = analysis,
+            routeScale = routeScale,
+        )
+    }
     var liveCameraMode by remember(routeModel) {
         mutableStateOf(MovementCameraMode.FollowAnchor)
     }
     val liveViewportState = rememberRouteViewportState(
         contentBounds = routeModel?.bounds,
-        initialViewport = routeModel?.let { model ->
-            initialMovementViewport(
-                routeModel = model,
-                analysis = analysis,
-                routeScale = routeScale,
-            )
-        },
+        initialViewport = resetViewport,
         viewportWidthPx = viewportWidthPx,
         viewportHeightPx = viewportHeightPx,
         minimumWidthMetersOverride = minimumWidthMetersOverride,
     )
     val debugViewportState = rememberRouteViewportState(
         contentBounds = routeModel?.bounds,
-        initialViewport = routeModel?.let { model ->
-            initialMovementViewport(
-                routeModel = model,
-                analysis = analysis,
-                routeScale = routeScale,
-            )
-        },
+        initialViewport = resetViewport,
         viewportWidthPx = viewportWidthPx,
         viewportHeightPx = viewportHeightPx,
         minimumWidthMetersOverride = minimumWidthMetersOverride,
     )
-    LaunchedEffect(debugGpsEnabled, routeModel, analysis, routeScale) {
+    LaunchedEffect(debugGpsEnabled, resetViewport) {
         if (debugGpsEnabled) {
             debugViewportState.setResetViewport(
-                viewport = routeModel?.let { model ->
-                    initialMovementViewport(
-                        routeModel = model,
-                        analysis = analysis,
-                        routeScale = routeScale,
-                    )
-                },
+                viewport = resetViewport,
                 applyImmediately = true,
             )
         }
     }
-    LaunchedEffect(debugGpsEnabled, routeModel, routeScale) {
+    LaunchedEffect(debugGpsEnabled, routeModel, resetViewport) {
         if (!debugGpsEnabled && routeModel != null) {
             liveViewportState.setResetViewport(
-                viewport = initialMovementViewport(
-                    routeModel = routeModel,
-                    analysis = analysis,
-                    routeScale = routeScale,
-                ),
+                viewport = resetViewport,
                 applyImmediately = liveViewportState.viewport == null,
             )
         }
     }
-    val anchorPoint = routeModel?.let { model ->
-        currentMovementAnchorPoint(
-            routeModel = model,
-            analysis = analysis,
-        )
+    val anchorPoint = resetViewport?.let { viewport ->
+        ProjectedPoint(viewport.centerX, viewport.centerY)
     }
     LaunchedEffect(debugGpsEnabled, anchorPoint, liveCameraMode) {
         if (!debugGpsEnabled && liveCameraMode == MovementCameraMode.FollowAnchor) {

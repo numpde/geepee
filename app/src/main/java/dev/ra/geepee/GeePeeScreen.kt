@@ -25,6 +25,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
+private data class MovementViewState(
+    val viewportFocus: MapInfoFocus?,
+    val tileGridBounds: Bounds?,
+    val windowWidthMeters: Double,
+    val openInPoint: GeoPoint?,
+    val mapInfoFocus: MapInfoFocus?,
+)
+
 @Composable
 internal fun GeePeeApp(
     viewModel: GeePeeViewModel,
@@ -159,26 +167,29 @@ private fun GeePeeScreen(
         }
         val showTileOverview = !movementMode
         val tileGridRouteModel = state.routeModel
-        val movementViewportFocus = movementViewportController?.viewportFocus
-        val tileGridBounds = if (movementMode) {
-            movementViewportFocus?.projectedBounds
-        } else {
-            setupViewportState.boundsOverride
+        val movementViewState = remember(
+            movementMode,
+            movementViewportController?.viewportFocus,
+            setupViewportState.boundsOverride,
+            state.routeScale,
+            state.currentReferenceGeoPoint,
+            state.analysis,
+        ) {
+            buildMovementViewState(
+                movementMode = movementMode,
+                viewportFocus = movementViewportController?.viewportFocus,
+                setupBounds = setupViewportState.boundsOverride,
+                routeScale = state.routeScale,
+                currentReferenceGeoPoint = state.currentReferenceGeoPoint,
+                hasAnalysis = state.analysis != null,
+            )
         }
-        val currentWindowWidthMeters = movementViewportFocus?.windowWidthMeters ?: state.routeScale.windowWidthMeters
-        val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentReferenceGeoPoint
         val poiTapRadiusPx = with(density) { 28.dp.toPx() }
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
-        val hasMovementAnalysis = movementMode && state.analysis != null
-        val movementContextFocus = if (movementMode && hasMovementAnalysis) {
-            movementViewportFocus
-        } else {
-            null
-        }
-        LaunchedEffect(movementContextFocus) {
-            movementContextFocus?.let { focus ->
+        LaunchedEffect(movementViewState.mapInfoFocus) {
+            movementViewState.mapInfoFocus?.let { focus ->
                 delay(250)
                 onUpdateLiveContextFocus(focus)
             }
@@ -193,11 +204,11 @@ private fun GeePeeScreen(
         } else {
             null
         }
-        val tileGridModel = if (tileGridRouteModel != null && tileGridBounds != null) {
+        val tileGridModel = if (tileGridRouteModel != null && movementViewState.tileGridBounds != null) {
             remember(
                 tileGridRouteModel,
                 routeTileMetricsById,
-                tileGridBounds,
+                movementViewState.tileGridBounds,
                 viewportWidthPx,
                 viewportHeightPx,
                 state.tileDownloads,
@@ -206,7 +217,7 @@ private fun GeePeeScreen(
                 buildTileGridRenderModel(
                     routeModel = tileGridRouteModel,
                     routeTileMetricsById = routeTileMetricsById ?: emptyMap(),
-                    bounds = tileGridBounds,
+                    bounds = movementViewState.tileGridBounds,
                     canvasWidth = viewportWidthPx,
                     canvasHeight = viewportHeightPx,
                     config = state.tileContextConfig,
@@ -243,10 +254,10 @@ private fun GeePeeScreen(
                                     state = state,
                                     screenPoint = ScreenPoint(point.x, point.y),
                                     maxDistancePx = poiTapRadiusPx,
-                                    windowWidthMeters = currentWindowWidthMeters,
+                                    windowWidthMeters = movementViewState.windowWidthMeters,
                                     canvasWidth = viewportWidthPx,
                                     canvasHeight = viewportHeightPx,
-                                    boundsOverride = movementViewportFocus?.projectedBounds,
+                                    boundsOverride = movementViewState.viewportFocus?.projectedBounds,
                                 )
                             }
                         },
@@ -284,8 +295,8 @@ private fun GeePeeScreen(
             state = state,
             toneColor = toneColor,
             orientationMode = state.orientationMode,
-            windowWidthMeters = currentWindowWidthMeters,
-            boundsOverride = movementViewportFocus?.projectedBounds ?: setupViewportState.boundsOverride,
+            windowWidthMeters = movementViewState.windowWidthMeters,
+            boundsOverride = movementViewState.tileGridBounds,
             modifier = routeCanvasModifier,
         )
         if (visibleTileGridModel != null) {
@@ -306,7 +317,7 @@ private fun GeePeeScreen(
                 state.darkModeEnabled,
                 state.batterySaverEnabled,
                 state.debugGpsEnabled,
-                openInPoint != null,
+                movementViewState.openInPoint != null,
                 state.sessionRunning,
             )
             MovementTopOverlay(
@@ -336,22 +347,22 @@ private fun GeePeeScreen(
                         onRequestScreenPinning = onRequestScreenPinning,
                         onStopMonitoring = onStopMonitoring,
                         onSetDebugGpsHere = {
-                            movementViewportFocus?.let(onSetDebugGpsLocation)
+                            movementViewState.viewportFocus?.let(onSetDebugGpsLocation)
                         },
                         onOpenInExternalMap = {
-                            openInPoint?.let { point ->
+                            movementViewState.openInPoint?.let { point ->
                                 onOpenInExternalMap(
                                     point,
                                     state.routeName ?: "GeePee",
-                                    currentWindowWidthMeters,
+                                    movementViewState.windowWidthMeters,
                                 )
                             }
                         },
                         onOpenInOsmBrowser = {
-                            openInPoint?.let { point ->
+                            movementViewState.openInPoint?.let { point ->
                                 onOpenInOsmBrowser(
                                     point,
-                                    currentWindowWidthMeters,
+                                    movementViewState.windowWidthMeters,
                                 )
                             }
                         },
@@ -370,7 +381,7 @@ private fun GeePeeScreen(
                 trailingUtility = {
                     ScaleBar(
                         routeScale = state.routeScale,
-                        windowWidthMeters = currentWindowWidthMeters,
+                        windowWidthMeters = movementViewState.windowWidthMeters,
                         viewportWidthPx = viewportWidthPx,
                         onCycleScale = {
                             if (movementMode) {
@@ -407,6 +418,33 @@ private fun GeePeeScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
             )
         }
+    }
+}
+
+private fun buildMovementViewState(
+    movementMode: Boolean,
+    viewportFocus: MapInfoFocus?,
+    setupBounds: Bounds?,
+    routeScale: RouteScale,
+    currentReferenceGeoPoint: GeoPoint?,
+    hasAnalysis: Boolean,
+): MovementViewState {
+    return if (movementMode) {
+        MovementViewState(
+            viewportFocus = viewportFocus,
+            tileGridBounds = viewportFocus?.projectedBounds,
+            windowWidthMeters = viewportFocus?.windowWidthMeters ?: routeScale.windowWidthMeters,
+            openInPoint = viewportFocus?.centerGeoPoint ?: currentReferenceGeoPoint,
+            mapInfoFocus = if (hasAnalysis) viewportFocus else null,
+        )
+    } else {
+        MovementViewState(
+            viewportFocus = null,
+            tileGridBounds = setupBounds,
+            windowWidthMeters = routeScale.windowWidthMeters,
+            openInPoint = currentReferenceGeoPoint,
+            mapInfoFocus = null,
+        )
     }
 }
 
