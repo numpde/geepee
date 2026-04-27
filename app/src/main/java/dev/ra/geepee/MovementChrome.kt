@@ -59,12 +59,6 @@ internal data class MovementMenuState(
     val sessionRunning: Boolean,
 )
 
-internal data class RoutePoiSelectionInfo(
-    val kind: RoutePoiKind,
-    val title: String,
-    val distanceMeters: Double?,
-)
-
 @Composable
 private fun bottomChromeFillColor() = Color.Transparent
 
@@ -588,19 +582,6 @@ private fun RoutePoiInfoPanel(
                 }
             }
         }
-    }
-}
-
-internal fun routePoiSelectionTitle(
-    marker: RoutePoiScreenMarker,
-): String {
-    return marker.name ?: when (marker.kind) {
-        RoutePoiKind.DrinkingWater -> "Drinking water"
-        RoutePoiKind.Toilets -> "Toilets"
-        RoutePoiKind.Shelter -> "Shelter"
-        RoutePoiKind.PicnicSite -> "Picnic site"
-        RoutePoiKind.BicycleRepairStation -> "Bicycle repair station"
-        RoutePoiKind.BicycleShop -> "Bicycle shop"
     }
 }
 

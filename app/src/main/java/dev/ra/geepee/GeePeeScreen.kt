@@ -483,48 +483,20 @@ private fun tappedPoiSelections(
     boundsOverride: Bounds?,
 ): List<RoutePoiSelectionInfo> {
     val routeModel = state.routeModel ?: return emptyList()
-    val routeRotationDegrees = if (state.orientationMode == OrientationMode.CourseUp) {
-        -(state.compass?.headingDegrees?.toFloat() ?: 0f)
-    } else {
-        0f
-    }
-    val poiMarkers = buildRouteRenderModel(
+    return selectRoutePoiSelections(
         routeModel = routeModel,
         analysis = state.analysis,
-        matchHypotheses = emptyList(),
-        historyPoints = emptyList(),
+        orientationMode = state.orientationMode,
+        headingDegrees = state.compass?.headingDegrees,
+        currentReferenceGeoPoint = state.currentReferenceGeoPoint,
         pois = state.mapInfo.pois,
-        nearbyWays = emptyList(),
-        localWindowWidthMeters = windowWidthMeters,
+        screenPoint = screenPoint,
+        maxDistancePx = maxDistancePx,
+        windowWidthMeters = windowWidthMeters,
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
-        lookAheadFraction = 0.0,
-        rotationDegrees = routeRotationDegrees,
-        includeGradientPolylines = false,
         boundsOverride = boundsOverride,
-    ).poiMarkers
-    val selectedMarkers = routePoiMarkersNearScreenPoint(
-        markers = poiMarkers,
-        tap = screenPoint,
-        maxDistancePx = maxDistancePx,
     )
-    if (selectedMarkers.isEmpty()) {
-        return emptyList()
-    }
-    val origin = state.currentReferenceGeoPoint
-    return selectedMarkers
-        .distinctBy(RoutePoiScreenMarker::featureId)
-        .map { marker ->
-            RoutePoiSelectionInfo(
-                kind = marker.kind,
-                title = routePoiSelectionTitle(marker),
-                distanceMeters = origin?.let { distanceBetweenGeoPointsMeters(it, marker.geoPoint) },
-            )
-        }
-        .sortedWith(
-            compareBy<RoutePoiSelectionInfo> { it.distanceMeters ?: Double.POSITIVE_INFINITY }
-                .thenBy(RoutePoiSelectionInfo::title),
-        )
 }
 
 @Composable
