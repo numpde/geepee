@@ -217,7 +217,7 @@ internal class RouteContextCoordinator(
                     }
                 )
                 val missingOverlayTileIds = tileCoverage.loadedTileIds.filterNot(cachedBundleTileIds::contains)
-                val focusRouteEdgeIndexes = nearbyWayRuntimeHintEdgeIndexes(
+                val focusRouteEdgeIndexes = nearbyWayFocusRouteEdgeIndexes(
                     routeModel = routeModel,
                     focus = queryFocus.focus,
                     config = tileContextConfig,
@@ -280,18 +280,6 @@ internal fun resolveNearbyWayQueryFocus(
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
         localTileIds = localTileIds,
-    )
-}
-
-internal fun nearbyWayRuntimeHintEdgeIndexes(
-    routeModel: RouteModel,
-    focus: MapInfoFocus,
-    config: TileContextConfig,
-): List<Int> {
-    return nearbyWayFocusRouteEdgeIndexes(
-        routeModel = routeModel,
-        focus = focus,
-        config = config,
     )
 }
 

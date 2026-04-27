@@ -298,7 +298,7 @@ class RouteContextCoordinatorTest {
                     config = DefaultTileContextConfig,
                 ),
             ),
-            nearbyWayRuntimeHintEdgeIndexes(
+            nearbyWayFocusRouteEdgeIndexes(
                 routeModel = routeModel,
                 focus = focus,
                 config = DefaultTileContextConfig,
