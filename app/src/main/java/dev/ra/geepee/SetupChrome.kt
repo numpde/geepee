@@ -29,37 +29,29 @@ internal fun SetupTopOverlay(
     modifier: Modifier = Modifier,
 ) {
     val colors = geePeeColors()
-    val headline = if (state.routeModel != null) {
-        "Tap tiles to fetch context"
-    } else {
-        state.status.headline
-    }
-    val detail = if (state.routeModel != null) {
-        "Download only the areas worth spending network on."
-    } else {
-        state.status.detail
-    }
 
     Column(
         modifier = modifier.widthIn(max = 340.dp),
     ) {
-        Text(
-            text = headline,
-            style = MaterialTheme.typography.displaySmall,
-            color = colors.ink,
-        )
-        Spacer(modifier = Modifier.padding(top = 8.dp))
-        Text(
-            text = detail,
-            style = MaterialTheme.typography.bodyLarge,
-            color = colors.ink.copy(alpha = 0.78f),
-        )
-        state.routeName?.let { routeName ->
-            Spacer(modifier = Modifier.padding(top = 10.dp))
+        if (state.routeModel != null) {
+            state.routeName?.let { routeName ->
+                Text(
+                    text = routeName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colors.ink.copy(alpha = 0.7f),
+                )
+            }
+        } else {
             Text(
-                text = routeName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.ink.copy(alpha = 0.55f),
+                text = state.status.headline,
+                style = MaterialTheme.typography.displaySmall,
+                color = colors.ink,
+            )
+            Spacer(modifier = Modifier.padding(top = 8.dp))
+            Text(
+                text = state.status.detail,
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.ink.copy(alpha = 0.78f),
             )
         }
     }
