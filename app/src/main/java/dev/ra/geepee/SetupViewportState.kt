@@ -49,6 +49,11 @@ internal data class MovementViewportController(
     val snapToNextScale: () -> RouteScale,
 )
 
+private enum class MovementCameraMode {
+    FollowAnchor,
+    Free,
+}
+
 @Composable
 internal fun rememberMovementViewportController(
     routeModel: RouteModel?,
@@ -59,8 +64,8 @@ internal fun rememberMovementViewportController(
     debugGpsEnabled: Boolean,
     minimumWidthMetersOverride: Double = 6.0,
 ): MovementViewportController {
-    var liveFollowEnabled by remember(routeModel) {
-        mutableStateOf(true)
+    var liveCameraMode by remember(routeModel) {
+        mutableStateOf(MovementCameraMode.FollowAnchor)
     }
     val liveViewportState = rememberRouteViewportState(
         contentBounds = routeModel?.bounds,
@@ -120,8 +125,8 @@ internal fun rememberMovementViewportController(
             analysis = analysis,
         )
     }
-    LaunchedEffect(debugGpsEnabled, anchorPoint, liveFollowEnabled) {
-        if (!debugGpsEnabled && liveFollowEnabled) {
+    LaunchedEffect(debugGpsEnabled, anchorPoint, liveCameraMode) {
+        if (!debugGpsEnabled && liveCameraMode == MovementCameraMode.FollowAnchor) {
             anchorPoint?.let(liveViewportState::recenterOn)
         }
     }
@@ -151,7 +156,7 @@ internal fun rememberMovementViewportController(
         viewportFocus = viewportFocus,
         handleTransform = { centroid, pan, zoomChange ->
             if (!debugGpsEnabled) {
-                liveFollowEnabled = false
+                liveCameraMode = MovementCameraMode.Free
             }
             activeViewportState.transform(
                 centroid = centroid,
@@ -161,7 +166,7 @@ internal fun rememberMovementViewportController(
         },
         handleDoubleTap = {
             if (!debugGpsEnabled) {
-                liveFollowEnabled = true
+                liveCameraMode = MovementCameraMode.FollowAnchor
             }
             anchorPoint?.let(activeViewportState::recenterOn) ?: activeViewportState.reset()
         },
