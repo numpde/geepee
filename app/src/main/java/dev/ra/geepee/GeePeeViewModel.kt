@@ -220,17 +220,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun deleteUnusedTiles() {
-        val protectedTileIds = deleteUnusedProtectedTileIds(
+        val prunePolicy = buildDeleteUnusedTilePrunePolicy(
             routeModel = routeRuntimeState.routeModel,
             currentMapInfoFocus = liveContextFocus,
             tileDownloads = tileDownloads,
             config = tileContextConfig,
         )
-        val result = tileContextRepository.pruneTiles(
-            TilePrunePolicy(
-                protectedTileIds = protectedTileIds,
-            ),
-        )
+        val result = tileContextRepository.pruneTiles(prunePolicy)
         if (result.deletedTileCount == 0) {
             return
         }

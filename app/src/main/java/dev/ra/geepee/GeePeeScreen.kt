@@ -333,7 +333,7 @@ private fun GeePeeScreen(
                 state.batterySaverEnabled,
                 state.debugGpsEnabled,
                 movementViewState.openInPoint != null,
-                state.tileDownloads.values.any { it.status == TileDownloadStatus.Cached },
+                state.hasCachedTiles,
                 state.sessionRunning,
             )
             MovementTopOverlay(
@@ -424,7 +424,7 @@ private fun GeePeeScreen(
             )
             SetupActions(
                 hasRoute = state.routeModel != null,
-                hasCachedTiles = state.tileDownloads.values.any { it.status == TileDownloadStatus.Cached },
+                hasCachedTiles = state.hasCachedTiles,
                 sessionRunning = state.sessionRunning,
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,

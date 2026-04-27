@@ -14,13 +14,33 @@ internal data class TilePruneResult(
         get() = deletedTileIds.size
 }
 
-internal fun deleteUnusedProtectedTileIds(
+internal fun buildDeleteUnusedTilePrunePolicy(
     routeModel: RouteModel?,
     currentMapInfoFocus: MapInfoFocus?,
     tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
     config: TileContextConfig,
     nowMillis: Long = System.currentTimeMillis(),
     retentionMillis: Long = DELETE_UNUSED_TILE_RETENTION_MILLIS,
+): TilePrunePolicy {
+    return TilePrunePolicy(
+        protectedTileIds = deleteUnusedProtectedTileIds(
+            routeModel = routeModel,
+            currentMapInfoFocus = currentMapInfoFocus,
+            tileDownloads = tileDownloads,
+            config = config,
+            nowMillis = nowMillis,
+            retentionMillis = retentionMillis,
+        ),
+    )
+}
+
+private fun deleteUnusedProtectedTileIds(
+    routeModel: RouteModel?,
+    currentMapInfoFocus: MapInfoFocus?,
+    tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
+    config: TileContextConfig,
+    nowMillis: Long,
+    retentionMillis: Long,
 ): Set<DownloadTileId> {
     val protectedTileIds = linkedSetOf<DownloadTileId>()
     val recentAccessCutoffMillis = nowMillis - retentionMillis

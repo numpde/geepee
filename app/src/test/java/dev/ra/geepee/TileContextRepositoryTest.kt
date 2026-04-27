@@ -89,6 +89,34 @@ class TileContextRepositoryTest {
     }
 
     @Test
+    fun storeTilePackPersistsProvidedDownloadMetadata() {
+        withRepository { repository ->
+            val pack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
+                west = 21.0,
+            )
+            val snapshot = TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = 1234L,
+                actualBytes = 1234L,
+                updatedAtMillis = 4567L,
+                downloadedAtMillis = 1111L,
+                lastAccessedAtMillis = 2222L,
+            )
+
+            repository.storeTilePack(pack, snapshot)
+
+            val stored = requireNotNull(repository.cachedTileSnapshots()[pack.tileId])
+            assertEquals(TileDownloadStatus.Cached, stored.status)
+            assertEquals(1234L, stored.estimatedBytes)
+            assertEquals(1111L, stored.downloadedAtMillis)
+            assertEquals(2222L, stored.lastAccessedAtMillis)
+            assertEquals(4567L, stored.updatedAtMillis)
+            assertTrue((stored.actualBytes ?: 0L) > 0L)
+        }
+    }
+
+    @Test
     fun loadingTileArtifactsTouchesAndPersistsLastAccessTime() {
         withRepositoryRoot { cacheRoot, repository ->
             val pack = syntheticRepositoryPack(

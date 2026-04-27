@@ -94,13 +94,14 @@ class TilePrunePolicyTest {
             ),
         )
 
-        val protectedTileIds = deleteUnusedProtectedTileIds(
+        val policy = buildDeleteUnusedTilePrunePolicy(
             routeModel = routeModel,
             currentMapInfoFocus = focus,
             tileDownloads = tileDownloads,
             config = DefaultTileContextConfig,
             nowMillis = nowMillis,
         )
+        val protectedTileIds = policy.protectedTileIds
 
         assertTrue(protectedTileIds.contains(routeTile))
         assertTrue(protectedTileIds.contains(routeNeighborTile))

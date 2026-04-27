@@ -274,20 +274,33 @@ internal class TileContextRepository(
         }
     }
 
-    internal fun storeTilePack(pack: TileContextPack) {
+    internal fun storeTilePack(
+        pack: TileContextPack,
+        snapshot: TileDownloadSnapshot = TileDownloadSnapshot(
+            status = TileDownloadStatus.Cached,
+            estimatedBytes = 0L,
+            actualBytes = 0L,
+            updatedAtMillis = pack.fetchedAtMillis,
+        ),
+    ) {
         val tileFile = tileFileFor(pack.tileId).apply { parentFile?.mkdirs() }
         tileFile.writeText(pack.toJsonString())
         invalidateDerivedCaches(pack.tileId)
-        val runtimePack = compileTileRuntimePack(pack)
-        persistRuntimePack(runtimePack)
-        cacheRuntimePack(runtimePack)
+        runCatching {
+            compileTileRuntimePack(pack).also { runtimePack ->
+                persistRuntimePack(runtimePack)
+                cacheRuntimePack(runtimePack)
+            }
+        }.onFailure { error ->
+            Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Failed to persist tile runtime pack for ${pack.tileId.cacheKey}", error)
+        }
+        val actualBytes = tileFile.length()
         persistCachedTile(
             pack.tileId,
-            TileDownloadSnapshot(
+            snapshot.copy(
                 status = TileDownloadStatus.Cached,
-                estimatedBytes = tileFile.length(),
-                actualBytes = tileFile.length(),
-                updatedAtMillis = pack.fetchedAtMillis,
+                estimatedBytes = if (snapshot.estimatedBytes > 0L) snapshot.estimatedBytes else actualBytes,
+                actualBytes = actualBytes,
             ),
         )
     }
@@ -340,20 +353,14 @@ internal class TileContextRepository(
                 overpassJson = responseBytes.toString(Charsets.UTF_8.name()),
             )
             cancellation.throwIfCancelled()
-            runCatching {
-                storeTilePack(pack)
-            }.onFailure { error ->
-                Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Failed to persist tile runtime pack for ${tileId.cacheKey}", error)
-            }
-            cancellation.throwIfCancelled()
-
             val snapshot = TileDownloadSnapshot(
                 status = TileDownloadStatus.Cached,
                 estimatedBytes = downloadedBytes,
                 actualBytes = downloadedBytes,
                 updatedAtMillis = System.currentTimeMillis(),
             )
-            persistCachedTile(tileId, snapshot)
+            storeTilePack(pack, snapshot)
+            cancellation.throwIfCancelled()
             return snapshot
         } finally {
             connection.disconnect()
