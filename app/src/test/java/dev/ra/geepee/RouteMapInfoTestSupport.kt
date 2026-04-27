@@ -32,37 +32,7 @@ internal fun loadRouteMapInfoTileFixture(path: String): TileContextPack {
 }
 
 internal fun loadRouteMapInfoGeoPoints(): List<GeoPoint> {
-    val routeFile = resolveRouteMapInfoRepoFile("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    return buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-}
-
-internal fun resolveRouteMapInfoRepoFile(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")))
-    var current: File? = cwd.absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath")
+    return loadGpxGeoPointsFixture("unneplos-tisza-ride.gpx")
 }
 
 internal fun buildRouteMapInfoFocus(
@@ -116,6 +86,31 @@ internal inline fun <T> withRouteMapInfoRepository(
         return block(TileContextRepository(cacheRoot))
     } finally {
         cacheRoot.deleteRecursively()
+    }
+}
+
+internal fun loadGpxGeoPointsFixture(path: String): List<GeoPoint> {
+    val resourceStream = requireNotNull(RouteMapInfoFixture::class.java.classLoader?.getResourceAsStream(path)) {
+        "Missing GPX fixture resource: $path"
+    }
+    resourceStream.use { stream ->
+        val document = DocumentBuilderFactory.newInstance()
+            .apply { isNamespaceAware = true }
+            .newDocumentBuilder()
+            .parse(stream)
+        val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
+        return buildList(trackPoints.length) {
+            for (index in 0 until trackPoints.length) {
+                val node = trackPoints.item(index)
+                val attributes = node.attributes
+                add(
+                    GeoPoint(
+                        lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
+                        lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
+                    ),
+                )
+            }
+        }
     }
 }
 

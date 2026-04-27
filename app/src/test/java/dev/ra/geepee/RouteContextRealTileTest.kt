@@ -1,11 +1,9 @@
 package dev.ra.geepee
 
-import java.io.File
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,12 +11,11 @@ import org.junit.Test
 class RouteContextRealTileTest {
     @Test
     fun realDownloadedTileProducesNearbyWaysForTiszaRoute() {
-        val fixture = loadTiszaFixture()
-        val pack = loadTileFixture("tile-context/10-571-356-local.json")
+        val fixture = loadRouteMapInfoFixture()
 
         val context = buildRouteContext(
             routeModel = fixture.routeModel,
-            packs = listOf(pack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
         )
 
@@ -31,11 +28,10 @@ class RouteContextRealTileTest {
 
     @Test
     fun realDownloadedTileCanProjectNearbyWaysIntoVisibleWindowAtInteriorTiszaPoint() {
-        val fixture = loadTiszaFixture()
-        val pack = loadTileFixture("tile-context/10-571-356-local.json")
+        val fixture = loadRouteMapInfoFixture()
         val context = buildRouteContext(
             routeModel = fixture.routeModel,
-            packs = listOf(pack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
         )
         val analysis = fixture.fixAt(
@@ -65,8 +61,7 @@ class RouteContextRealTileTest {
 
     @Test
     fun focusedNearbyWayBuildKeepsVisibleSnippetsAtInteriorTiszaPoint() {
-        val fixture = loadTiszaFixture()
-        val pack = loadTileFixture("tile-context/10-571-356-local.json")
+        val fixture = loadRouteMapInfoFixture()
         val focusPoint = fixture.geoPoints[6_854]
         val focus = MapInfoFocus(
             centerGeoPoint = focusPoint,
@@ -82,7 +77,7 @@ class RouteContextRealTileTest {
 
         val nearbyWays = buildRouteNearbyWays(
             routeModel = fixture.routeModel,
-            packs = listOf(pack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
             focus = focus,
         )
@@ -93,46 +88,9 @@ class RouteContextRealTileTest {
         )
     }
 
-    private fun loadTileFixture(path: String): TileContextPack {
-        val resource = requireNotNull(javaClass.classLoader?.getResource("dev/ra/geepee/$path")) {
-            "Missing tile fixture resource: $path"
-        }
-        return tileContextPackFromJson(File(resource.toURI()).readText())
-    }
 }
 
-private data class TiszaFixture(
-    val geoPoints: List<GeoPoint>,
-    val routeModel: RouteModel,
-)
-
-private fun loadTiszaFixture(): TiszaFixture {
-    val routeFile = resolveRepoFileForRealTileTest("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-    require(geoPoints.size >= 2) { "Expected at least two GPX points in the Tisza fixture." }
-    return TiszaFixture(
-        geoPoints = geoPoints,
-        routeModel = buildRouteModel(listOf(geoPoints)),
-    )
-}
-
-private fun TiszaFixture.fixAt(
+private fun RouteMapInfoFixture.fixAt(
     index: Int,
     timestampMillis: Long,
 ): LocationFix {
@@ -161,20 +119,4 @@ private fun bearingDegreesForRealTileTest(
     val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(deltaLon)
     val bearing = Math.toDegrees(atan2(y, x))
     return (bearing + 360.0) % 360.0
-}
-
-private fun resolveRepoFileForRealTileTest(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")) { "Missing user.dir system property" })
-    val direct = File(cwd, relativePath)
-    if (direct.exists()) {
-        return direct
-    }
-    val homeRepos = File(
-        requireNotNull(System.getProperty("user.home")) { "Missing user.home system property" },
-        "repos/geepee/$relativePath",
-    )
-    if (homeRepos.exists()) {
-        return homeRepos
-    }
-    error("Could not resolve repo file for real tile test: $relativePath")
 }
