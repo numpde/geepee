@@ -17,6 +17,18 @@ internal fun mapInfoFocusChanged(
     return previousFocus.projectedBounds != current.projectedBounds
 }
 
+internal fun shouldAcceptMapInfoFocusUpdate(
+    previous: MapInfoFocus?,
+    current: MapInfoFocus,
+    defaultWindowWidthMeters: Double,
+    matchedGeoPoint: GeoPoint,
+): Boolean {
+    if (previous == null && isDefaultMapInfoFocus(current, defaultWindowWidthMeters, matchedGeoPoint)) {
+        return false
+    }
+    return mapInfoFocusChanged(previous, current)
+}
+
 internal fun isDefaultMapInfoFocus(
     focus: MapInfoFocus,
     defaultWindowWidthMeters: Double,

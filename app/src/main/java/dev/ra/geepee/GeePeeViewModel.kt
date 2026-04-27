@@ -394,18 +394,13 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         val analysis = routeRuntimeState.currentAnalysis ?: run {
             return
         }
-        val previousFocus = liveContextFocus
-        if (
-            previousFocus == null &&
-            isDefaultMapInfoFocus(
-                focus = focus,
+        if (!shouldAcceptMapInfoFocusUpdate(
+                previous = liveContextFocus,
+                current = focus,
                 defaultWindowWidthMeters = appPreferences.routeScale.windowWidthMeters,
                 matchedGeoPoint = analysis.nearestGeoPoint,
             )
         ) {
-            return
-        }
-        if (!mapInfoFocusChanged(previousFocus, focus)) {
             return
         }
         setMapInfoFocus(focus)
