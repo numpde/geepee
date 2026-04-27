@@ -98,6 +98,7 @@ internal fun GeePeeApp(
                 viewModel.setBatterySaverEnabled(!state.batterySaverEnabled)
             },
             onDownloadTile = viewModel::downloadTile,
+            onDeleteUnusedTiles = viewModel::deleteUnusedTiles,
             onRequestScreenPinning = {
                 requestScreenPinning(context)
             },
@@ -137,6 +138,7 @@ private fun GeePeeScreen(
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onDownloadTile: (DownloadTileId, Long) -> Unit,
+    onDeleteUnusedTiles: () -> Unit,
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
     onToggleDebugGps: () -> Unit,
@@ -331,6 +333,7 @@ private fun GeePeeScreen(
                 state.batterySaverEnabled,
                 state.debugGpsEnabled,
                 movementViewState.openInPoint != null,
+                state.tileDownloads.values.any { it.status == TileDownloadStatus.Cached },
                 state.sessionRunning,
             )
             MovementTopOverlay(
@@ -357,6 +360,7 @@ private fun GeePeeScreen(
                         onToggleDarkMode = onToggleDarkMode,
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
+                        onDeleteUnusedTiles = onDeleteUnusedTiles,
                         onRequestScreenPinning = onRequestScreenPinning,
                         onStopMonitoring = onStopMonitoring,
                         onSetDebugGpsHere = {
@@ -420,9 +424,11 @@ private fun GeePeeScreen(
             )
             SetupActions(
                 hasRoute = state.routeModel != null,
+                hasCachedTiles = state.tileDownloads.values.any { it.status == TileDownloadStatus.Cached },
                 sessionRunning = state.sessionRunning,
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
+                onDeleteUnusedTiles = onDeleteUnusedTiles,
                 onStartMonitoring = onStartMonitoring,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier

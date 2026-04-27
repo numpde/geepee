@@ -55,6 +55,7 @@ internal data class MovementMenuState(
     val batterySaverEnabled: Boolean,
     val debugGpsEnabled: Boolean,
     val openInAvailable: Boolean,
+    val hasCachedTiles: Boolean,
     val sessionRunning: Boolean,
 )
 
@@ -141,6 +142,7 @@ internal fun MovementBottomControls(
     onToggleDarkMode: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onToggleDebugGps: () -> Unit,
+    onDeleteUnusedTiles: () -> Unit,
     onRequestScreenPinning: () -> Unit,
     onStopMonitoring: () -> Unit,
     onSetDebugGpsHere: () -> Unit,
@@ -169,6 +171,7 @@ internal fun MovementBottomControls(
                 onToggleDarkMode = onToggleDarkMode,
                 onToggleBatterySaver = onToggleBatterySaver,
                 onToggleDebugGps = onToggleDebugGps,
+                onDeleteUnusedTiles = onDeleteUnusedTiles,
                 onRequestScreenPinning = onRequestScreenPinning,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier.weight(1f),
@@ -185,6 +188,7 @@ internal fun MovementBottomControls(
             onToggleDarkMode = onToggleDarkMode,
             onToggleBatterySaver = onToggleBatterySaver,
             onToggleDebugGps = onToggleDebugGps,
+            onDeleteUnusedTiles = onDeleteUnusedTiles,
             onRequestScreenPinning = onRequestScreenPinning,
             onStopMonitoring = onStopMonitoring,
             modifier = modifier.widthIn(
@@ -368,6 +372,7 @@ internal fun MovementMenu(
     onToggleDarkMode: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onToggleDebugGps: () -> Unit,
+    onDeleteUnusedTiles: () -> Unit,
     onRequestScreenPinning: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
@@ -451,6 +456,14 @@ internal fun MovementMenu(
                     expanded = false
                     onToggleDebugGps()
                 },
+            )
+            DropdownMenuItem(
+                text = { Text(text = "Delete unused tiles") },
+                onClick = {
+                    expanded = false
+                    onDeleteUnusedTiles()
+                },
+                enabled = state.hasCachedTiles,
             )
             DropdownMenuItem(
                 text = { Text(text = "Pin app") },

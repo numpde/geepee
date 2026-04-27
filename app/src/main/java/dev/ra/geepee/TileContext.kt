@@ -122,6 +122,8 @@ internal data class TileDownloadSnapshot(
     val actualBytes: Long? = null,
     val errorMessage: String? = null,
     val updatedAtMillis: Long = System.currentTimeMillis(),
+    val downloadedAtMillis: Long = updatedAtMillis,
+    val lastAccessedAtMillis: Long = updatedAtMillis,
 ) {
     val progressFraction: Float?
         get() = if (status == TileDownloadStatus.Downloading) {

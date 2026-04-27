@@ -7,12 +7,110 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TileContextRepositoryTest {
+    @Test
+    fun deleteTilesRemovesSourceRuntimeOverlayAndManifestEntry() {
+        withRepositoryRoot { cacheRoot, repository ->
+            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            repository.storeTilePack(pack)
+            val routeModel = loadRepositoryRouteModel()
+            requireNotNull(
+                repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
+            )
+
+            val sourceFile = File(cacheRoot, "tiles/${pack.tileId.zoom}/${pack.tileId.x}/${pack.tileId.y}.json")
+            val runtimeFile = File(cacheRoot, "runtime/tiles/${pack.tileId.zoom}/${pack.tileId.x}/${pack.tileId.y}.bin")
+            val overlayFiles = File(cacheRoot, "route-overlays")
+                .walkTopDown()
+                .filter { file ->
+                    file.isFile &&
+                        file.extension == "bin" &&
+                        file.name.startsWith("${pack.tileId.y}-")
+                }
+                .toList()
+
+            assertTrue(sourceFile.exists())
+            assertTrue(runtimeFile.exists())
+            assertTrue(overlayFiles.isNotEmpty())
+
+            val result = repository.deleteTiles(listOf(pack.tileId))
+
+            assertEquals(setOf(pack.tileId), result.deletedTileIds)
+            assertTrue(result.freedBytes > 0L)
+            assertTrue(repository.cachedTileSnapshots().isEmpty())
+            assertEquals(null, repository.loadTilePack(pack.tileId))
+            assertEquals(null, repository.loadRuntimePack(pack.tileId))
+            assertTrue(
+                repository.peekCachedRouteTileOverlayBundles(
+                    routeModel = routeModel,
+                    tileIds = listOf(pack.tileId),
+                    config = DefaultTileContextConfig,
+                ).isEmpty(),
+            )
+            assertFalse(sourceFile.exists())
+            assertFalse(runtimeFile.exists())
+            overlayFiles.forEach { overlayFile ->
+                assertFalse(overlayFile.exists())
+            }
+        }
+    }
+
+    @Test
+    fun pruneTilesKeepsProtectedTilesAndDeletesTheRest() {
+        withRepository { repository ->
+            val protectedPack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
+                west = 21.0,
+            )
+            val unusedPack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 571, y = 356),
+                west = 21.02,
+            )
+            repository.storeTilePack(protectedPack)
+            repository.storeTilePack(unusedPack)
+
+            val result = repository.pruneTiles(
+                TilePrunePolicy(
+                    protectedTileIds = setOf(protectedPack.tileId),
+                ),
+            )
+
+            assertEquals(setOf(unusedPack.tileId), result.deletedTileIds)
+            assertTrue(repository.loadTilePack(protectedPack.tileId) != null)
+            assertEquals(null, repository.loadTilePack(unusedPack.tileId))
+            assertEquals(setOf(protectedPack.tileId), repository.cachedTileSnapshots().keys)
+        }
+    }
+
+    @Test
+    fun loadingTileArtifactsTouchesAndPersistsLastAccessTime() {
+        withRepositoryRoot { cacheRoot, repository ->
+            val pack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
+                west = 21.0,
+            )
+            repository.storeTilePack(pack)
+            val initialSnapshot = requireNotNull(repository.cachedTileSnapshots()[pack.tileId])
+            assertEquals(pack.fetchedAtMillis, initialSnapshot.lastAccessedAtMillis)
+
+            requireNotNull(repository.loadRuntimePack(pack.tileId))
+
+            val touchedSnapshot = requireNotNull(repository.cachedTileSnapshots()[pack.tileId])
+            assertTrue(touchedSnapshot.lastAccessedAtMillis > initialSnapshot.lastAccessedAtMillis)
+
+            val reloadedRepository = TileContextRepository(cacheRoot)
+            val reloadedSnapshot = requireNotNull(reloadedRepository.cachedTileSnapshots()[pack.tileId])
+            assertEquals(touchedSnapshot.lastAccessedAtMillis, reloadedSnapshot.lastAccessedAtMillis)
+            assertEquals(initialSnapshot.downloadedAtMillis, reloadedSnapshot.downloadedAtMillis)
+        }
+    }
+
     @Test
     fun runtimePackLoadsReuseInMemoryCache() {
         withRepository { repository ->
@@ -160,6 +258,15 @@ private inline fun withRepository(block: (TileContextRepository) -> Unit) {
     }
 }
 
+private inline fun withRepositoryRoot(block: (File, TileContextRepository) -> Unit) {
+    val cacheRoot = Files.createTempDirectory("geepee-tile-context-repo-test").toFile()
+    try {
+        block(cacheRoot, TileContextRepository(cacheRoot))
+    } finally {
+        cacheRoot.deleteRecursively()
+    }
+}
+
 private fun loadRepositoryTileFixture(path: String): TileContextPack {
     val resource = requireNotNull(TileContextRepositoryTest::class.java.classLoader?.getResource("dev/ra/geepee/$path")) {
         "Missing tile fixture resource: $path"
@@ -213,4 +320,28 @@ private fun findRoutePointWithinBounds(
             point.lat in bounds.south..bounds.north &&
                 point.lon in bounds.west..bounds.east
         }
+}
+
+private fun syntheticRepositoryPack(
+    tileId: DownloadTileId,
+    west: Double,
+): TileContextPack {
+    return TileContextPack(
+        tileId = tileId,
+        queryBounds = GeoBounds(
+            west = west,
+            south = 47.8,
+            east = west + 0.01,
+            north = 47.81,
+        ),
+        fetchedAtMillis = 123L,
+        features = listOf(
+            TileContextFeature(
+                featureId = "node/${tileId.cacheKey}",
+                geometryKind = TileGeometryKind.Point,
+                tags = mapOf("amenity" to "drinking_water"),
+                geometry = listOf(GeoPoint(lat = 47.805, lon = west + 0.005)),
+            ),
+        ),
+    )
 }

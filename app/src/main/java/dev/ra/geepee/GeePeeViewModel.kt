@@ -219,6 +219,31 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    fun deleteUnusedTiles() {
+        val protectedTileIds = deleteUnusedProtectedTileIds(
+            routeModel = routeRuntimeState.routeModel,
+            currentMapInfoFocus = liveContextFocus,
+            tileDownloads = tileDownloads,
+            config = tileContextConfig,
+        )
+        val result = tileContextRepository.pruneTiles(
+            TilePrunePolicy(
+                protectedTileIds = protectedTileIds,
+            ),
+        )
+        if (result.deletedTileCount == 0) {
+            return
+        }
+        Log.i(
+            LOG_TAG,
+            "Deleted ${result.deletedTileCount} unused tiles and freed ${result.freedBytes} bytes",
+        )
+        tileDownloads = tileContextRepository.cachedTileSnapshots()
+        routeContextCoordinator.clear()
+        rebuildNearbyWaysAsync(force = true)
+        recomputeUiState()
+    }
+
     fun reverseRoute() {
         val routeUri = selectedRouteUri ?: return
         loadRoute(

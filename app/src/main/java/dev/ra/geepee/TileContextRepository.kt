@@ -27,6 +27,7 @@ private const val OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 private const val TILE_CONTEXT_REPOSITORY_LOG_TAG = "TileContextRepository"
 private const val TILE_RUNTIME_MEMORY_CACHE_LIMIT = 32
 private const val ROUTE_TILE_OVERLAY_MEMORY_CACHE_LIMIT = 96
+private const val TILE_ACCESS_TOUCH_INTERVAL_MILLIS = 15L * 60L * 1000L
 
 private enum class RouteTileOverlayLoadMode {
     CachedOnly,
@@ -60,6 +61,37 @@ internal class TileContextRepository(
         return cachedTiles.toMap()
     }
 
+    fun deleteTiles(tileIds: Collection<DownloadTileId>): TilePruneResult {
+        val deletedTileIds = linkedSetOf<DownloadTileId>()
+        var freedBytes = 0L
+
+        tileIds.toSet().forEach { tileId ->
+            val snapshot = synchronized(this) { cachedTiles[tileId] } ?: return@forEach
+            invalidateDerivedCaches(tileId)
+            freedBytes += deleteStoredTileFiles(tileId)
+            synchronized(this) {
+                cachedTiles.remove(tileId)
+                saveManifest()
+            }
+            deletedTileIds += tileId
+            if (snapshot.status != TileDownloadStatus.Cached) {
+                Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Deleted non-cached tile entry ${tileId.cacheKey}")
+            }
+        }
+
+        return TilePruneResult(
+            deletedTileIds = deletedTileIds,
+            freedBytes = freedBytes,
+        )
+    }
+
+    fun pruneTiles(policy: TilePrunePolicy): TilePruneResult {
+        val unusedTileIds = synchronized(this) {
+            cachedTiles.keys.filterNot(policy.protectedTileIds::contains)
+        }
+        return deleteTiles(unusedTileIds)
+    }
+
     fun loadTilePack(tileId: DownloadTileId): TileContextPack? {
         val tileFile = tileFileFor(tileId)
         if (!tileFile.exists()) {
@@ -67,7 +99,9 @@ internal class TileContextRepository(
         }
         return runCatching {
             tileContextPackFromJson(tileFile.readText())
-        }.getOrNull()
+        }.getOrNull()?.also {
+            touchCachedTiles(setOf(tileId))
+        }
     }
 
     fun loadTilePacks(tileIds: Collection<DownloadTileId>): List<TileContextPack> {
@@ -76,7 +110,10 @@ internal class TileContextRepository(
 
     fun loadRuntimePack(tileId: DownloadTileId): TileRuntimePack? {
         synchronized(derivedCacheLock) {
-            runtimePackCache[tileId]?.let { return it }
+            runtimePackCache[tileId]?.let {
+                touchCachedTiles(setOf(tileId))
+                return it
+            }
         }
         val runtimeFile = runtimeFileFor(tileId)
         if (runtimeFile.exists()) {
@@ -84,6 +121,7 @@ internal class TileContextRepository(
                 tileRuntimePackFromByteArray(runtimeFile.readBytes())
             }.getOrNull()?.let { restored ->
                 cacheRuntimePack(restored)
+                touchCachedTiles(setOf(tileId))
                 return restored
             }
         }
@@ -93,7 +131,9 @@ internal class TileContextRepository(
                 persistRuntimePack(compiled)
                 cacheRuntimePack(compiled)
             }
-        }.getOrNull()
+        }.getOrNull()?.also {
+            touchCachedTiles(setOf(tileId))
+        }
     }
 
     fun loadRuntimePacks(tileIds: Collection<DownloadTileId>): List<TileRuntimePack> {
@@ -130,6 +170,7 @@ internal class TileContextRepository(
         )
         synchronized(derivedCacheLock) {
             routeTileOverlayCache[cacheKey]?.let { cachedOverlay ->
+                touchCachedTiles(setOf(tileId))
                 return RouteTileOverlayBundle(runtimePack = runtimePack, overlay = cachedOverlay)
             }
         }
@@ -143,7 +184,10 @@ internal class TileContextRepository(
                 null
             }
             cachedOverlay?.let(::cacheRouteTileOverlay)
-            return cachedOverlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
+            return cachedOverlay?.let {
+                touchCachedTiles(setOf(tileId))
+                RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it)
+            }
         }
         val overlayTask: FutureTask<RouteTileOverlay?>
         val createdTask: Boolean
@@ -190,7 +234,10 @@ internal class TileContextRepository(
             }
         }
         overlay?.let(::cacheRouteTileOverlay)
-        return overlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
+        return overlay?.let {
+            touchCachedTiles(setOf(tileId))
+            RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it)
+        }
     }
 
     fun loadRouteTileOverlayBundles(
@@ -234,6 +281,15 @@ internal class TileContextRepository(
         val runtimePack = compileTileRuntimePack(pack)
         persistRuntimePack(runtimePack)
         cacheRuntimePack(runtimePack)
+        persistCachedTile(
+            pack.tileId,
+            TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = tileFile.length(),
+                actualBytes = tileFile.length(),
+                updatedAtMillis = pack.fetchedAtMillis,
+            ),
+        )
     }
 
     @Throws(IOException::class)
@@ -309,8 +365,40 @@ internal class TileContextRepository(
         tileId: DownloadTileId,
         snapshot: TileDownloadSnapshot,
     ) {
-        cachedTiles[tileId] = snapshot
+        val existingSnapshot = cachedTiles[tileId]
+        cachedTiles[tileId] = snapshot.copy(
+            downloadedAtMillis = existingSnapshot?.downloadedAtMillis ?: snapshot.downloadedAtMillis,
+            lastAccessedAtMillis = maxOf(
+                existingSnapshot?.lastAccessedAtMillis ?: Long.MIN_VALUE,
+                snapshot.lastAccessedAtMillis,
+            ),
+        )
         saveManifest()
+    }
+
+    @Synchronized
+    private fun touchCachedTiles(
+        tileIds: Set<DownloadTileId>,
+        accessedAtMillis: Long = System.currentTimeMillis(),
+    ) {
+        if (tileIds.isEmpty()) {
+            return
+        }
+        var changed = false
+        tileIds.forEach { tileId ->
+            val snapshot = cachedTiles[tileId] ?: return@forEach
+            if (snapshot.status != TileDownloadStatus.Cached) {
+                return@forEach
+            }
+            if (accessedAtMillis - snapshot.lastAccessedAtMillis < TILE_ACCESS_TOUCH_INTERVAL_MILLIS) {
+                return@forEach
+            }
+            cachedTiles[tileId] = snapshot.copy(lastAccessedAtMillis = accessedAtMillis)
+            changed = true
+        }
+        if (changed) {
+            saveManifest()
+        }
     }
 
     @Synchronized
@@ -341,6 +429,12 @@ internal class TileContextRepository(
                             estimatedBytes = actualBytes,
                             actualBytes = actualBytes,
                             updatedAtMillis = entry["updatedAtMillis"]?.jsonPrimitive?.longOrNull ?: tileFile.lastModified(),
+                            downloadedAtMillis = entry["downloadedAtMillis"]?.jsonPrimitive?.longOrNull
+                                ?: entry["updatedAtMillis"]?.jsonPrimitive?.longOrNull
+                                ?: tileFile.lastModified(),
+                            lastAccessedAtMillis = entry["lastAccessedAtMillis"]?.jsonPrimitive?.longOrNull
+                                ?: entry["updatedAtMillis"]?.jsonPrimitive?.longOrNull
+                                ?: tileFile.lastModified(),
                         ),
                     )
                 }
@@ -364,6 +458,8 @@ internal class TileContextRepository(
                                     put("y", JsonPrimitive(tileId.y))
                                     put("actualBytes", JsonPrimitive(snapshot.actualBytes ?: snapshot.estimatedBytes))
                                     put("updatedAtMillis", JsonPrimitive(snapshot.updatedAtMillis))
+                                    put("downloadedAtMillis", JsonPrimitive(snapshot.downloadedAtMillis))
+                                    put("lastAccessedAtMillis", JsonPrimitive(snapshot.lastAccessedAtMillis))
                                 },
                             )
                         }
@@ -457,18 +553,48 @@ internal class TileContextRepository(
         deleteRouteOverlayFiles(tileId)
     }
 
-    private fun deleteRouteOverlayFiles(tileId: DownloadTileId) {
-        routeOverlayRoot.listFiles()
+    private fun deleteStoredTileFiles(tileId: DownloadTileId): Long {
+        var freedBytes = 0L
+        freedBytes += deleteFileIfExists(tileFileFor(tileId))
+        freedBytes += deleteFileIfExists(runtimeFileFor(tileId))
+        routeOverlayFilesFor(tileId).forEach { overlayFile ->
+            freedBytes += deleteFileIfExists(overlayFile)
+        }
+        return freedBytes
+    }
+
+    private fun deleteFileIfExists(file: File): Long {
+        if (!file.exists()) {
+            return 0L
+        }
+        val sizeBytes = file.length()
+        if (!file.delete()) {
+            Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Failed to delete ${file.absolutePath}")
+            return 0L
+        }
+        return sizeBytes
+    }
+
+    private fun routeOverlayFilesFor(tileId: DownloadTileId): List<File> {
+        return routeOverlayRoot.listFiles()
             ?.filter(File::isDirectory)
-            ?.forEach { routeFingerprintDir ->
+            ?.flatMap { routeFingerprintDir ->
                 val xDir = File(routeFingerprintDir, "${tileId.zoom}/${tileId.x}")
-                val staleFiles = xDir.listFiles()
+                xDir.listFiles()
                     ?.filter { file ->
                         file.isFile && file.name.startsWith("${tileId.y}-") && file.extension == "bin"
                     }
                     .orEmpty()
-                staleFiles.forEach(File::delete)
             }
+            .orEmpty()
+    }
+
+    private fun deleteRouteOverlayFiles(tileId: DownloadTileId) {
+        routeOverlayFilesFor(tileId).forEach { overlayFile ->
+            if (!overlayFile.delete()) {
+                Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Failed to delete stale overlay ${overlayFile.absolutePath}")
+            }
+        }
     }
 
     private fun openOverpassConnection(query: String): HttpURLConnection {

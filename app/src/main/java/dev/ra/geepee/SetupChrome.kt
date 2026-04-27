@@ -69,9 +69,11 @@ internal fun SetupTopOverlay(
 @Composable
 internal fun SetupActions(
     hasRoute: Boolean,
+    hasCachedTiles: Boolean,
     sessionRunning: Boolean,
     onPickRoute: () -> Unit,
     onReverseRoute: () -> Unit,
+    onDeleteUnusedTiles: () -> Unit,
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
@@ -86,7 +88,7 @@ internal fun SetupActions(
             ActionButton(
                 label = if (!hasRoute) "Load route" else "Change route",
                 onClick = onPickRoute,
-                onLongClick = if (hasRoute) {
+                onLongClick = if (hasRoute || hasCachedTiles) {
                     { routeMenuExpanded = true }
                 } else {
                     null
@@ -103,6 +105,14 @@ internal fun SetupActions(
                         routeMenuExpanded = false
                         onReverseRoute()
                     },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "Delete unused tiles") },
+                    onClick = {
+                        routeMenuExpanded = false
+                        onDeleteUnusedTiles()
+                    },
+                    enabled = hasCachedTiles,
                 )
             }
         }
