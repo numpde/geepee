@@ -166,6 +166,7 @@ class TileContextTest {
                     screenRect = ScreenRect(left = 10f, top = 20f, right = 110f, bottom = 120f),
                     routeMetrics = metrics,
                     snapshot = null,
+                    selected = false,
                     estimatedBytes = 0L,
                     label = null,
                 ),
@@ -174,6 +175,7 @@ class TileContextTest {
                     screenRect = ScreenRect(left = -5f, top = 20f, right = 95f, bottom = 120f),
                     routeMetrics = metrics,
                     snapshot = null,
+                    selected = false,
                     estimatedBytes = 0L,
                     label = null,
                 ),
@@ -184,6 +186,36 @@ class TileContextTest {
 
         assertEquals(1, filtered.tiles.size)
         assertEquals("10/1/1", filtered.tiles.single().tileId.cacheKey)
+    }
+
+    @Test
+    fun tileGridRenderModelMarksSelectedTiles() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val routeMetrics = buildRouteTileMetricsIndex(
+            routeModel = route,
+            config = config,
+        )
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            routeTileMetricsById = routeMetrics,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+            selectedTileIds = setOf(routeMetrics.keys.first()),
+        )
+
+        assertEquals(1, renderModel.tiles.count { it.selected })
+        assertTrue(renderModel.tiles.any { it.tileId == routeMetrics.keys.first() && it.selected })
     }
 
     @Test

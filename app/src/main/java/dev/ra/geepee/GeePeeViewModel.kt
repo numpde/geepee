@@ -219,14 +219,15 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun deleteUnusedTiles() {
-        val prunePolicy = buildDeleteUnusedTilePrunePolicy(
-            routeModel = routeRuntimeState.routeModel,
-            currentMapInfoFocus = liveContextFocus,
-            tileDownloads = tileDownloads,
-            config = tileContextConfig,
-        )
-        val result = tileContextRepository.pruneTiles(prunePolicy)
+    fun deleteSelectedOrUnusedTiles(selectedTileIds: Set<DownloadTileId>) {
+        val cachedSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
+            tileDownloads[tileId]?.status == TileDownloadStatus.Cached
+        }
+        val result = if (cachedSelectedTileIds.isNotEmpty()) {
+            tileContextRepository.deleteTiles(cachedSelectedTileIds)
+        } else {
+            tileContextRepository.pruneTiles(deleteUnusedTilesPrunePolicy())
+        }
         if (result.deletedTileCount == 0) {
             return
         }
@@ -238,6 +239,26 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         routeContextCoordinator.clear()
         rebuildNearbyWaysAsync(force = true)
         recomputeUiState()
+    }
+
+    fun previewTileDeletion(selectedTileIds: Set<DownloadTileId>): TileDeletePreview {
+        val cachedSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
+            tileDownloads[tileId]?.status == TileDownloadStatus.Cached
+        }
+        return if (cachedSelectedTileIds.isNotEmpty()) {
+            tileContextRepository.previewDeleteTiles(cachedSelectedTileIds)
+        } else {
+            tileContextRepository.previewPruneTiles(deleteUnusedTilesPrunePolicy())
+        }
+    }
+
+    private fun deleteUnusedTilesPrunePolicy(): TilePrunePolicy {
+        return buildDeleteUnusedTilePrunePolicy(
+            routeModel = routeRuntimeState.routeModel,
+            currentMapInfoFocus = liveContextFocus,
+            tileDownloads = tileDownloads,
+            config = tileContextConfig,
+        )
     }
 
     fun reverseRoute() {

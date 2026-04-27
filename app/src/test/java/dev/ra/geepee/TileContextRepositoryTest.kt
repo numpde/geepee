@@ -89,6 +89,87 @@ class TileContextRepositoryTest {
     }
 
     @Test
+    fun previewPruneTilesReportsCandidateTilesAndStoredBytes() {
+        withRepositoryRoot { cacheRoot, repository ->
+            val protectedPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val deletablePack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
+                west = 21.0,
+            )
+            val routeModel = loadRepositoryRouteModel()
+            repository.storeTilePack(protectedPack)
+            repository.storeTilePack(deletablePack)
+            requireNotNull(
+                repository.loadRouteTileOverlayBundle(routeModel, deletablePack.tileId, DefaultTileContextConfig),
+            )
+
+            val preview = repository.previewPruneTiles(
+                TilePrunePolicy(
+                    protectedTileIds = setOf(protectedPack.tileId),
+                ),
+            )
+
+            val expectedBytes = listOf(
+                File(cacheRoot, "tiles/${deletablePack.tileId.zoom}/${deletablePack.tileId.x}/${deletablePack.tileId.y}.json"),
+                File(cacheRoot, "runtime/tiles/${deletablePack.tileId.zoom}/${deletablePack.tileId.x}/${deletablePack.tileId.y}.bin"),
+            ).sumOf(File::length) +
+                File(cacheRoot, "route-overlays")
+                    .walkTopDown()
+                    .filter { file ->
+                        file.isFile &&
+                            file.extension == "bin" &&
+                            file.name.startsWith("${deletablePack.tileId.y}-")
+                    }
+                    .sumOf(File::length)
+
+            assertEquals(TileDeleteMode.Unused, preview.mode)
+            assertEquals(setOf(deletablePack.tileId), preview.tileIds)
+            assertEquals(1, preview.tileCount)
+            assertEquals(expectedBytes, preview.freedBytes)
+        }
+    }
+
+    @Test
+    fun previewDeleteTilesReportsExactSelectedTilesAndIgnoresUnknownOnes() {
+        withRepositoryRoot { cacheRoot, repository ->
+            val pack = syntheticRepositoryPack(
+                tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
+                west = 21.0,
+            )
+            val routeModel = loadRepositoryRouteModel()
+            repository.storeTilePack(pack)
+            requireNotNull(
+                repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
+            )
+
+            val preview = repository.previewDeleteTiles(
+                listOf(
+                    pack.tileId,
+                    DownloadTileId(zoom = 10, x = 999, y = 999),
+                ),
+            )
+
+            val expectedBytes = listOf(
+                File(cacheRoot, "tiles/${pack.tileId.zoom}/${pack.tileId.x}/${pack.tileId.y}.json"),
+                File(cacheRoot, "runtime/tiles/${pack.tileId.zoom}/${pack.tileId.x}/${pack.tileId.y}.bin"),
+            ).sumOf(File::length) +
+                File(cacheRoot, "route-overlays")
+                    .walkTopDown()
+                    .filter { file ->
+                        file.isFile &&
+                            file.extension == "bin" &&
+                            file.name.startsWith("${pack.tileId.y}-")
+                    }
+                    .sumOf(File::length)
+
+            assertEquals(TileDeleteMode.Selected, preview.mode)
+            assertEquals(setOf(pack.tileId), preview.tileIds)
+            assertEquals(1, preview.tileCount)
+            assertEquals(expectedBytes, preview.freedBytes)
+        }
+    }
+
+    @Test
     fun storeTilePackPersistsProvidedDownloadMetadata() {
         withRepository { repository ->
             val pack = syntheticRepositoryPack(

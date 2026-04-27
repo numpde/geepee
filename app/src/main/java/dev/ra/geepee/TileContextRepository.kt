@@ -85,10 +85,31 @@ internal class TileContextRepository(
         )
     }
 
-    fun pruneTiles(policy: TilePrunePolicy): TilePruneResult {
-        val unusedTileIds = synchronized(this) {
-            cachedTiles.keys.filterNot(policy.protectedTileIds::contains)
+    fun previewDeleteTiles(tileIds: Collection<DownloadTileId>): TileDeletePreview {
+        val cachedTileIds = synchronized(this) {
+            tileIds
+                .toSet()
+                .filter { tileId -> cachedTiles[tileId]?.status == TileDownloadStatus.Cached }
+                .toCollection(linkedSetOf())
         }
+        return TileDeletePreview(
+            mode = TileDeleteMode.Selected,
+            tileIds = cachedTileIds,
+            freedBytes = cachedTileIds.sumOf(::storedTileBytes),
+        )
+    }
+
+    fun previewPruneTiles(policy: TilePrunePolicy): TileDeletePreview {
+        val candidateTileIds = pruneCandidateTileIds(policy)
+        return TileDeletePreview(
+            mode = TileDeleteMode.Unused,
+            tileIds = candidateTileIds,
+            freedBytes = candidateTileIds.sumOf(::storedTileBytes),
+        )
+    }
+
+    fun pruneTiles(policy: TilePrunePolicy): TilePruneResult {
+        val unusedTileIds = pruneCandidateTileIds(policy)
         return deleteTiles(unusedTileIds)
     }
 
@@ -561,13 +582,7 @@ internal class TileContextRepository(
     }
 
     private fun deleteStoredTileFiles(tileId: DownloadTileId): Long {
-        var freedBytes = 0L
-        freedBytes += deleteFileIfExists(tileFileFor(tileId))
-        freedBytes += deleteFileIfExists(runtimeFileFor(tileId))
-        routeOverlayFilesFor(tileId).forEach { overlayFile ->
-            freedBytes += deleteFileIfExists(overlayFile)
-        }
-        return freedBytes
+        return storedTileFilesFor(tileId).sumOf(::deleteFileIfExists)
     }
 
     private fun deleteFileIfExists(file: File): Long {
@@ -580,6 +595,30 @@ internal class TileContextRepository(
             return 0L
         }
         return sizeBytes
+    }
+
+    private fun pruneCandidateTileIds(policy: TilePrunePolicy): Set<DownloadTileId> {
+        return synchronized(this) {
+            cachedTiles
+                .filterValues { snapshot -> snapshot.status == TileDownloadStatus.Cached }
+                .keys
+                .filterNot(policy.protectedTileIds::contains)
+                .toCollection(linkedSetOf())
+        }
+    }
+
+    private fun storedTileBytes(tileId: DownloadTileId): Long {
+        return storedTileFilesFor(tileId)
+            .filter(File::exists)
+            .sumOf(File::length)
+    }
+
+    private fun storedTileFilesFor(tileId: DownloadTileId): List<File> {
+        return buildList {
+            add(tileFileFor(tileId))
+            add(runtimeFileFor(tileId))
+            addAll(routeOverlayFilesFor(tileId))
+        }
     }
 
     private fun routeOverlayFilesFor(tileId: DownloadTileId): List<File> {

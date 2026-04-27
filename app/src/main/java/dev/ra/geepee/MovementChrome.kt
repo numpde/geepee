@@ -142,7 +142,8 @@ internal fun MovementBottomControls(
     onToggleDarkMode: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onToggleDebugGps: () -> Unit,
-    onDeleteUnusedTiles: () -> Unit,
+    onDeleteTiles: () -> Unit,
+    deleteTilesLabel: String,
     onRequestScreenPinning: () -> Unit,
     onStopMonitoring: () -> Unit,
     onSetDebugGpsHere: () -> Unit,
@@ -171,7 +172,8 @@ internal fun MovementBottomControls(
                 onToggleDarkMode = onToggleDarkMode,
                 onToggleBatterySaver = onToggleBatterySaver,
                 onToggleDebugGps = onToggleDebugGps,
-                onDeleteUnusedTiles = onDeleteUnusedTiles,
+                onDeleteTiles = onDeleteTiles,
+                deleteTilesLabel = deleteTilesLabel,
                 onRequestScreenPinning = onRequestScreenPinning,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier.weight(1f),
@@ -188,7 +190,8 @@ internal fun MovementBottomControls(
             onToggleDarkMode = onToggleDarkMode,
             onToggleBatterySaver = onToggleBatterySaver,
             onToggleDebugGps = onToggleDebugGps,
-            onDeleteUnusedTiles = onDeleteUnusedTiles,
+            onDeleteTiles = onDeleteTiles,
+            deleteTilesLabel = deleteTilesLabel,
             onRequestScreenPinning = onRequestScreenPinning,
             onStopMonitoring = onStopMonitoring,
             modifier = modifier.widthIn(
@@ -372,7 +375,8 @@ internal fun MovementMenu(
     onToggleDarkMode: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onToggleDebugGps: () -> Unit,
-    onDeleteUnusedTiles: () -> Unit,
+    onDeleteTiles: () -> Unit,
+    deleteTilesLabel: String,
     onRequestScreenPinning: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
@@ -458,10 +462,10 @@ internal fun MovementMenu(
                 },
             )
             DropdownMenuItem(
-                text = { Text(text = "Delete unused tiles") },
+                text = { Text(text = deleteTilesLabel) },
                 onClick = {
                     expanded = false
-                    onDeleteUnusedTiles()
+                    onDeleteTiles()
                 },
                 enabled = state.hasCachedTiles,
             )

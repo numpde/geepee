@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,7 +101,8 @@ internal fun GeePeeApp(
                 viewModel.setBatterySaverEnabled(!state.batterySaverEnabled)
             },
             onDownloadTile = viewModel::downloadTile,
-            onDeleteUnusedTiles = viewModel::deleteUnusedTiles,
+            onPreviewTileDeletion = viewModel::previewTileDeletion,
+            onDeleteSelectedOrUnusedTiles = viewModel::deleteSelectedOrUnusedTiles,
             onRequestScreenPinning = {
                 requestScreenPinning(context)
             },
@@ -138,7 +142,8 @@ private fun GeePeeScreen(
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onDownloadTile: (DownloadTileId, Long) -> Unit,
-    onDeleteUnusedTiles: () -> Unit,
+    onPreviewTileDeletion: (Set<DownloadTileId>) -> TileDeletePreview,
+    onDeleteSelectedOrUnusedTiles: (Set<DownloadTileId>) -> Unit,
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
     onToggleDebugGps: () -> Unit,
@@ -202,6 +207,14 @@ private fun GeePeeScreen(
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
+        var selectedTileIds by remember(state.routeName, movementMode) {
+            mutableStateOf(emptySet<DownloadTileId>())
+        }
+        val effectiveSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
+            state.tileDownloads[tileId]?.status == TileDownloadStatus.Cached
+        }
+        val deleteTilesLabel = deleteTilesActionLabel(effectiveSelectedTileIds)
+        var deleteTilesPreview by remember { mutableStateOf<TileDeletePreview?>(null) }
         LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
             movementViewState.effectiveMapInfoFocus?.let { focus ->
                 delay(250)
@@ -227,6 +240,7 @@ private fun GeePeeScreen(
                 viewportWidthPx,
                 viewportHeightPx,
                 state.tileDownloads,
+                effectiveSelectedTileIds,
                 state.tileContextConfig,
             ) {
                 buildTileGridRenderModel(
@@ -237,6 +251,7 @@ private fun GeePeeScreen(
                     canvasHeight = viewportHeightPx,
                     config = state.tileContextConfig,
                     tileSnapshots = state.tileDownloads,
+                    selectedTileIds = effectiveSelectedTileIds,
                 )
             }
         } else {
@@ -262,7 +277,15 @@ private fun GeePeeScreen(
                         onTap = { point ->
                             if (showTileOverview) {
                                 tileGridModel?.tileAt(ScreenPoint(point.x, point.y))?.let { tile ->
-                                    onDownloadTile(tile.tileId, tile.estimatedBytes)
+                                    if (tile.snapshot?.status == TileDownloadStatus.Cached) {
+                                        selectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
+                                            if (!tileIds.add(tile.tileId)) {
+                                                tileIds.remove(tile.tileId)
+                                            }
+                                        }.toSet()
+                                    } else {
+                                        onDownloadTile(tile.tileId, tile.estimatedBytes)
+                                    }
                                 }
                             } else if (movementMode) {
                                 selectedPois = tappedPoiSelections(
@@ -360,7 +383,10 @@ private fun GeePeeScreen(
                         onToggleDarkMode = onToggleDarkMode,
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
-                        onDeleteUnusedTiles = onDeleteUnusedTiles,
+                        onDeleteTiles = {
+                            deleteTilesPreview = onPreviewTileDeletion(effectiveSelectedTileIds)
+                        },
+                        deleteTilesLabel = deleteTilesLabel,
                         onRequestScreenPinning = onRequestScreenPinning,
                         onStopMonitoring = onStopMonitoring,
                         onSetDebugGpsHere = {
@@ -428,13 +454,33 @@ private fun GeePeeScreen(
                 sessionRunning = state.sessionRunning,
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
-                onDeleteUnusedTiles = onDeleteUnusedTiles,
+                onDeleteTiles = {
+                    deleteTilesPreview = onPreviewTileDeletion(effectiveSelectedTileIds)
+                },
+                deleteTilesLabel = deleteTilesLabel,
                 onStartMonitoring = onStartMonitoring,
                 onStopMonitoring = onStopMonitoring,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 16.dp),
+            )
+        }
+        deleteTilesPreview?.let { preview ->
+            DeleteTilesDialog(
+                preview = preview,
+                onConfirm = {
+                    deleteTilesPreview = null
+                    onDeleteSelectedOrUnusedTiles(
+                        if (preview.mode == TileDeleteMode.Selected) {
+                            preview.tileIds
+                        } else {
+                            emptySet()
+                        },
+                    )
+                    selectedTileIds = emptySet()
+                },
+                onDismiss = { deleteTilesPreview = null },
             )
         }
     }
@@ -519,4 +565,78 @@ private fun tappedPoiSelections(
             compareBy<RoutePoiSelectionInfo> { it.distanceMeters ?: Double.POSITIVE_INFINITY }
                 .thenBy(RoutePoiSelectionInfo::title),
         )
+}
+
+internal fun deleteTilesActionLabel(selectedTileIds: Set<DownloadTileId>): String {
+    return if (selectedTileIds.isNotEmpty()) {
+        "Delete selected tiles"
+    } else {
+        "Delete unused tiles"
+    }
+}
+
+internal data class DeleteTilesDialogCopy(
+    val title: String,
+    val message: String,
+)
+
+internal fun deleteTilesDialogCopy(preview: TileDeletePreview): DeleteTilesDialogCopy {
+    val actionText = if (preview.tileCount == 0) {
+        "Nothing would be deleted right now."
+    } else {
+        "This will delete ${preview.tileCount} downloaded tiles and free ${formatStorageMegabytes(preview.freedBytes)}."
+    }
+    return when (preview.mode) {
+        TileDeleteMode.Selected -> DeleteTilesDialogCopy(
+            title = "Delete selected tiles?",
+            message = buildString {
+                append("This will delete exactly the selected downloaded tiles, even if they are on the current route or were used recently.")
+                append("\n\n")
+                append("Derived map-info cache for those tiles will also be removed.")
+                append("\n\n")
+                append(actionText)
+            },
+        )
+        TileDeleteMode.Unused -> DeleteTilesDialogCopy(
+            title = "Delete unused tiles?",
+            message = buildString {
+                append("This removes downloaded tiles that are not needed for the current route or current view, are not being downloaded, and were not used recently.")
+                append("\n\n")
+                append("Derived map-info cache for those tiles will also be removed.")
+                append("\n\n")
+                append(actionText)
+            },
+        )
+    }
+}
+
+@Composable
+private fun DeleteTilesDialog(
+    preview: TileDeletePreview,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val copy = remember(preview) { deleteTilesDialogCopy(preview) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = copy.title)
+        },
+        text = {
+            Text(text = copy.message)
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = preview.tileCount > 0,
+            ) {
+                Text(text = "Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Cancel")
+            }
+        },
+    )
 }

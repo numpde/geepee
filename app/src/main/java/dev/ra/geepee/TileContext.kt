@@ -215,6 +215,7 @@ internal data class TileGridDisplayTile(
     val screenRect: ScreenRect,
     val routeMetrics: TileRouteMetrics,
     val snapshot: TileDownloadSnapshot?,
+    val selected: Boolean,
     val estimatedBytes: Long,
     val label: String?,
 )
@@ -384,6 +385,7 @@ internal fun buildTileGridRenderModel(
     canvasHeight: Float,
     config: TileContextConfig,
     tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+    selectedTileIds: Set<DownloadTileId> = emptySet(),
 ): TileGridRenderModel {
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
         return TileGridRenderModel(emptyList())
@@ -416,6 +418,7 @@ internal fun buildTileGridRenderModel(
             screenRect = screenRect,
             routeMetrics = routeMetrics,
             snapshot = snapshot,
+            selected = tileId in selectedTileIds,
             estimatedBytes = estimatedBytes,
             label = tileLabel(
                 routeMetrics = routeMetrics,

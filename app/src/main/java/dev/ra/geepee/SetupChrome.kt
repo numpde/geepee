@@ -64,7 +64,8 @@ internal fun SetupActions(
     sessionRunning: Boolean,
     onPickRoute: () -> Unit,
     onReverseRoute: () -> Unit,
-    onDeleteUnusedTiles: () -> Unit,
+    onDeleteTiles: () -> Unit,
+    deleteTilesLabel: String,
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit,
     modifier: Modifier = Modifier,
@@ -96,7 +97,8 @@ internal fun SetupActions(
                 hasCachedTiles = hasCachedTiles,
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
-                onDeleteUnusedTiles = onDeleteUnusedTiles,
+                onDeleteTiles = onDeleteTiles,
+                deleteTilesLabel = deleteTilesLabel,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -139,7 +141,8 @@ private fun SetupMenu(
     hasCachedTiles: Boolean,
     onPickRoute: () -> Unit,
     onReverseRoute: () -> Unit,
-    onDeleteUnusedTiles: () -> Unit,
+    onDeleteTiles: () -> Unit,
+    deleteTilesLabel: String,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -171,10 +174,10 @@ private fun SetupMenu(
                 )
             }
             DropdownMenuItem(
-                text = { Text(text = "Delete unused tiles") },
+                text = { Text(text = deleteTilesLabel) },
                 onClick = {
                     expanded = false
-                    onDeleteUnusedTiles()
+                    onDeleteTiles()
                 },
                 enabled = hasCachedTiles,
             )

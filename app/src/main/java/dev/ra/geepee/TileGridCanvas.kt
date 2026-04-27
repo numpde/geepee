@@ -81,11 +81,14 @@ private fun DrawScope.drawTileCell(
     }
 
     val stateFill = if (showFills) {
-        when (state) {
-            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
-            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.1f)
-            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.1f)
-            null -> Color.Transparent
+        when {
+            tile.selected -> colors.routeAhead.copy(alpha = 0.09f)
+            else -> when (state) {
+                TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
+                TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.1f)
+                TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.1f)
+                null -> Color.Transparent
+            }
         }
     } else {
         Color.Transparent
@@ -99,14 +102,17 @@ private fun DrawScope.drawTileCell(
         )
     }
 
-    val borderColor = when (state) {
-        TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
-        TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.52f)
-        TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.54f)
-        null -> if (tile.routeMetrics.intersectsRoute) {
-            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.14f else 0.08f)
-        } else {
-            colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.06f else 0.035f)
+    val borderColor = when {
+        tile.selected -> colors.routeAhead.copy(alpha = 0.72f)
+        else -> when (state) {
+            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
+            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.52f)
+            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.54f)
+            null -> if (tile.routeMetrics.intersectsRoute) {
+                colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.14f else 0.08f)
+            } else {
+                colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.06f else 0.035f)
+            }
         }
     }
     drawRoundRect(
@@ -116,7 +122,11 @@ private fun DrawScope.drawTileCell(
         cornerRadius = cornerRadius,
         style = androidx.compose.ui.graphics.drawscope.Stroke(
             width = when (visualStyle) {
-                TileGridVisualStyle.Preview -> if (tile.routeMetrics.intersectsRoute) 1.5.dp.toPx() else 0.8.dp.toPx()
+                TileGridVisualStyle.Preview -> when {
+                    tile.selected -> 2.2.dp.toPx()
+                    tile.routeMetrics.intersectsRoute -> 1.5.dp.toPx()
+                    else -> 0.8.dp.toPx()
+                }
                 TileGridVisualStyle.LiveOverlay -> if (tile.routeMetrics.intersectsRoute) 1.dp.toPx() else 0.7.dp.toPx()
             },
         ),
