@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -185,8 +186,8 @@ private fun GeePeeScreen(
                 maxDoubleTapDistancePx = with(density) { 32.dp.toPx() },
             )
         }
-        var selectedPois by remember(state.routeName, movementMode) {
-            mutableStateOf(emptyList<RoutePoiSelectionInfo>())
+        var routePoiUiState by remember(state.routeName, movementMode) {
+            mutableStateOf(RoutePoiUiState())
         }
         var previewTileUiState by remember(state.routeName, movementMode) {
             mutableStateOf(PreviewTileUiState())
@@ -266,8 +267,14 @@ private fun GeePeeScreen(
                                     onDownloadTile(request.tileId, request.estimatedBytes)
                                 }
                             } else if (movementMode) {
-                                selectedPois = tappedPoiSelections(
-                                    state = state,
+                                val routeModel = requireNotNull(state.routeModel)
+                                routePoiUiState = routePoiUiState.onCanvasTap(
+                                    routeModel = routeModel,
+                                    analysis = state.analysis,
+                                    orientationMode = state.orientationMode,
+                                    headingDegrees = state.compass?.headingDegrees,
+                                    currentReferenceGeoPoint = state.currentReferenceGeoPoint,
+                                    pois = state.mapInfo.pois,
                                     screenPoint = ScreenPoint(point.x, point.y),
                                     maxDistancePx = poiTapRadiusPx,
                                     windowWidthMeters = movementViewState.windowWidthMeters,
@@ -278,7 +285,7 @@ private fun GeePeeScreen(
                             }
                         },
                         onDoubleTap = {
-                            selectedPois = emptyList()
+                            routePoiUiState = routePoiUiState.clear()
                             if (movementMode) {
                                 movementViewportController?.handleDoubleTap?.invoke()
                             } else {
@@ -296,9 +303,10 @@ private fun GeePeeScreen(
                 }
                 .pointerInput(activeViewportState) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
-                        if (selectedPois.isNotEmpty() && (pan.x != 0f || pan.y != 0f || zoom != 1f)) {
-                            selectedPois = emptyList()
-                        }
+                        routePoiUiState = routePoiUiState.clearOnTransform(
+                            pan = Offset(pan.x, pan.y),
+                            zoom = zoom,
+                        )
                         movementViewportController?.handleTransform?.invoke(
                             ScreenPoint(centroid.x, centroid.y),
                             ScreenPoint(pan.x, pan.y),
@@ -346,7 +354,7 @@ private fun GeePeeScreen(
             )
             MovementTopOverlay(
                 state = state,
-                selectedPois = selectedPois,
+                selectedPois = routePoiUiState.selectedPois,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
@@ -468,30 +476,4 @@ private fun GeePeeScreen(
             )
         }
     }
-}
-
-private fun tappedPoiSelections(
-    state: GeePeeUiState,
-    screenPoint: ScreenPoint,
-    maxDistancePx: Float,
-    windowWidthMeters: Double,
-    canvasWidth: Float,
-    canvasHeight: Float,
-    boundsOverride: Bounds?,
-): List<RoutePoiSelectionInfo> {
-    val routeModel = state.routeModel ?: return emptyList()
-    return selectRoutePoiSelections(
-        routeModel = routeModel,
-        analysis = state.analysis,
-        orientationMode = state.orientationMode,
-        headingDegrees = state.compass?.headingDegrees,
-        currentReferenceGeoPoint = state.currentReferenceGeoPoint,
-        pois = state.mapInfo.pois,
-        screenPoint = screenPoint,
-        maxDistancePx = maxDistancePx,
-        windowWidthMeters = windowWidthMeters,
-        canvasWidth = canvasWidth,
-        canvasHeight = canvasHeight,
-        boundsOverride = boundsOverride,
-    )
 }

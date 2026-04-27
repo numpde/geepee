@@ -1,5 +1,56 @@
 package dev.ra.geepee
 
+import androidx.compose.ui.geometry.Offset
+
+internal data class RoutePoiUiState(
+    val selectedPois: List<RoutePoiSelectionInfo> = emptyList(),
+) {
+    fun clear(): RoutePoiUiState = if (selectedPois.isEmpty()) this else RoutePoiUiState()
+
+    fun onCanvasTap(
+        routeModel: RouteModel,
+        analysis: RouteAnalysis?,
+        orientationMode: OrientationMode,
+        headingDegrees: Double?,
+        currentReferenceGeoPoint: GeoPoint?,
+        pois: List<RoutePoi>,
+        screenPoint: ScreenPoint,
+        maxDistancePx: Float,
+        windowWidthMeters: Double,
+        canvasWidth: Float,
+        canvasHeight: Float,
+        boundsOverride: Bounds?,
+    ): RoutePoiUiState {
+        return copy(
+            selectedPois = selectRoutePoiSelections(
+                routeModel = routeModel,
+                analysis = analysis,
+                orientationMode = orientationMode,
+                headingDegrees = headingDegrees,
+                currentReferenceGeoPoint = currentReferenceGeoPoint,
+                pois = pois,
+                screenPoint = screenPoint,
+                maxDistancePx = maxDistancePx,
+                windowWidthMeters = windowWidthMeters,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
+                boundsOverride = boundsOverride,
+            ),
+        )
+    }
+
+    fun clearOnTransform(
+        pan: Offset,
+        zoom: Float,
+    ): RoutePoiUiState {
+        return if (selectedPois.isNotEmpty() && (pan.x != 0f || pan.y != 0f || zoom != 1f)) {
+            clear()
+        } else {
+            this
+        }
+    }
+}
+
 internal data class RoutePoiSelectionInfo(
     val kind: RoutePoiKind,
     val title: String,
