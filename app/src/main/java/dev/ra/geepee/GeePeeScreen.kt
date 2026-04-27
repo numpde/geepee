@@ -10,9 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -459,7 +456,7 @@ private fun GeePeeScreen(
             )
         }
         resolvedPreviewTileUiState.pendingDeletePlan?.let { plan ->
-            DeleteTilesDialog(
+            TileDeleteDialog(
                 plan = plan,
                 onConfirm = {
                     resolvedPreviewTileUiState.confirmDelete()?.let { confirmation ->
@@ -496,36 +493,5 @@ private fun tappedPoiSelections(
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
         boundsOverride = boundsOverride,
-    )
-}
-
-@Composable
-private fun DeleteTilesDialog(
-    plan: TileDeletePlan,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val copy = remember(plan) { plan.dialogCopy }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = copy.title)
-        },
-        text = {
-            Text(text = copy.message)
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                enabled = plan.tileCount > 0,
-            ) {
-                Text(text = "Delete")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "Cancel")
-            }
-        },
     )
 }
