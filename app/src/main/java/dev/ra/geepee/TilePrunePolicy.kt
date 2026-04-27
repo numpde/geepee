@@ -13,6 +13,15 @@ internal enum class TileDeleteMode {
     Unused,
 }
 
+internal val TileDeleteMode.actionLabel: String
+    get() = when (this) {
+        TileDeleteMode.Selected -> "Delete selected tiles"
+        TileDeleteMode.Unused -> "Delete unused tiles"
+    }
+
+internal val TileDeleteMode.confirmTitle: String
+    get() = "$actionLabel?"
+
 internal data class TileDeletePlan(
     val mode: TileDeleteMode,
     val tileIds: Set<DownloadTileId> = emptySet(),

@@ -583,7 +583,7 @@ internal fun deleteTilesDialogCopy(plan: TileDeletePlan): DeleteTilesDialogCopy 
     }
     return when (plan.mode) {
         TileDeleteMode.Selected -> DeleteTilesDialogCopy(
-            title = "Delete selected tiles?",
+            title = plan.mode.confirmTitle,
             message = buildString {
                 append("This will delete exactly the selected downloaded tiles, even if they are on the current route or were used recently.")
                 append("\n\n")
@@ -593,7 +593,7 @@ internal fun deleteTilesDialogCopy(plan: TileDeletePlan): DeleteTilesDialogCopy 
             },
         )
         TileDeleteMode.Unused -> DeleteTilesDialogCopy(
-            title = "Delete unused tiles?",
+            title = plan.mode.confirmTitle,
             message = buildString {
                 append("This removes downloaded tiles that are not needed for the current route or current view, are not being downloaded, and were not used recently.")
                 append("\n\n")

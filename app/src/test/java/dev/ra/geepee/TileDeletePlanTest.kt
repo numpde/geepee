@@ -6,6 +6,14 @@ import org.junit.Test
 
 class TileDeletePlanTest {
     @Test
+    fun tileDeleteModeUsesConsistentActionAndConfirmCopy() {
+        assertEquals("Delete selected tiles", TileDeleteMode.Selected.actionLabel)
+        assertEquals("Delete selected tiles?", TileDeleteMode.Selected.confirmTitle)
+        assertEquals("Delete unused tiles", TileDeleteMode.Unused.actionLabel)
+        assertEquals("Delete unused tiles?", TileDeleteMode.Unused.confirmTitle)
+    }
+
+    @Test
     fun deleteTilesDialogCopyExplainsSelectedTileDeletion() {
         val copy = deleteTilesDialogCopy(
             TileDeletePlan(
