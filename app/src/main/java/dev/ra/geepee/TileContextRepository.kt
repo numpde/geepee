@@ -85,23 +85,23 @@ internal class TileContextRepository(
         )
     }
 
-    fun previewDeleteTiles(tileIds: Collection<DownloadTileId>): TileDeletePreview {
+    fun buildSelectedTileDeletePlan(tileIds: Collection<DownloadTileId>): TileDeletePlan {
         val cachedTileIds = synchronized(this) {
             tileIds
                 .toSet()
                 .filter { tileId -> cachedTiles[tileId]?.status == TileDownloadStatus.Cached }
                 .toCollection(linkedSetOf())
         }
-        return TileDeletePreview(
+        return TileDeletePlan(
             mode = TileDeleteMode.Selected,
             tileIds = cachedTileIds,
             freedBytes = cachedTileIds.sumOf(::storedTileBytes),
         )
     }
 
-    fun previewPruneTiles(policy: TilePrunePolicy): TileDeletePreview {
+    fun buildUnusedTileDeletePlan(policy: TilePrunePolicy): TileDeletePlan {
         val candidateTileIds = pruneCandidateTileIds(policy)
-        return TileDeletePreview(
+        return TileDeletePlan(
             mode = TileDeleteMode.Unused,
             tileIds = candidateTileIds,
             freedBytes = candidateTileIds.sumOf(::storedTileBytes),

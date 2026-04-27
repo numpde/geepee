@@ -89,7 +89,7 @@ class TileContextRepositoryTest {
     }
 
     @Test
-    fun previewPruneTilesReportsCandidateTilesAndStoredBytes() {
+    fun buildUnusedTileDeletePlanReportsCandidateTilesAndStoredBytes() {
         withRepositoryRoot { cacheRoot, repository ->
             val protectedPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             val deletablePack = syntheticRepositoryPack(
@@ -103,7 +103,7 @@ class TileContextRepositoryTest {
                 repository.loadRouteTileOverlayBundle(routeModel, deletablePack.tileId, DefaultTileContextConfig),
             )
 
-            val preview = repository.previewPruneTiles(
+            val plan = repository.buildUnusedTileDeletePlan(
                 TilePrunePolicy(
                     protectedTileIds = setOf(protectedPack.tileId),
                 ),
@@ -122,15 +122,15 @@ class TileContextRepositoryTest {
                     }
                     .sumOf(File::length)
 
-            assertEquals(TileDeleteMode.Unused, preview.mode)
-            assertEquals(setOf(deletablePack.tileId), preview.tileIds)
-            assertEquals(1, preview.tileCount)
-            assertEquals(expectedBytes, preview.freedBytes)
+            assertEquals(TileDeleteMode.Unused, plan.mode)
+            assertEquals(setOf(deletablePack.tileId), plan.tileIds)
+            assertEquals(1, plan.tileCount)
+            assertEquals(expectedBytes, plan.freedBytes)
         }
     }
 
     @Test
-    fun previewDeleteTilesReportsExactSelectedTilesAndIgnoresUnknownOnes() {
+    fun buildSelectedTileDeletePlanReportsExactSelectedTilesAndIgnoresUnknownOnes() {
         withRepositoryRoot { cacheRoot, repository ->
             val pack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
@@ -142,7 +142,7 @@ class TileContextRepositoryTest {
                 repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
             )
 
-            val preview = repository.previewDeleteTiles(
+            val plan = repository.buildSelectedTileDeletePlan(
                 listOf(
                     pack.tileId,
                     DownloadTileId(zoom = 10, x = 999, y = 999),
@@ -162,10 +162,10 @@ class TileContextRepositoryTest {
                     }
                     .sumOf(File::length)
 
-            assertEquals(TileDeleteMode.Selected, preview.mode)
-            assertEquals(setOf(pack.tileId), preview.tileIds)
-            assertEquals(1, preview.tileCount)
-            assertEquals(expectedBytes, preview.freedBytes)
+            assertEquals(TileDeleteMode.Selected, plan.mode)
+            assertEquals(setOf(pack.tileId), plan.tileIds)
+            assertEquals(1, plan.tileCount)
+            assertEquals(expectedBytes, plan.freedBytes)
         }
     }
 

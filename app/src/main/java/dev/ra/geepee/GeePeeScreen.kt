@@ -101,8 +101,8 @@ internal fun GeePeeApp(
                 viewModel.setBatterySaverEnabled(!state.batterySaverEnabled)
             },
             onDownloadTile = viewModel::downloadTile,
-            onPreviewTileDeletion = viewModel::previewTileDeletion,
-            onDeleteSelectedOrUnusedTiles = viewModel::deleteSelectedOrUnusedTiles,
+            onBuildTileDeletePlan = viewModel::buildTileDeletePlan,
+            onExecuteTileDeletePlan = viewModel::executeTileDeletePlan,
             onRequestScreenPinning = {
                 requestScreenPinning(context)
             },
@@ -142,8 +142,8 @@ private fun GeePeeScreen(
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
     onDownloadTile: (DownloadTileId, Long) -> Unit,
-    onPreviewTileDeletion: (Set<DownloadTileId>) -> TileDeletePreview,
-    onDeleteSelectedOrUnusedTiles: (Set<DownloadTileId>) -> Unit,
+    onBuildTileDeletePlan: (Set<DownloadTileId>) -> TileDeletePlan,
+    onExecuteTileDeletePlan: (TileDeletePlan) -> Unit,
     onRequestScreenPinning: () -> Unit,
     onRequestLocationRefresh: () -> Unit,
     onToggleDebugGps: () -> Unit,
@@ -214,7 +214,7 @@ private fun GeePeeScreen(
             state.tileDownloads[tileId]?.status == TileDownloadStatus.Cached
         }
         val deleteTilesLabel = deleteTilesActionLabel(effectiveSelectedTileIds)
-        var deleteTilesPreview by remember { mutableStateOf<TileDeletePreview?>(null) }
+        var deleteTilesPlan by remember { mutableStateOf<TileDeletePlan?>(null) }
         LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
             movementViewState.effectiveMapInfoFocus?.let { focus ->
                 delay(250)
@@ -384,7 +384,7 @@ private fun GeePeeScreen(
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
                         onDeleteTiles = {
-                            deleteTilesPreview = onPreviewTileDeletion(effectiveSelectedTileIds)
+                            deleteTilesPlan = onBuildTileDeletePlan(effectiveSelectedTileIds)
                         },
                         deleteTilesLabel = deleteTilesLabel,
                         onRequestScreenPinning = onRequestScreenPinning,
@@ -455,7 +455,7 @@ private fun GeePeeScreen(
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
                 onDeleteTiles = {
-                    deleteTilesPreview = onPreviewTileDeletion(effectiveSelectedTileIds)
+                    deleteTilesPlan = onBuildTileDeletePlan(effectiveSelectedTileIds)
                 },
                 deleteTilesLabel = deleteTilesLabel,
                 onStartMonitoring = onStartMonitoring,
@@ -466,21 +466,15 @@ private fun GeePeeScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
             )
         }
-        deleteTilesPreview?.let { preview ->
+        deleteTilesPlan?.let { plan ->
             DeleteTilesDialog(
-                preview = preview,
+                plan = plan,
                 onConfirm = {
-                    deleteTilesPreview = null
-                    onDeleteSelectedOrUnusedTiles(
-                        if (preview.mode == TileDeleteMode.Selected) {
-                            preview.tileIds
-                        } else {
-                            emptySet()
-                        },
-                    )
+                    deleteTilesPlan = null
+                    onExecuteTileDeletePlan(plan)
                     selectedTileIds = emptySet()
                 },
-                onDismiss = { deleteTilesPreview = null },
+                onDismiss = { deleteTilesPlan = null },
             )
         }
     }
@@ -580,13 +574,13 @@ internal data class DeleteTilesDialogCopy(
     val message: String,
 )
 
-internal fun deleteTilesDialogCopy(preview: TileDeletePreview): DeleteTilesDialogCopy {
-    val actionText = if (preview.tileCount == 0) {
+internal fun deleteTilesDialogCopy(plan: TileDeletePlan): DeleteTilesDialogCopy {
+    val actionText = if (plan.tileCount == 0) {
         "Nothing would be deleted right now."
     } else {
-        "This will delete ${preview.tileCount} downloaded tiles and free ${formatStorageMegabytes(preview.freedBytes)}."
+        "This will delete ${plan.tileCount} downloaded tiles and free ${formatStorageMegabytes(plan.freedBytes)}."
     }
-    return when (preview.mode) {
+    return when (plan.mode) {
         TileDeleteMode.Selected -> DeleteTilesDialogCopy(
             title = "Delete selected tiles?",
             message = buildString {
@@ -612,11 +606,11 @@ internal fun deleteTilesDialogCopy(preview: TileDeletePreview): DeleteTilesDialo
 
 @Composable
 private fun DeleteTilesDialog(
-    preview: TileDeletePreview,
+    plan: TileDeletePlan,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val copy = remember(preview) { deleteTilesDialogCopy(preview) }
+    val copy = remember(plan) { deleteTilesDialogCopy(plan) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -628,7 +622,7 @@ private fun DeleteTilesDialog(
         confirmButton = {
             TextButton(
                 onClick = onConfirm,
-                enabled = preview.tileCount > 0,
+                enabled = plan.tileCount > 0,
             ) {
                 Text(text = "Delete")
             }

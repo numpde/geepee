@@ -219,21 +219,14 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun deleteSelectedOrUnusedTiles(selectedTileIds: Set<DownloadTileId>) {
-        val cachedSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
-            tileDownloads[tileId]?.status == TileDownloadStatus.Cached
-        }
-        val result = if (cachedSelectedTileIds.isNotEmpty()) {
-            tileContextRepository.deleteTiles(cachedSelectedTileIds)
-        } else {
-            tileContextRepository.pruneTiles(deleteUnusedTilesPrunePolicy())
-        }
+    fun executeTileDeletePlan(plan: TileDeletePlan) {
+        val result = tileContextRepository.deleteTiles(plan.tileIds)
         if (result.deletedTileCount == 0) {
             return
         }
         Log.i(
             LOG_TAG,
-            "Deleted ${result.deletedTileCount} unused tiles and freed ${result.freedBytes} bytes",
+            "Deleted ${result.deletedTileCount} tiles with mode=${plan.mode} and freed ${result.freedBytes} bytes",
         )
         tileDownloads = tileContextRepository.cachedTileSnapshots()
         routeContextCoordinator.clear()
@@ -241,14 +234,14 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         recomputeUiState()
     }
 
-    fun previewTileDeletion(selectedTileIds: Set<DownloadTileId>): TileDeletePreview {
+    fun buildTileDeletePlan(selectedTileIds: Set<DownloadTileId>): TileDeletePlan {
         val cachedSelectedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
             tileDownloads[tileId]?.status == TileDownloadStatus.Cached
         }
         return if (cachedSelectedTileIds.isNotEmpty()) {
-            tileContextRepository.previewDeleteTiles(cachedSelectedTileIds)
+            tileContextRepository.buildSelectedTileDeletePlan(cachedSelectedTileIds)
         } else {
-            tileContextRepository.previewPruneTiles(deleteUnusedTilesPrunePolicy())
+            tileContextRepository.buildUnusedTileDeletePlan(deleteUnusedTilesPrunePolicy())
         }
     }
 

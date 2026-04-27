@@ -13,7 +13,7 @@ internal enum class TileDeleteMode {
     Unused,
 }
 
-internal data class TileDeletePreview(
+internal data class TileDeletePlan(
     val mode: TileDeleteMode,
     val tileIds: Set<DownloadTileId> = emptySet(),
     val freedBytes: Long = 0L,

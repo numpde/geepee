@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class TileDeletePreviewTest {
+class TileDeletePlanTest {
     @Test
     fun deleteTilesActionLabelReflectsSelectionState() {
         assertEquals("Delete unused tiles", deleteTilesActionLabel(emptySet()))
@@ -17,7 +17,7 @@ class TileDeletePreviewTest {
     @Test
     fun deleteTilesDialogCopyExplainsSelectedTileDeletion() {
         val copy = deleteTilesDialogCopy(
-            TileDeletePreview(
+            TileDeletePlan(
                 mode = TileDeleteMode.Selected,
                 tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
                 freedBytes = 2_400_000L,
@@ -33,7 +33,7 @@ class TileDeletePreviewTest {
     @Test
     fun deleteTilesDialogCopyExplainsUnusedTileDeletion() {
         val copy = deleteTilesDialogCopy(
-            TileDeletePreview(
+            TileDeletePlan(
                 mode = TileDeleteMode.Unused,
                 tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
                 freedBytes = 1_200_000L,
