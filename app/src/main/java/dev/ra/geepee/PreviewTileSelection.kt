@@ -44,18 +44,18 @@ internal data class ResolvedPreviewTileSelectionState(
     val selectedTileIds: Set<DownloadTileId>
         get() = selectionState.selectedTileIds
 
-    val selectionModeActive: Boolean
-        get() = selectedTileIds.isNotEmpty()
-
-    val deleteTilesActionLabel: String
-        get() = activeDeleteMode.actionLabel
-
-    private val activeDeleteMode: TileDeleteMode
-        get() = if (selectionModeActive) {
+    val deleteMode: TileDeleteMode
+        get() = if (selectedTileIds.isNotEmpty()) {
             TileDeleteMode.Selected
         } else {
             TileDeleteMode.Unused
         }
+
+    val selectionModeActive: Boolean
+        get() = deleteMode == TileDeleteMode.Selected
+
+    val deleteTilesActionLabel: String
+        get() = deleteMode.actionLabel
 
     fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
         if (tile == null) {

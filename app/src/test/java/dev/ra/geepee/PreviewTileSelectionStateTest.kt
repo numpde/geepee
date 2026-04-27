@@ -10,6 +10,7 @@ class PreviewTileSelectionStateTest {
     fun resolveUsesUnusedDeleteLabelWhenNothingIsSelected() {
         val resolved = PreviewTileSelectionState().resolve(emptyMap())
 
+        assertEquals(TileDeleteMode.Unused, resolved.deleteMode)
         assertEquals("Delete unused tiles", resolved.deleteTilesActionLabel)
         assertTrue(!resolved.selectionModeActive)
     }
@@ -27,6 +28,7 @@ class PreviewTileSelectionStateTest {
             ),
         )
 
+        assertEquals(TileDeleteMode.Selected, resolved.deleteMode)
         assertEquals("Delete selected tiles", resolved.deleteTilesActionLabel)
         assertTrue(resolved.selectionModeActive)
     }
