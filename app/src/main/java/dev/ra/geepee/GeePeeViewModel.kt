@@ -397,18 +397,23 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             return
         }
         val previousFocus = liveContextFocus
-        val defaultWidthMeters = appPreferences.routeScale.windowWidthMeters
         if (
             previousFocus == null &&
-            kotlin.math.abs(focus.windowWidthMeters - defaultWidthMeters) <= maxOf(5.0, defaultWidthMeters * 0.05) &&
-            distanceBetweenGeoPointsMeters(focus.centerGeoPoint, analysis.nearestGeoPoint) <= 3.0
+            isDefaultMapInfoFocus(
+                focus = focus,
+                defaultWindowWidthMeters = appPreferences.routeScale.windowWidthMeters,
+                matchedGeoPoint = analysis.nearestGeoPoint,
+            )
         ) {
             return
         }
         if (!mapInfoFocusChanged(previousFocus, focus)) {
             return
         }
-        liveContextFocus = focus
+        replaceMapInfoFocus(
+            focus = focus,
+            clearCoordinator = false,
+        )
         rebuildNearbyWaysAsync(force = true)
     }
 
