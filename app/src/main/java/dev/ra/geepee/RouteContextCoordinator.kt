@@ -8,6 +8,7 @@ import java.util.concurrent.Executors
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
     val localTileIds: Set<DownloadTileId>,
+    val focusRouteEdgeIndexes: List<Int>,
 )
 
 internal data class NearbyWayLoadedTileRevision(
@@ -82,6 +83,43 @@ internal class RouteContextCoordinator(
         }
     }
 
+    fun warmNearbyWayOverlays(
+        routeModel: RouteModel,
+        tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
+    ) {
+        val cachedTileIds = tileDownloads
+            .asSequence()
+            .filter { (_, snapshot) -> snapshot.status == TileDownloadStatus.Cached }
+            .map(Map.Entry<DownloadTileId, TileDownloadSnapshot>::key)
+            .toSet()
+        val warmTileIds = routeMapInfoWarmTileIds(
+            routeModel = routeModel,
+            cachedTileIds = cachedTileIds,
+            config = tileContextConfig,
+        )
+        if (warmTileIds.isEmpty()) {
+            return
+        }
+        warmRouteTileOverlays(routeModel, warmTileIds)
+    }
+
+    private fun warmRouteTileOverlays(
+        routeModel: RouteModel,
+        tileIds: Collection<DownloadTileId>,
+    ) {
+        routeContextExecutor.execute {
+            runCatching {
+                tileContextRepository.loadRouteTileOverlayBundles(
+                    routeModel = routeModel,
+                    tileIds = tileIds,
+                    config = tileContextConfig,
+                )
+            }.onFailure { error ->
+                Log.w(logTag, "Route map-info overlay warmup failed", error)
+            }
+        }
+    }
+
     fun rebuildNearbyWays(
         routeModel: RouteModel,
         analysis: RouteAnalysis,
@@ -136,13 +174,15 @@ internal class RouteContextCoordinator(
         val requestId = ++nearbyWayRequestId
         nearbyWayExecutor.execute {
             val result = try {
-                val bundles = tileContextRepository.loadRouteTileOverlayBundles(
+                val cachedBundles = tileContextRepository.loadCachedRouteTileOverlayBundles(
                     routeModel = routeModel,
-                    tileIds = localTileIds,
-                    config = tileContextConfig,
+                    tileIds = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId),
                 )
-                val nearbyWays = dedupeNearbyWaysByFeatureId(
-                    bundles.flatMap { bundle ->
+                val cachedBundleTileIds = cachedBundles
+                    .map { bundle -> bundle.overlay.tileId }
+                    .toSet()
+                val overlayNearbyWays = dedupeNearbyWaysByFeatureId(
+                    cachedBundles.flatMap { bundle ->
                         queryRouteTileOverlayNearbyWays(
                             routeModel = routeModel,
                             bundle = bundle,
@@ -153,9 +193,29 @@ internal class RouteContextCoordinator(
                         )
                     }
                 )
+                val missingOverlayTileIds = loadedTileRevisions
+                    .map(NearbyWayLoadedTileRevision::tileId)
+                    .filterNot(cachedBundleTileIds::contains)
+                val runtimeFallbackNearbyWays = dedupeNearbyWaysByFeatureId(
+                    tileContextRepository.loadRuntimePacks(missingOverlayTileIds).flatMap { runtimePack ->
+                        queryTileRuntimeNearbyWays(
+                            routeModel = routeModel,
+                            runtimePack = runtimePack,
+                            focusGeoPoint = queryFocus.focus.centerGeoPoint,
+                            focusHintEdgeIndexes = queryFocus.focusRouteEdgeIndexes,
+                            focusWindowWidthMeters = queryFocus.focus.windowWidthMeters,
+                            focusBoundsOverride = queryFocus.focus.projectedBounds,
+                            config = tileContextConfig,
+                        )
+                    }
+                )
+                if (missingOverlayTileIds.isNotEmpty()) {
+                    warmRouteTileOverlays(routeModel, missingOverlayTileIds)
+                }
+                val nearbyWays = dedupeNearbyWaysByFeatureId(overlayNearbyWays + runtimeFallbackNearbyWays)
                 RouteMapInfoState.resolvedNearbyWays(
                     localTileCount = localTileIds.size,
-                    loadedLocalTileCount = bundles.size,
+                    loadedLocalTileCount = loadedTileRevisions.size,
                     nearbyWays = nearbyWays,
                 )
             } catch (error: Throwable) {
@@ -198,6 +258,13 @@ internal fun resolveNearbyWayQueryFocus(
         ) ?: routeModel.bounds,
     )
     val projectedFocusBounds = resolvedFocus.projectedBounds
+    val focusRouteEdgeIndexes = routeEdgeIndexesIntersectingBounds(
+        model = routeModel,
+        bounds = expandBounds(
+            projectedFocusBounds,
+            config.wayHaloMeters + config.nearbyWayContinuationMeters,
+        ),
+    )
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = expandBounds(
@@ -209,6 +276,7 @@ internal fun resolveNearbyWayQueryFocus(
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
         localTileIds = localTileIds,
+        focusRouteEdgeIndexes = focusRouteEdgeIndexes,
     )
 }
 
@@ -227,6 +295,26 @@ internal fun buildNearbyWayQueryCacheKey(
         boundsMinYBucket = kotlin.math.floor(projectedBounds.minY / boundsBucketMeters).toInt(),
         boundsMaxYBucket = kotlin.math.floor(projectedBounds.maxY / boundsBucketMeters).toInt(),
     )
+}
+
+internal fun routeMapInfoWarmTileIds(
+    routeModel: RouteModel,
+    cachedTileIds: Set<DownloadTileId>,
+    config: TileContextConfig,
+): Set<DownloadTileId> {
+    if (cachedTileIds.isEmpty()) {
+        return emptySet()
+    }
+    val routeTiles = tilesForRoute(routeModel, config)
+    if (routeTiles.isEmpty()) {
+        return emptySet()
+    }
+    val warmTileCandidates = buildSet {
+        routeTiles.forEach { tileId ->
+            addAll(neighboringTileIds(tileId, radius = 1))
+        }
+    }
+    return warmTileCandidates.intersect(cachedTileIds)
 }
 
 private fun <K, V> accessOrderCache(maxEntries: Int): LinkedHashMap<K, V> {

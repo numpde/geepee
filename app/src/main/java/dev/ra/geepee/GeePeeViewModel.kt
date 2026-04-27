@@ -256,6 +256,10 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                         selectedRouteBaseName = outcome.loadedRoute.baseDisplayName
                         selectedRouteReversed = outcome.loadedRoute.isReversed
                         routeLoadState = routeLoadState.loadSucceeded(outcome.loadedRoute.displayName)
+                        routeContextCoordinator.warmNearbyWayOverlays(
+                            routeModel = outcome.loadedRoute.model,
+                            tileDownloads = tileDownloads,
+                        )
                         rebuildRouteContextAsync()
                         rebuildNearbyWaysAsync(force = true)
                     }
@@ -567,6 +571,12 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 tileDownloads = tileDownloads + (
                     tileId to update.snapshot
                 )
+                routeRuntimeState.routeModel?.let { routeModel ->
+                    routeContextCoordinator.warmNearbyWayOverlays(
+                        routeModel = routeModel,
+                        tileDownloads = tileDownloads,
+                    )
+                }
                 rebuildRouteContextAsync()
                 rebuildNearbyWaysAsync(force = true)
                 recomputeUiState()

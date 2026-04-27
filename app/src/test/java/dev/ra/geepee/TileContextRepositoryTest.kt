@@ -2,6 +2,9 @@ package dev.ra.geepee
 
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
@@ -39,6 +42,34 @@ class TileContextRepositoryTest {
 
             assertSame(first.runtimePack, second.runtimePack)
             assertSame(first.overlay, second.overlay)
+        }
+    }
+
+    @Test
+    fun concurrentRouteTileOverlayLoadsShareSingleOverlayBuild() {
+        withRepository { repository ->
+            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            repository.storeTilePack(pack)
+            val routeModel = loadRepositoryRouteModel()
+            val startLatch = CountDownLatch(1)
+            val executor = Executors.newFixedThreadPool(2)
+            try {
+                val futures = List(2) {
+                    executor.submit<RouteTileOverlayBundle?> {
+                        startLatch.await(5, TimeUnit.SECONDS)
+                        repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig)
+                    }
+                }
+
+                startLatch.countDown()
+                val first = requireNotNull(futures[0].get(30, TimeUnit.SECONDS))
+                val second = requireNotNull(futures[1].get(30, TimeUnit.SECONDS))
+
+                assertSame(first.runtimePack, second.runtimePack)
+                assertSame(first.overlay, second.overlay)
+            } finally {
+                executor.shutdownNow()
+            }
         }
     }
 

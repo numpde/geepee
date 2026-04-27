@@ -124,6 +124,7 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
+            focusRouteEdgeIndexes = emptyList(),
         )
         val nearbyFocus = baseFocus.copy(
             focus = baseFocus.focus.copy(
@@ -168,6 +169,7 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
+            focusRouteEdgeIndexes = emptyList(),
         )
 
         val firstKey = buildNearbyWayQueryCacheKey(
@@ -250,5 +252,39 @@ class RouteContextCoordinatorTest {
             ).toSet(),
             resolved.localTileIds,
         )
+    }
+
+    @Test
+    fun routeMapInfoWarmTileIds_includeCachedNeighborTilesAroundRoute() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(47.8392, 21.0667),
+                    GeoPoint(47.8420, 21.0667),
+                ),
+            ),
+        )
+        val routeTiles = tilesForRoute(routeModel, DefaultTileContextConfig)
+        val routeTile = requireNotNull(routeTiles.singleOrNull()) {
+            "Expected synthetic route to stay within one download tile"
+        }
+        val cachedNeighborTile = DownloadTileId(
+            zoom = routeTile.zoom,
+            x = routeTile.x + 1,
+            y = routeTile.y,
+        )
+        val unrelatedTile = DownloadTileId(
+            zoom = routeTile.zoom,
+            x = routeTile.x + 5,
+            y = routeTile.y + 5,
+        )
+
+        val warmTileIds = routeMapInfoWarmTileIds(
+            routeModel = routeModel,
+            cachedTileIds = setOf(routeTile, cachedNeighborTile, unrelatedTile),
+            config = DefaultTileContextConfig,
+        )
+
+        assertEquals(setOf(routeTile, cachedNeighborTile), warmTileIds)
     }
 }

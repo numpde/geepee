@@ -8,6 +8,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.FutureTask
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -41,6 +42,7 @@ internal class TileContextRepository(
     private val runtimePackCache = accessOrderCache<DownloadTileId, TileRuntimePack>(TILE_RUNTIME_MEMORY_CACHE_LIMIT)
     private val routeTileOverlayCache =
         accessOrderCache<RouteTileOverlayCacheKey, RouteTileOverlay>(ROUTE_TILE_OVERLAY_MEMORY_CACHE_LIMIT)
+    private val routeTileOverlayLoadsInFlight = mutableMapOf<RouteTileOverlayCacheKey, FutureTask<RouteTileOverlay?>>()
     private val derivedCacheLock = Any()
 
     init {
@@ -125,21 +127,50 @@ internal class TileContextRepository(
             }
         }
         val overlayFile = routeOverlayFileFor(cacheKey)
-        val overlay = if (overlayFile.exists()) {
-            runCatching {
-                routeTileOverlayFromByteArray(overlayFile.readBytes())
-            }.getOrNull()
-        } else {
-            null
-        } ?: runCatching {
-            buildRouteTileOverlay(
-                routeModel = routeModel,
-                runtimePack = runtimePack,
-                config = config,
-            ).also { compiled ->
-                persistRouteTileOverlay(routeFingerprint, compiled)
+        val overlayTask: FutureTask<RouteTileOverlay?>
+        val createdTask: Boolean
+        synchronized(derivedCacheLock) {
+            routeTileOverlayCache[cacheKey]?.let { cachedOverlay ->
+                return RouteTileOverlayBundle(runtimePack = runtimePack, overlay = cachedOverlay)
             }
-        }.getOrNull()
+            val existingTask = routeTileOverlayLoadsInFlight[cacheKey]
+            if (existingTask != null) {
+                overlayTask = existingTask
+                createdTask = false
+            } else {
+                overlayTask = FutureTask<RouteTileOverlay?> {
+                    if (overlayFile.exists()) {
+                        runCatching {
+                            routeTileOverlayFromByteArray(overlayFile.readBytes())
+                        }.getOrNull()
+                    } else {
+                        runCatching {
+                            buildRouteTileOverlay(
+                                routeModel = routeModel,
+                                runtimePack = runtimePack,
+                                config = config,
+                            ).also { compiled ->
+                                persistRouteTileOverlay(routeFingerprint, compiled)
+                            }
+                        }.getOrNull()
+                    }
+                }
+                routeTileOverlayLoadsInFlight[cacheKey] = overlayTask
+                createdTask = true
+            }
+        }
+        val overlay = try {
+            if (createdTask) {
+                overlayTask.run()
+            }
+            runCatching { overlayTask.get() }.getOrNull()
+        } finally {
+            if (createdTask) {
+                synchronized(derivedCacheLock) {
+                    routeTileOverlayLoadsInFlight.remove(cacheKey, overlayTask)
+                }
+            }
+        }
         overlay?.let(::cacheRouteTileOverlay)
         return overlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
     }
@@ -158,6 +189,46 @@ internal class TileContextRepository(
                 config = config,
             )
         }
+    }
+
+    fun loadCachedRouteTileOverlayBundles(
+        routeModel: RouteModel,
+        tileIds: Collection<DownloadTileId>,
+    ): List<RouteTileOverlayBundle> {
+        val routeFingerprint = routeFingerprint(routeModel)
+        return tileIds.mapNotNull { tileId ->
+            loadCachedRouteTileOverlayBundle(
+                routeFingerprint = routeFingerprint,
+                tileId = tileId,
+            )
+        }
+    }
+
+    private fun loadCachedRouteTileOverlayBundle(
+        routeFingerprint: String,
+        tileId: DownloadTileId,
+    ): RouteTileOverlayBundle? {
+        val runtimePack = loadRuntimePack(tileId) ?: return null
+        val cacheKey = RouteTileOverlayCacheKey(
+            routeFingerprint = routeFingerprint,
+            tileId = runtimePack.tileId,
+            fetchedAtMillis = runtimePack.fetchedAtMillis,
+        )
+        synchronized(derivedCacheLock) {
+            routeTileOverlayCache[cacheKey]?.let { cachedOverlay ->
+                return RouteTileOverlayBundle(runtimePack = runtimePack, overlay = cachedOverlay)
+            }
+        }
+        val overlayFile = routeOverlayFileFor(cacheKey)
+        val overlay = if (overlayFile.exists()) {
+            runCatching {
+                routeTileOverlayFromByteArray(overlayFile.readBytes())
+            }.getOrNull()
+        } else {
+            null
+        }
+        overlay?.let(::cacheRouteTileOverlay)
+        return overlay?.let { RouteTileOverlayBundle(runtimePack = runtimePack, overlay = it) }
     }
 
     internal fun storeTilePack(pack: TileContextPack) {
@@ -383,6 +454,9 @@ internal class TileContextRepository(
             val staleOverlayKeys = routeTileOverlayCache.keys
                 .filter { key -> key.tileId == tileId }
             staleOverlayKeys.forEach(routeTileOverlayCache::remove)
+            val staleOverlayTasks = routeTileOverlayLoadsInFlight.keys
+                .filter { key -> key.tileId == tileId }
+            staleOverlayTasks.forEach(routeTileOverlayLoadsInFlight::remove)
         }
         deleteRouteOverlayFiles(tileId)
     }

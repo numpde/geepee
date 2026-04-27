@@ -30,6 +30,12 @@ internal data class RouteTileOverlayBundle(
     val overlay: RouteTileOverlay,
 )
 
+private data class OverlayRoutePoiCandidate(
+    val poi: RoutePoi,
+    val routeMeters: Double,
+    val offsetMeters: Double,
+)
+
 internal fun buildRouteTileOverlay(
     routeModel: RouteModel,
     runtimePack: TileRuntimePack,
@@ -37,13 +43,38 @@ internal fun buildRouteTileOverlay(
     focusGeoPoint: GeoPoint? = null,
     focusWindowWidthMeters: Double? = null,
 ): RouteTileOverlay {
-    val reconstructedSourcePack = tileContextPackFromRuntimePack(runtimePack)
-    val context = buildRouteContext(
+    val projectedTileBounds = runtimeGeoBoundsToProjectedBounds(runtimePack.runtimeBounds, routeModel.projection)
+    val overlayFocusBounds = if (focusGeoPoint != null && focusWindowWidthMeters != null) {
+        nearbyWayFocusBounds(
+            routeModel = routeModel,
+            focusGeoPoint = focusGeoPoint,
+            focusWindowWidthMeters = focusWindowWidthMeters,
+            haloMeters = config.wayHaloMeters,
+            continuationMeters = config.nearbyWayContinuationMeters,
+        ) ?: projectedTileBounds
+    } else {
+        projectedTileBounds
+    }
+    val routeRelevantLeafIndexes = routeRelevantLeafIndexes(
         routeModel = routeModel,
-        packs = listOf(reconstructedSourcePack),
+        runtimePack = runtimePack,
+        focusBounds = overlayFocusBounds,
         config = config,
-        nearbyWayFocusGeoPoint = focusGeoPoint,
-        nearbyWayFocusWindowWidthMeters = focusWindowWidthMeters,
+    )
+    val context = RouteContext(
+        pois = buildRoutePoisFromRuntimePack(
+            routeModel = routeModel,
+            runtimePack = runtimePack,
+            routeRelevantLeafIndexes = routeRelevantLeafIndexes,
+            config = config,
+        ),
+        nearbyWays = buildRouteNearbyWaysFromRuntimePack(
+            routeModel = routeModel,
+            runtimePack = runtimePack,
+            routeRelevantLeafIndexes = routeRelevantLeafIndexes,
+            focusBounds = overlayFocusBounds,
+            config = config,
+        ),
     )
     val pointLeafIndexesByFeatureId = buildPointLeafIndexesByFeatureId(runtimePack)
     val wayLeafIndexesByFeatureId = buildWayLeafIndexesByFeatureId(runtimePack)
@@ -209,41 +240,140 @@ internal fun routeTileOverlayFromByteArray(bytes: ByteArray): RouteTileOverlay {
     }
 }
 
-private fun tileContextPackFromRuntimePack(runtimePack: TileRuntimePack): TileContextPack {
-    val pointFeatures = runtimePack.pointFeatures.map { point ->
-        TileContextFeature(
-            featureId = point.featureId,
-            geometryKind = TileGeometryKind.Point,
-            tags = point.tags,
-            geometry = listOf(tileRuntimeLocalPointToGeoPoint(runtimePack, point.point)),
+private fun buildRoutePoisFromRuntimePack(
+    routeModel: RouteModel,
+    runtimePack: TileRuntimePack,
+    routeRelevantLeafIndexes: Set<Int>,
+    config: TileContextConfig,
+): List<RoutePoi> {
+    if (runtimePack.pointFeatures.isEmpty() || routeRelevantLeafIndexes.isEmpty()) {
+        return emptyList()
+    }
+    val candidatePointIds = runtimePack.quadtreeNodes
+        .asSequence()
+        .filter { node -> node.isLeaf && node.nodeIndex in routeRelevantLeafIndexes }
+        .flatMap { node -> node.pointIds.asSequence() }
+        .distinct()
+        .toSet()
+    if (candidatePointIds.isEmpty()) {
+        return emptyList()
+    }
+    val pointsById = runtimePack.pointFeatures.associateBy(TileRuntimePointFeature::pointId)
+    val poisByFeatureId = linkedMapOf<String, OverlayRoutePoiCandidate>()
+    candidatePointIds.forEach { pointId ->
+        val feature = pointsById[pointId] ?: return@forEach
+        val kind = routePoiKind(feature.tags) ?: return@forEach
+        val geoPoint = tileRuntimeLocalPointToGeoPoint(runtimePack, feature.point)
+        val analysis = analyzeLocationAgainstModel(
+            model = routeModel,
+            fix = LocationFix(
+                lat = geoPoint.lat,
+                lon = geoPoint.lon,
+                accuracyMeters = null,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 0L,
+            ),
+        )
+        val maxOffsetMeters = poiOffsetLimitMeters(kind, config)
+        if (analysis.offRouteMeters > maxOffsetMeters) {
+            return@forEach
+        }
+        val poiCandidate = OverlayRoutePoiCandidate(
+            poi = RoutePoi(
+                featureId = feature.featureId,
+                kind = kind,
+                name = feature.tags["name"],
+                geoPoint = geoPoint,
+                projectedPoint = projectGeoPointToRouteProjection(geoPoint, routeModel.projection),
+            ),
+            routeMeters = analysis.routeMeters,
+            offsetMeters = analysis.offRouteMeters,
+        )
+        val previous = poisByFeatureId[feature.featureId]
+        if (previous == null || poiCandidate.offsetMeters < previous.offsetMeters) {
+            poisByFeatureId[feature.featureId] = poiCandidate
+        }
+    }
+    return poisByFeatureId.values
+        .sortedBy(OverlayRoutePoiCandidate::routeMeters)
+        .map(OverlayRoutePoiCandidate::poi)
+}
+
+private fun buildRouteNearbyWaysFromRuntimePack(
+    routeModel: RouteModel,
+    runtimePack: TileRuntimePack,
+    routeRelevantLeafIndexes: Set<Int>,
+    focusBounds: Bounds,
+    config: TileContextConfig,
+): List<RouteNearbyWaySnippet> {
+    if (runtimePack.waySegments.isEmpty() || routeRelevantLeafIndexes.isEmpty()) {
+        return emptyList()
+    }
+    val candidateSegmentIds = runtimePack.quadtreeNodes
+        .asSequence()
+        .filter { node -> node.isLeaf && node.nodeIndex in routeRelevantLeafIndexes }
+        .flatMap { node -> node.segmentIds.asSequence() }
+        .distinct()
+        .toSet()
+    if (candidateSegmentIds.isEmpty()) {
+        return emptyList()
+    }
+    val segmentsById = runtimePack.waySegments.associateBy(TileRuntimeWaySegment::segmentId)
+    val snippets = candidateSegmentIds.flatMap { segmentId ->
+        val segment = segmentsById[segmentId] ?: return@flatMap emptyList<RouteNearbyWaySnippet>()
+        val segmentProjectedBounds = tileRuntimeLocalBoundsToProjectedBounds(
+            runtimePack = runtimePack,
+            bounds = segment.bounds,
+            projection = routeModel.projection,
+        )
+        val hintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
+            model = routeModel,
+            bounds = expandBounds(
+                segmentProjectedBounds,
+                config.wayHaloMeters + config.nearbyWayContinuationMeters,
+            ),
+        )
+        extractNearbyWaySnippetsFromProjectedPoints(
+            routeModel = routeModel,
+            featureId = segment.sourceFeatureId,
+            projectedPoints = segment.points.map { point ->
+                tileRuntimeLocalPointToProjectedPoint(runtimePack, point, routeModel.projection)
+            },
+            haloMeters = config.wayHaloMeters,
+            continuationMeters = config.nearbyWayContinuationMeters,
+            focusBounds = focusBounds,
+            initialNearestEdgeIndexes = hintEdgeIndexes,
+            restrictToHintWindow = hintEdgeIndexes.isNotEmpty(),
         )
     }
-    val wayFeatures = runtimePack.waySegments
-        .groupBy(TileRuntimeWaySegment::sourceFeatureId)
-        .values
-        .map { segments ->
-            val orderedSegments = segments.sortedBy(TileRuntimeWaySegment::segmentId)
-            val geometry = orderedSegments
-                .flatMapIndexed { index, segment ->
-                    val points = if (index == 0) segment.points else segment.points.drop(1)
-                    points.map { point -> tileRuntimeLocalPointToGeoPoint(runtimePack, point) }
-                }
-                .dedupeConsecutiveGeoPoints()
-            TileContextFeature(
-                featureId = orderedSegments.first().sourceFeatureId,
-                geometryKind = TileGeometryKind.Way,
-                tags = orderedSegments.first().tags,
-                geometry = geometry,
-            )
-        }
+    return dedupeNearbyWaysByFeatureId(snippets)
+}
 
-    return TileContextPack(
-        schemaVersion = runtimePack.sourcePackSchemaVersion,
-        tileId = runtimePack.tileId,
-        queryBounds = runtimePack.runtimeBounds,
-        fetchedAtMillis = runtimePack.fetchedAtMillis,
-        features = (pointFeatures + wayFeatures).sortedBy(TileContextFeature::featureId),
-    )
+private fun routeRelevantLeafIndexes(
+    routeModel: RouteModel,
+    runtimePack: TileRuntimePack,
+    focusBounds: Bounds,
+    config: TileContextConfig,
+): Set<Int> {
+    val routePaddingMeters = config.wayHaloMeters + config.nearbyWayContinuationMeters
+    return runtimePack.quadtreeNodes
+        .asSequence()
+        .filter(TileRuntimeQuadtreeNode::isLeaf)
+        .filter { leaf ->
+            val leafProjectedBounds = tileRuntimeLocalBoundsToProjectedBounds(
+                runtimePack = runtimePack,
+                bounds = leaf.bounds,
+                projection = routeModel.projection,
+            )
+            boundsIntersect(leafProjectedBounds, focusBounds) &&
+                routeEdgeIndexesIntersectingBounds(
+                    model = routeModel,
+                    bounds = expandBounds(leafProjectedBounds, routePaddingMeters),
+                ).isNotEmpty()
+        }
+        .map(TileRuntimeQuadtreeNode::nodeIndex)
+        .toSet()
 }
 
 private fun buildPointLeafIndexesByFeatureId(
@@ -514,20 +644,6 @@ private fun readRouteTileOverlayIntList(data: DataInputStream): List<Int> {
     }
 }
 
-private fun List<GeoPoint>.dedupeConsecutiveGeoPoints(): List<GeoPoint> {
-    if (size < 2) {
-        return this
-    }
-    return buildList(size) {
-        this@dedupeConsecutiveGeoPoints.forEach { point ->
-            val previous = lastOrNull()
-            if (previous == null || previous.lat != point.lat || previous.lon != point.lon) {
-                add(point)
-            }
-        }
-    }
-}
-
 private fun localFocusBounds(
     runtimePack: TileRuntimePack,
     focusGeoPoint: GeoPoint,
@@ -550,6 +666,34 @@ private fun localFocusBounds(
         minY = focusPoint.y - radiusUnits,
         maxX = focusPoint.x + radiusUnits,
         maxY = focusPoint.y + radiusUnits,
+    )
+}
+
+private fun runtimeGeoBoundsToProjectedBounds(
+    bounds: GeoBounds,
+    projection: Projection,
+): Bounds {
+    return projectedBoundsForGeoBounds(bounds, projection)
+}
+
+private fun tileRuntimeLocalBoundsToProjectedBounds(
+    runtimePack: TileRuntimePack,
+    bounds: TileRuntimeLocalBounds,
+    projection: Projection,
+): Bounds {
+    val corners = listOf(
+        TileRuntimeLocalPoint(bounds.minX, bounds.minY),
+        TileRuntimeLocalPoint(bounds.minX, bounds.maxY),
+        TileRuntimeLocalPoint(bounds.maxX, bounds.minY),
+        TileRuntimeLocalPoint(bounds.maxX, bounds.maxY),
+    ).map { corner ->
+        tileRuntimeLocalPointToProjectedPoint(runtimePack, corner, projection)
+    }
+    return Bounds(
+        minX = corners.minOf(ProjectedPoint::x),
+        maxX = corners.maxOf(ProjectedPoint::x),
+        minY = corners.minOf(ProjectedPoint::y),
+        maxY = corners.maxOf(ProjectedPoint::y),
     )
 }
 

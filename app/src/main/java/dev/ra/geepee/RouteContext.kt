@@ -325,7 +325,7 @@ private fun collectNearbyWayFeatures(packs: List<TileContextPack>): LinkedHashMa
     return wayFeaturesById
 }
 
-private fun routePoiKind(tags: Map<String, String>): RoutePoiKind? {
+internal fun routePoiKind(tags: Map<String, String>): RoutePoiKind? {
     return when {
         tags["amenity"] == "drinking_water" -> RoutePoiKind.DrinkingWater
         tags["amenity"] == "toilets" -> RoutePoiKind.Toilets
@@ -337,7 +337,7 @@ private fun routePoiKind(tags: Map<String, String>): RoutePoiKind? {
     }
 }
 
-private fun poiOffsetLimitMeters(
+internal fun poiOffsetLimitMeters(
     kind: RoutePoiKind,
     config: TileContextConfig,
 ): Double {
