@@ -107,6 +107,17 @@ class RouteTileOverlayTest {
         )
         val bundle = RouteTileOverlayBundle(runtimePack = runtimePack, overlay = overlay)
         val focusPoint = GeoPoint(lat = 0.0, lon = 0.005)
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 250.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 250.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: routeModel.bounds,
+        )
 
         val directNearbyWays = buildRouteNearbyWays(
             routeModel = routeModel,
@@ -118,8 +129,7 @@ class RouteTileOverlayTest {
         val overlayNearbyWays = queryRouteTileOverlayNearbyWays(
             routeModel = routeModel,
             bundle = bundle,
-            focusGeoPoint = focusPoint,
-            focusWindowWidthMeters = 250.0,
+            focus = focus,
             config = DefaultTileContextConfig,
         )
 
@@ -139,15 +149,20 @@ class RouteTileOverlayTest {
         val sourcePack = syntheticOverlayTilePack()
         val runtimePack = compileTileRuntimePack(sourcePack)
         val focusPoint = GeoPoint(lat = 0.0, lon = 0.005)
-        val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
-            model = routeModel,
-            bounds = nearbyWayFocusBounds(
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 250.0,
+            projectedBounds = nearbyWayFocusBounds(
                 routeModel = routeModel,
                 focusGeoPoint = focusPoint,
                 focusWindowWidthMeters = 250.0,
                 haloMeters = DefaultTileContextConfig.wayHaloMeters,
                 continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
             ) ?: routeModel.bounds,
+        )
+        val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
+            model = routeModel,
+            bounds = focus.projectedBounds,
         )
 
         val directNearbyWays = buildRouteNearbyWays(
@@ -160,9 +175,8 @@ class RouteTileOverlayTest {
         val runtimeNearbyWays = queryTileRuntimeNearbyWays(
             routeModel = routeModel,
             runtimePack = runtimePack,
-            focusGeoPoint = focusPoint,
+            focus = focus,
             focusHintEdgeIndexes = focusHintEdgeIndexes,
-            focusWindowWidthMeters = 250.0,
             config = DefaultTileContextConfig,
         )
 

@@ -193,9 +193,7 @@ internal class RouteContextCoordinator(
                         queryRouteTileOverlayNearbyWays(
                             routeModel = routeModel,
                             bundle = bundle,
-                            focusGeoPoint = queryFocus.focus.centerGeoPoint,
-                            focusWindowWidthMeters = queryFocus.focus.windowWidthMeters,
-                            focusBoundsOverride = queryFocus.focus.projectedBounds,
+                            focus = queryFocus.focus,
                             config = tileContextConfig,
                         )
                     }
@@ -206,10 +204,8 @@ internal class RouteContextCoordinator(
                         queryTileRuntimeNearbyWays(
                             routeModel = routeModel,
                             runtimePack = runtimePack,
-                            focusGeoPoint = queryFocus.focus.centerGeoPoint,
+                            focus = queryFocus.focus,
                             focusHintEdgeIndexes = queryFocus.focusRouteEdgeIndexes,
-                            focusWindowWidthMeters = queryFocus.focus.windowWidthMeters,
-                            focusBoundsOverride = queryFocus.focus.projectedBounds,
                             config = tileContextConfig,
                         )
                     }

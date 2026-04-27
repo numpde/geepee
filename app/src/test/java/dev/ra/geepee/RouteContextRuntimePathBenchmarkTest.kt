@@ -12,6 +12,17 @@ class RouteContextRuntimePathBenchmarkTest {
         val sourcePack = loadRuntimePathTileFixture("tile-context/10-571-356-local.json")
         val routeModel = loadRuntimePathRouteModel()
         val focusPoint = loadRuntimePathGeoPoints().getValue(6_854)
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 1_000.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 1_000.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: routeModel.bounds,
+        )
 
         val coldRuntimeLoadNanos = benchmarkRuntimePathNanos(iterations = 5) {
             withSeededRepository(sourcePack) { repository ->
@@ -52,8 +63,7 @@ class RouteContextRuntimePathBenchmarkTest {
                 queryRouteTileOverlayNearbyWays(
                     routeModel = routeModel,
                     bundle = bundle,
-                    focusGeoPoint = focusPoint,
-                    focusWindowWidthMeters = 1_000.0,
+                    focus = focus,
                     config = DefaultTileContextConfig,
                 )
             }

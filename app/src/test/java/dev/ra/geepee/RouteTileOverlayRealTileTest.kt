@@ -35,6 +35,17 @@ class RouteTileOverlayRealTileTest {
         val sourcePack = loadOverlayTileFixture("tile-context/10-571-356-local.json")
         val runtimePack = compileTileRuntimePack(sourcePack)
         val focusPoint = fixture.geoPoints[6_854]
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 1_000.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = fixture.routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 1_000.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: fixture.routeModel.bounds,
+        )
 
         val directContext = buildRouteContext(
             routeModel = fixture.routeModel,
@@ -52,8 +63,7 @@ class RouteTileOverlayRealTileTest {
         val overlayNearbyWays = queryRouteTileOverlayNearbyWays(
             routeModel = fixture.routeModel,
             bundle = bundle,
-            focusGeoPoint = focusPoint,
-            focusWindowWidthMeters = 1_000.0,
+            focus = focus,
             config = DefaultTileContextConfig,
         )
 
@@ -66,6 +76,17 @@ class RouteTileOverlayRealTileTest {
         val sourcePack = loadOverlayTileFixture("tile-context/10-571-356-local.json")
         val runtimePack = compileTileRuntimePack(sourcePack)
         val focusPoint = fixture.geoPoints[6_854]
+        val focus = MapInfoFocus(
+            centerGeoPoint = focusPoint,
+            windowWidthMeters = 1_000.0,
+            projectedBounds = nearbyWayFocusBounds(
+                routeModel = fixture.routeModel,
+                focusGeoPoint = focusPoint,
+                focusWindowWidthMeters = 1_000.0,
+                haloMeters = DefaultTileContextConfig.wayHaloMeters,
+                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
+            ) ?: fixture.routeModel.bounds,
+        )
 
         val directContext = buildRouteContext(
             routeModel = fixture.routeModel,
@@ -76,20 +97,13 @@ class RouteTileOverlayRealTileTest {
         )
         val focusHintEdgeIndexes = routeEdgeIndexesIntersectingBounds(
             model = fixture.routeModel,
-            bounds = nearbyWayFocusBounds(
-                routeModel = fixture.routeModel,
-                focusGeoPoint = focusPoint,
-                focusWindowWidthMeters = 1_000.0,
-                haloMeters = DefaultTileContextConfig.wayHaloMeters,
-                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
-            ) ?: fixture.routeModel.bounds,
+            bounds = focus.projectedBounds,
         )
         val runtimeNearbyWays = queryTileRuntimeNearbyWays(
             routeModel = fixture.routeModel,
             runtimePack = runtimePack,
-            focusGeoPoint = focusPoint,
+            focus = focus,
             focusHintEdgeIndexes = focusHintEdgeIndexes,
-            focusWindowWidthMeters = 1_000.0,
             config = DefaultTileContextConfig,
         )
 
