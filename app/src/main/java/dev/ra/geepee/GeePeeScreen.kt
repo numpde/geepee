@@ -211,15 +211,14 @@ private fun GeePeeScreen(
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
-        var tileSelectionState by remember(state.routeName, movementMode) {
-            mutableStateOf(PreviewTileSelectionState())
+        var previewTileUiState by remember(state.routeName, movementMode) {
+            mutableStateOf(PreviewTileUiState())
         }
-        val resolvedTileSelection = remember(tileSelectionState, state.tileDownloads) {
-            tileSelectionState.resolve(state.tileDownloads)
+        val resolvedPreviewTileUiState = remember(previewTileUiState, state.tileDownloads) {
+            previewTileUiState.resolve(state.tileDownloads)
         }
-        val selectedTileIds = resolvedTileSelection.selectedTileIds
-        val deleteTilesLabel = resolvedTileSelection.deleteTilesActionLabel
-        var deleteTilesPlan by remember { mutableStateOf<TileDeletePlan?>(null) }
+        val selectedTileIds = resolvedPreviewTileUiState.selectedTileIds
+        val deleteTilesLabel = resolvedPreviewTileUiState.deleteTilesActionLabel
         LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
             movementViewState.effectiveMapInfoFocus?.let { focus ->
                 delay(250)
@@ -282,11 +281,12 @@ private fun GeePeeScreen(
                         policy = routeCanvasTapPolicy,
                         onTap = { point ->
                             if (showTileOverview) {
-                                val tapResult = resolvedTileSelection.onTap(
-                                    tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                val tapTransition = previewTileUiState.onTap(
+                                    tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                    tileSnapshots = state.tileDownloads,
                                 )
-                                tileSelectionState = tapResult.selectionState
-                                tapResult.downloadRequest?.let { request ->
+                                previewTileUiState = tapTransition.uiState
+                                tapTransition.downloadRequest?.let { request ->
                                     onDownloadTile(request.tileId, request.estimatedBytes)
                                 }
                             } else if (movementMode) {
@@ -311,8 +311,9 @@ private fun GeePeeScreen(
                         },
                         onLongPress = { point ->
                             if (showTileOverview) {
-                                tileSelectionState = resolvedTileSelection.onLongPress(
-                                    tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                previewTileUiState = previewTileUiState.onLongPress(
+                                    tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                                    tileSnapshots = state.tileDownloads,
                                 )
                             }
                         },
@@ -393,7 +394,10 @@ private fun GeePeeScreen(
                         onToggleBatterySaver = onToggleBatterySaver,
                         onToggleDebugGps = onToggleDebugGps,
                         onDeleteTiles = {
-                            deleteTilesPlan = onBuildTileDeletePlan(selectedTileIds)
+                            previewTileUiState = previewTileUiState.requestDelete(
+                                buildPlan = onBuildTileDeletePlan,
+                                tileSnapshots = state.tileDownloads,
+                            )
                         },
                         deleteTilesLabel = deleteTilesLabel,
                         onRequestScreenPinning = onRequestScreenPinning,
@@ -464,7 +468,10 @@ private fun GeePeeScreen(
                 onPickRoute = onPickRoute,
                 onReverseRoute = onReverseRoute,
                 onDeleteTiles = {
-                    deleteTilesPlan = onBuildTileDeletePlan(selectedTileIds)
+                    previewTileUiState = previewTileUiState.requestDelete(
+                        buildPlan = onBuildTileDeletePlan,
+                        tileSnapshots = state.tileDownloads,
+                    )
                 },
                 deleteTilesLabel = deleteTilesLabel,
                 onStartMonitoring = onStartMonitoring,
@@ -475,15 +482,16 @@ private fun GeePeeScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
             )
         }
-        deleteTilesPlan?.let { plan ->
+        resolvedPreviewTileUiState.pendingDeletePlan?.let { plan ->
             DeleteTilesDialog(
                 plan = plan,
                 onConfirm = {
-                    deleteTilesPlan = null
-                    onExecuteTileDeletePlan(plan)
-                    tileSelectionState = tileSelectionState.clear()
+                    previewTileUiState.confirmDelete()?.let { confirmation ->
+                        onExecuteTileDeletePlan(confirmation.plan)
+                        previewTileUiState = confirmation.nextState
+                    }
                 },
-                onDismiss = { deleteTilesPlan = null },
+                onDismiss = { previewTileUiState = previewTileUiState.dismissDelete() },
             )
         }
     }
