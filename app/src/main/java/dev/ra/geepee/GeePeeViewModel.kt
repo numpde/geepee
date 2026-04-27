@@ -173,8 +173,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     fun stopMonitoring() {
         applySessionTransition(sessionState.stop())
-        replaceMapInfoFocusAndClearCoordinator(focus = null)
-        debugGpsEnabled = false
+        disableDebugGpsAndClearMapInfo()
         routeLoadState = routeLoadState.clearIssue()
         syncTrackingState()
         recomputeUiState()
@@ -238,7 +237,6 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         fromRestore: Boolean = false,
     ) {
         resetRouteContextState()
-        debugGpsEnabled = false
         routeLoadState = routeLoadState.beginLoading()
         recomputeUiState()
 
@@ -356,13 +354,12 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         selectedRouteReversed = false
         routeRuntimeState.clearRoute()
         routeLoadState = routeLoadState.clearRoute()
-        debugGpsEnabled = false
     }
 
     fun toggleDebugGps() {
         debugGpsEnabled = !debugGpsEnabled
         if (!debugGpsEnabled) {
-            clearMapInfoFocusAndCoordinator()
+            disableDebugGpsAndClearMapInfo()
             requestImmediateLocationRefresh()
         }
         recomputeUiState()
@@ -423,6 +420,11 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         replaceMapInfoFocusAndClearCoordinator(focus = null)
     }
 
+    private fun disableDebugGpsAndClearMapInfo() {
+        debugGpsEnabled = false
+        clearMapInfoFocusAndCoordinator()
+    }
+
     private fun setMapInfoFocus(focus: MapInfoFocus?) {
         liveContextFocus = focus
     }
@@ -434,7 +436,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
     private fun resetRouteContextState() {
         routeContextState = RouteContextState()
-        clearMapInfoFocusAndCoordinator()
+        disableDebugGpsAndClearMapInfo()
     }
 
     private fun currentLiveTrackingConfig(): LiveTrackingConfig {
