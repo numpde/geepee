@@ -25,13 +25,25 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-private data class MovementViewState(
+internal data class MovementViewState(
     val viewportFocus: MapInfoFocus?,
-    val tileGridBounds: Bounds?,
-    val windowWidthMeters: Double,
-    val openInPoint: GeoPoint?,
-    val mapInfoFocus: MapInfoFocus?,
-)
+    val fallbackTileGridBounds: Bounds?,
+    val fallbackWindowWidthMeters: Double,
+    val fallbackReferencePoint: GeoPoint?,
+    val mapInfoEnabled: Boolean,
+) {
+    val tileGridBounds: Bounds?
+        get() = viewportFocus?.projectedBounds ?: fallbackTileGridBounds
+
+    val windowWidthMeters: Double
+        get() = viewportFocus?.windowWidthMeters ?: fallbackWindowWidthMeters
+
+    val openInPoint: GeoPoint?
+        get() = viewportFocus?.centerGeoPoint ?: fallbackReferencePoint
+
+    val effectiveMapInfoFocus: MapInfoFocus?
+        get() = if (mapInfoEnabled) viewportFocus else null
+}
 
 @Composable
 internal fun GeePeeApp(
@@ -188,8 +200,8 @@ private fun GeePeeScreen(
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
         }
-        LaunchedEffect(movementViewState.mapInfoFocus) {
-            movementViewState.mapInfoFocus?.let { focus ->
+        LaunchedEffect(movementViewState.effectiveMapInfoFocus) {
+            movementViewState.effectiveMapInfoFocus?.let { focus ->
                 delay(250)
                 onUpdateLiveContextFocus(focus)
             }
@@ -204,11 +216,12 @@ private fun GeePeeScreen(
         } else {
             null
         }
-        val tileGridModel = if (tileGridRouteModel != null && movementViewState.tileGridBounds != null) {
+        val tileGridBounds = movementViewState.tileGridBounds
+        val tileGridModel = if (tileGridRouteModel != null && tileGridBounds != null) {
             remember(
                 tileGridRouteModel,
                 routeTileMetricsById,
-                movementViewState.tileGridBounds,
+                tileGridBounds,
                 viewportWidthPx,
                 viewportHeightPx,
                 state.tileDownloads,
@@ -217,7 +230,7 @@ private fun GeePeeScreen(
                 buildTileGridRenderModel(
                     routeModel = tileGridRouteModel,
                     routeTileMetricsById = routeTileMetricsById ?: emptyMap(),
-                    bounds = movementViewState.tileGridBounds,
+                    bounds = tileGridBounds,
                     canvasWidth = viewportWidthPx,
                     canvasHeight = viewportHeightPx,
                     config = state.tileContextConfig,
@@ -421,7 +434,7 @@ private fun GeePeeScreen(
     }
 }
 
-private fun buildMovementViewState(
+internal fun buildMovementViewState(
     movementMode: Boolean,
     viewportFocus: MapInfoFocus?,
     setupBounds: Bounds?,
@@ -432,18 +445,18 @@ private fun buildMovementViewState(
     return if (movementMode) {
         MovementViewState(
             viewportFocus = viewportFocus,
-            tileGridBounds = viewportFocus?.projectedBounds,
-            windowWidthMeters = viewportFocus?.windowWidthMeters ?: routeScale.windowWidthMeters,
-            openInPoint = viewportFocus?.centerGeoPoint ?: currentReferenceGeoPoint,
-            mapInfoFocus = if (hasAnalysis) viewportFocus else null,
+            fallbackTileGridBounds = null,
+            fallbackWindowWidthMeters = routeScale.windowWidthMeters,
+            fallbackReferencePoint = currentReferenceGeoPoint,
+            mapInfoEnabled = hasAnalysis,
         )
     } else {
         MovementViewState(
             viewportFocus = null,
-            tileGridBounds = setupBounds,
-            windowWidthMeters = routeScale.windowWidthMeters,
-            openInPoint = currentReferenceGeoPoint,
-            mapInfoFocus = null,
+            fallbackTileGridBounds = setupBounds,
+            fallbackWindowWidthMeters = routeScale.windowWidthMeters,
+            fallbackReferencePoint = currentReferenceGeoPoint,
+            mapInfoEnabled = false,
         )
     }
 }
