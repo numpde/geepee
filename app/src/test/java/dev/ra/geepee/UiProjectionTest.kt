@@ -95,15 +95,15 @@ class UiProjectionTest {
             ),
         )
 
-        assertNotNull(uiState.currentLocationGeoPoint)
-        assertEquals(analysis.nearestGeoPoint, uiState.currentLocationGeoPoint)
+        assertNotNull(uiState.currentReferenceGeoPoint)
+        assertEquals(analysis.nearestGeoPoint, uiState.currentReferenceGeoPoint)
     }
 
     @Test
-    fun routeContextDebugTextReportsCurrentViewAvailability() {
+    fun mapInfoAvailabilityTextReportsCurrentViewAvailability() {
         assertEquals(
             "Map info for this view: not downloaded",
-            routeContextDebugText(
+            mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
                     loadedLocalTileCount = 3,
@@ -114,7 +114,7 @@ class UiProjectionTest {
 
         assertEquals(
             "Map info for this view: loading…",
-            routeContextDebugText(
+            mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
                     loadedLocalTileCount = 3,
@@ -126,7 +126,7 @@ class UiProjectionTest {
 
         assertEquals(
             "Map info for this view: available",
-            routeContextDebugText(
+            mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     nearbyWayCount = 2,
                     localTileCount = 9,
@@ -138,7 +138,7 @@ class UiProjectionTest {
 
         assertEquals(
             "Map info for this view: partly available",
-            routeContextDebugText(
+            mapInfoAvailabilityText(
                 LocalNearbyWayDebugStatus(
                     localTileCount = 9,
                     loadedLocalTileCount = 5,

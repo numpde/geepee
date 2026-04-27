@@ -113,10 +113,10 @@ internal fun MovementTopOverlay(
                 color = colors.ink.copy(alpha = 0.58f),
             )
         }
-        state.mapInfo.availabilityText?.let { debugText ->
+        state.mapInfo.availabilityText?.let { availabilityText ->
             Spacer(modifier = Modifier.padding(top = 2.dp))
             Text(
-                text = debugText,
+                text = availabilityText,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.ink.copy(alpha = 0.56f),
             )

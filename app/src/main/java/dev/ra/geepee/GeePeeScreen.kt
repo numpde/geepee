@@ -166,7 +166,7 @@ private fun GeePeeScreen(
             setupViewportState.boundsOverride
         }
         val currentWindowWidthMeters = movementViewportFocus?.windowWidthMeters ?: state.routeScale.windowWidthMeters
-        val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentLocationGeoPoint
+        val openInPoint = movementViewportFocus?.centerGeoPoint ?: state.currentReferenceGeoPoint
         val poiTapRadiusPx = with(density) { 28.dp.toPx() }
         var selectedPois by remember(state.routeName, movementMode) {
             mutableStateOf(emptyList<RoutePoiSelectionInfo>())
@@ -448,7 +448,7 @@ private fun tappedPoiSelections(
     if (selectedMarkers.isEmpty()) {
         return emptyList()
     }
-    val origin = state.currentLocationGeoPoint
+    val origin = state.currentReferenceGeoPoint
     return selectedMarkers
         .distinctBy(RoutePoiScreenMarker::featureId)
         .map { marker ->

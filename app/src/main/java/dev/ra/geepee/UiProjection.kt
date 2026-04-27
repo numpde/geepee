@@ -37,7 +37,7 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         routeName = inputs.routeLoadState.routeName,
         routeModel = inputs.routeModel,
         analysis = inputs.analysis,
-        currentLocationGeoPoint = inputs.analysis?.nearestGeoPoint ?: inputs.currentFix?.let { fix ->
+        currentReferenceGeoPoint = inputs.analysis?.nearestGeoPoint ?: inputs.currentFix?.let { fix ->
             GeoPoint(lat = fix.lat, lon = fix.lon)
         },
         routeMatchHypotheses = inputs.routeMatchHypotheses,
@@ -52,7 +52,7 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         mapInfo = RouteMapInfoUiState(
             pois = inputs.routeContextState.pois,
             nearbyWays = inputs.routeContextState.mapInfo.nearbyWays,
-            availabilityText = routeContextDebugText(inputs.routeContextState.mapInfo.localNearbyWays),
+            availabilityText = mapInfoAvailabilityText(inputs.routeContextState.mapInfo.localNearbyWays),
         ),
         debugGpsEnabled = inputs.debugGpsEnabled,
         sessionRunning = inputs.sessionState.sessionActive,
@@ -64,7 +64,7 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
     )
 }
 
-internal fun routeContextDebugText(status: LocalNearbyWayDebugStatus?): String? {
+internal fun mapInfoAvailabilityText(status: LocalNearbyWayDebugStatus?): String? {
     status ?: return null
     status.errorMessage?.let {
         return "Map info for this view: unavailable"
