@@ -40,19 +40,10 @@ internal data class PreviewTileSelectionState(
     fun clear(): PreviewTileSelectionState = PreviewTileSelectionState()
 
     internal fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        if (tile?.hasCachedTiles != true) {
+        if (tile?.hasCachedCoverage != true) {
             return this
         }
-        val nextSelectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
-            val cachedTileIds = tile.cachedTileIds
-            val shouldDeselect = cachedTileIds.all(tileIds::contains)
-            if (shouldDeselect) {
-                tileIds.removeAll(cachedTileIds)
-            } else {
-                tileIds.addAll(cachedTileIds)
-            }
-        }.toSet()
-        return copy(selectedTileIds = nextSelectedTileIds)
+        return copy(selectedTileIds = tile.toggledSelection(selectedTileIds))
     }
 }
 
@@ -81,7 +72,7 @@ internal data class ResolvedPreviewTileSelectionState(
         }
         return if (selectionModeActive) {
             PreviewTileTapResult(selectionState.toggleCachedTile(tile))
-        } else if (tile.hasCachedTiles) {
+        } else if (tile.hasCachedCoverage) {
             PreviewTileTapResult(selectionState)
         } else if (tile.downloadRequests.isEmpty()) {
             PreviewTileTapResult(selectionState)
@@ -167,6 +158,3 @@ internal data class PreviewTileDeleteConfirmation(
 internal data class PreviewTileDownloadRequest(
     val tileRequests: List<TileDownloadRequest>,
 )
-
-private val TileGridDisplayTile.hasCachedTiles: Boolean
-    get() = cachedTileIds.isNotEmpty()

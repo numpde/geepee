@@ -290,13 +290,18 @@ internal data class TileGridDisplayTile(
     val cachedTileIds: Set<DownloadTileId>
         get() = cachedCoverageTiles.mapTo(linkedSetOf(), TileCoverageRect::tileId)
 
+    val hasCachedCoverage: Boolean
+        get() = cachedCoverageTiles.isNotEmpty()
+
     val cachedCoverageRects: List<ScreenRect>
         get() = cachedCoverageTiles.map(TileCoverageRect::screenRect)
 
-    val selectedCoverageRects: List<ScreenRect>
+    val selectedCoverageTiles: List<TileCoverageRect>
         get() = cachedCoverageTiles
             .filter { coverageTile -> coverageTile.tileId in selectedCachedTileIds }
-            .map(TileCoverageRect::screenRect)
+
+    val selectedCoverageRects: List<ScreenRect>
+        get() = selectedCoverageTiles.map(TileCoverageRect::screenRect)
 
     val selectionState: TileGridSelectionState
         get() = when {
@@ -307,6 +312,20 @@ internal data class TileGridDisplayTile(
 
     val selected: Boolean
         get() = selectionState == TileGridSelectionState.FullySelected
+
+    fun toggledSelection(currentSelectedTileIds: Set<DownloadTileId>): Set<DownloadTileId> {
+        if (!hasCachedCoverage) {
+            return currentSelectedTileIds
+        }
+        return currentSelectedTileIds.toMutableSet().also { tileIds ->
+            val shouldDeselect = cachedTileIds.all(currentSelectedTileIds::contains)
+            if (shouldDeselect) {
+                tileIds.removeAll(cachedTileIds)
+            } else {
+                tileIds.addAll(cachedTileIds)
+            }
+        }.toSet()
+    }
 }
 
 internal data class TileCoverageRect(
