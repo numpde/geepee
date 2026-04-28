@@ -17,10 +17,11 @@ internal data class RouteMapInfoFixture(
 internal fun loadRouteMapInfoFixture(
     tileFixturePath: String = "tile-context/10-571-356-local.json",
 ): RouteMapInfoFixture {
+    val geoPoints = loadRouteMapInfoGeoPoints()
     return RouteMapInfoFixture(
         sourcePack = loadRouteMapInfoTileFixture(tileFixturePath),
-        geoPoints = loadRouteMapInfoGeoPoints(),
-        routeModel = buildRouteModel(listOf(loadRouteMapInfoGeoPoints())),
+        geoPoints = geoPoints,
+        routeModel = buildRouteModel(listOf(geoPoints)),
     )
 }
 
@@ -33,6 +34,10 @@ internal fun loadRouteMapInfoTileFixture(path: String): TileContextPack {
 
 internal fun loadRouteMapInfoGeoPoints(): List<GeoPoint> {
     return loadGpxGeoPointsFixture("unneplos-tisza-ride.gpx")
+}
+
+internal fun loadRouteMapInfoRouteModel(): RouteModel {
+    return buildRouteModel(listOf(loadRouteMapInfoGeoPoints()))
 }
 
 internal fun buildRouteMapInfoFocus(

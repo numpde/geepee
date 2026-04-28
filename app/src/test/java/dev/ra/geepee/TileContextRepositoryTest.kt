@@ -5,7 +5,6 @@ import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -413,45 +412,11 @@ private inline fun withRepositoryRoot(block: (File, TileContextRepository) -> Un
 }
 
 private fun loadRepositoryTileFixture(path: String): TileContextPack {
-    val resource = requireNotNull(TileContextRepositoryTest::class.java.classLoader?.getResource("dev/ra/geepee/$path")) {
-        "Missing tile fixture resource: $path"
-    }
-    return tileContextPackFromJson(File(resource.toURI()).readText())
+    return loadRouteMapInfoTileFixture(path)
 }
 
 private fun loadRepositoryRouteModel(): RouteModel {
-    val routeFile = resolveRepositoryRepoFile("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-    return buildRouteModel(listOf(geoPoints))
-}
-
-private fun resolveRepositoryRepoFile(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")))
-    var current: File? = cwd.absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath")
+    return loadRouteMapInfoRouteModel()
 }
 
 private fun findRoutePointWithinBounds(

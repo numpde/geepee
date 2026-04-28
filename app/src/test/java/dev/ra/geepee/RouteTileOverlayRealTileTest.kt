@@ -1,7 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,13 +7,12 @@ import org.junit.Test
 class RouteTileOverlayRealTileTest {
     @Test
     fun realDownloadedTileOverlayMatchesDirectRouteContext() {
-        val fixture = loadOverlayTiszaFixture()
-        val sourcePack = loadOverlayTileFixture("tile-context/10-571-356-local.json")
-        val runtimePack = compileTileRuntimePack(sourcePack)
+        val fixture = loadRouteMapInfoFixture()
+        val runtimePack = compileTileRuntimePack(fixture.sourcePack)
 
         val directContext = buildRouteContext(
             routeModel = fixture.routeModel,
-            packs = listOf(sourcePack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
         )
         val overlay = buildRouteTileOverlay(
@@ -31,9 +28,8 @@ class RouteTileOverlayRealTileTest {
 
     @Test
     fun focusedRealDownloadedTileOverlayMatchesFocusedDirectRouteContext() {
-        val fixture = loadOverlayTiszaFixture()
-        val sourcePack = loadOverlayTileFixture("tile-context/10-571-356-local.json")
-        val runtimePack = compileTileRuntimePack(sourcePack)
+        val fixture = loadRouteMapInfoFixture()
+        val runtimePack = compileTileRuntimePack(fixture.sourcePack)
         val focusPoint = fixture.geoPoints[6_854]
         val focus = MapInfoFocus(
             centerGeoPoint = focusPoint,
@@ -49,7 +45,7 @@ class RouteTileOverlayRealTileTest {
 
         val directContext = buildRouteContext(
             routeModel = fixture.routeModel,
-            packs = listOf(sourcePack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
             nearbyWayFocus = focus,
         )
@@ -71,9 +67,8 @@ class RouteTileOverlayRealTileTest {
 
     @Test
     fun focusedRealDownloadedRuntimePackQueryMatchesFocusedDirectRouteContext() {
-        val fixture = loadOverlayTiszaFixture()
-        val sourcePack = loadOverlayTileFixture("tile-context/10-571-356-local.json")
-        val runtimePack = compileTileRuntimePack(sourcePack)
+        val fixture = loadRouteMapInfoFixture()
+        val runtimePack = compileTileRuntimePack(fixture.sourcePack)
         val focusPoint = fixture.geoPoints[6_854]
         val focus = MapInfoFocus(
             centerGeoPoint = focusPoint,
@@ -89,7 +84,7 @@ class RouteTileOverlayRealTileTest {
 
         val directContext = buildRouteContext(
             routeModel = fixture.routeModel,
-            packs = listOf(sourcePack),
+            packs = listOf(fixture.sourcePack),
             config = DefaultTileContextConfig,
             nearbyWayFocus = focus,
         )
@@ -107,56 +102,6 @@ class RouteTileOverlayRealTileTest {
 
         assertNearbyWaysEquivalent(directContext.nearbyWays, runtimeNearbyWays, tolerance = 0.2)
     }
-
-    private fun loadOverlayTileFixture(path: String): TileContextPack {
-        val resource = requireNotNull(javaClass.classLoader?.getResource("dev/ra/geepee/$path")) {
-            "Missing tile fixture resource: $path"
-        }
-        return tileContextPackFromJson(File(resource.toURI()).readText())
-    }
-}
-
-private data class OverlayTiszaFixture(
-    val geoPoints: List<GeoPoint>,
-    val routeModel: RouteModel,
-)
-
-private fun loadOverlayTiszaFixture(): OverlayTiszaFixture {
-    val routeFile = resolveOverlayRepoFile("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-    return OverlayTiszaFixture(
-        geoPoints = geoPoints,
-        routeModel = buildRouteModel(listOf(geoPoints)),
-    )
-}
-
-private fun resolveOverlayRepoFile(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")))
-    var current: File? = cwd.absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath")
 }
 
 private fun assertRouteContextsEquivalent(
