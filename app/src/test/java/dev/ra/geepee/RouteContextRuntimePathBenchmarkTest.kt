@@ -10,16 +10,10 @@ class RouteContextRuntimePathBenchmarkTest {
         val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
         val routeModel = loadRouteMapInfoRouteModel()
         val focusPoint = loadRouteMapInfoGeoPointsByIndex().getValue(6_854)
-        val focus = MapInfoFocus(
-            centerGeoPoint = focusPoint,
-            windowWidthMeters = 1_000.0,
-            projectedBounds = nearbyWayFocusBounds(
-                routeModel = routeModel,
-                focusGeoPoint = focusPoint,
-                focusWindowWidthMeters = 1_000.0,
-                haloMeters = DefaultTileContextConfig.wayHaloMeters,
-                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
-            ) ?: routeModel.bounds,
+        val focus = buildRouteMapInfoFocus(
+            routeModel = routeModel,
+            focusPoint = focusPoint,
+            widthMeters = 1_000.0,
         )
 
         val coldRuntimeLoadNanos = benchmarkNanos(iterations = 5) {

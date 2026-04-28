@@ -178,22 +178,17 @@ private fun awaitNearbyWayRebuild(
 ): RouteMapInfoState {
     val latch = CountDownLatch(1)
     var result: RouteMapInfoState? = null
+    val focus = buildRouteMapInfoFocus(
+        routeModel = routeModel,
+        focusPoint = analysis.nearestGeoPoint,
+        widthMeters = focusWindowWidthMeters,
+    )
     coordinator.rebuildNearbyWays(
         routeModel = routeModel,
         analysis = analysis,
         tileDownloads = tileDownloads,
         existingLocalStatus = null,
-        focus = MapInfoFocus(
-            centerGeoPoint = analysis.nearestGeoPoint,
-            windowWidthMeters = focusWindowWidthMeters,
-            projectedBounds = nearbyWayFocusBounds(
-                routeModel = routeModel,
-                focusGeoPoint = analysis.nearestGeoPoint,
-                focusWindowWidthMeters = focusWindowWidthMeters,
-                haloMeters = DefaultTileContextConfig.wayHaloMeters,
-                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
-            ) ?: routeModel.bounds,
-        ),
+        focus = focus,
         defaultFocusWindowWidthMeters = focusWindowWidthMeters,
         force = force,
         onStarted = {},

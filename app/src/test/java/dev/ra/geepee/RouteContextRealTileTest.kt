@@ -63,16 +63,10 @@ class RouteContextRealTileTest {
     fun focusedNearbyWayBuildKeepsVisibleSnippetsAtInteriorTiszaPoint() {
         val fixture = loadRouteMapInfoFixture()
         val focusPoint = fixture.geoPoints[6_854]
-        val focus = MapInfoFocus(
-            centerGeoPoint = focusPoint,
-            windowWidthMeters = 1_000.0,
-            projectedBounds = nearbyWayFocusBounds(
-                routeModel = fixture.routeModel,
-                focusGeoPoint = focusPoint,
-                focusWindowWidthMeters = 1_000.0,
-                haloMeters = DefaultTileContextConfig.wayHaloMeters,
-                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
-            ) ?: fixture.routeModel.bounds,
+        val focus = buildRouteMapInfoFocus(
+            routeModel = fixture.routeModel,
+            focusPoint = focusPoint,
+            widthMeters = 1_000.0,
         )
 
         val nearbyWays = buildRouteNearbyWays(
@@ -87,7 +81,6 @@ class RouteContextRealTileTest {
             nearbyWays.isNotEmpty(),
         )
     }
-
 }
 
 private fun RouteMapInfoFixture.fixAt(

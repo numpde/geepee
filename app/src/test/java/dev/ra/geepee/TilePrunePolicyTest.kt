@@ -51,16 +51,10 @@ class TilePrunePolicyTest {
             lat = (viewportBounds.south + viewportBounds.north) / 2.0,
             lon = (viewportBounds.west + viewportBounds.east) / 2.0,
         )
-        val focus = MapInfoFocus(
-            centerGeoPoint = viewportCenter,
-            windowWidthMeters = 300.0,
-            projectedBounds = nearbyWayFocusBounds(
-                routeModel = routeModel,
-                focusGeoPoint = viewportCenter,
-                focusWindowWidthMeters = 300.0,
-                haloMeters = DefaultTileContextConfig.wayHaloMeters,
-                continuationMeters = DefaultTileContextConfig.nearbyWayContinuationMeters,
-            ) ?: routeModel.bounds,
+        val focus = buildRouteMapInfoFocus(
+            routeModel = routeModel,
+            focusPoint = viewportCenter,
+            widthMeters = 300.0,
         )
         val tileDownloads = mapOf(
             routeTile to TileDownloadSnapshot(
