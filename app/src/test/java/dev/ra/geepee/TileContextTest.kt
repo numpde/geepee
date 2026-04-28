@@ -351,8 +351,13 @@ class TileContextTest {
             selectedTileIds = selectedSnapshots.keys,
         )
 
-        assertEquals(1, renderModel.tiles.count { it.selected })
-        assertTrue(renderModel.tiles.any { it.tileId == selectedTile.tileId && it.selected })
+        assertEquals(1, renderModel.tiles.count { it.selectionState == TileGridSelectionState.FullySelected })
+        assertTrue(
+            renderModel.tiles.any { tile ->
+                tile.tileId == selectedTile.tileId &&
+                    tile.selectionState == TileGridSelectionState.FullySelected
+            },
+        )
     }
 
     @Test
@@ -396,7 +401,6 @@ class TileContextTest {
 
         val renderedTile = renderModel.tiles.first { it.tileId == selectedTile.tileId }
         assertEquals(TileGridSelectionState.PartiallySelected, renderedTile.selectionState)
-        assertFalse(renderedTile.selected)
         assertEquals(setOf(selectedRequest.tileId), renderedTile.selectedCachedTileIds)
         assertEquals(1, renderedTile.selectedCoverageRects.size)
     }
@@ -700,7 +704,7 @@ class TileContextTest {
         )
 
         val tile = renderModel.tiles.single()
-        assertFalse(tile.selected)
+        assertEquals(TileGridSelectionState.Unselected, tile.selectionState)
         assertTrue(tile.cachedTileIds.isEmpty())
     }
 
@@ -751,7 +755,7 @@ class TileContextTest {
         assertTrue(tile.cachedTileIds.contains(anchorTile))
         assertEquals(1, tile.cachedCoverageRects.size)
         assertEquals(TileGridDownloadState.Partial, tile.downloadState)
-        assertTrue(tile.selected)
+        assertEquals(TileGridSelectionState.FullySelected, tile.selectionState)
     }
 
     @Test

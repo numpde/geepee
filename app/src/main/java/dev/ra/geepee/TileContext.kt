@@ -315,17 +315,11 @@ internal data class TileGridDisplayTile(
     val cachedCoverageRects: List<ScreenRect>
         get() = representedCoverage.coverageRects
 
-    val selectedCoverageTiles: List<TileCoverageRect>
-        get() = representedCoverage.selectedCoverageTiles
-
     val selectedCoverageRects: List<ScreenRect>
         get() = representedCoverage.selectedCoverageRects
 
     val selectionState: TileGridSelectionState
         get() = representedCoverage.selectionState
-
-    val selected: Boolean
-        get() = selectionState == TileGridSelectionState.FullySelected
 
     fun toggledSelection(currentSelectedTileIds: Set<DownloadTileId>): Set<DownloadTileId> {
         return representedCoverage.toggledSelection(currentSelectedTileIds)
@@ -353,11 +347,12 @@ internal data class TileGridRepresentedCoverage(
     val coverageRects: List<ScreenRect>
         get() = coverageTiles.map(TileCoverageRect::screenRect)
 
-    val selectedCoverageTiles: List<TileCoverageRect>
-        get() = coverageTiles.filter { coverageTile -> coverageTile.tileId in representedSelectedTileIds }
-
     val selectedCoverageRects: List<ScreenRect>
-        get() = selectedCoverageTiles.map(TileCoverageRect::screenRect)
+        get() = coverageTiles
+            .asSequence()
+            .filter { coverageTile -> coverageTile.tileId in representedSelectedTileIds }
+            .map(TileCoverageRect::screenRect)
+            .toList()
 
     val selectionState: TileGridSelectionState
         get() = when {
