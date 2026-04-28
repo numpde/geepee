@@ -421,6 +421,29 @@ class TileContextTest {
     }
 
     @Test
+    fun selectedCachedTileIdsRetainsOnlySelectedCachedEntries() {
+        val cachedTileId = DownloadTileId(zoom = 10, x = 1, y = 2)
+        val downloadingTileId = DownloadTileId(zoom = 10, x = 3, y = 4)
+        val missingTileId = DownloadTileId(zoom = 10, x = 5, y = 6)
+        val tileSnapshots = mapOf(
+            cachedTileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = 100L,
+            ),
+            downloadingTileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Downloading,
+                estimatedBytes = 100L,
+            ),
+        )
+
+        val retained = tileSnapshots.selectedCachedTileIds(
+            selectedTileIds = listOf(downloadingTileId, cachedTileId, missingTileId),
+        )
+
+        assertEquals(setOf(cachedTileId), retained)
+    }
+
+    @Test
     fun tileResolutionPolicyUsesConfiguredDisplayAndDataZoomLadder() {
         val policy = TileResolutionPolicy()
 

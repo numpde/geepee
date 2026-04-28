@@ -158,6 +158,20 @@ internal fun Map<DownloadTileId, TileDownloadSnapshot>.tileIdsWithStatus(
 internal fun Map<DownloadTileId, TileDownloadSnapshot>.cachedTileIds(): Set<DownloadTileId> =
     tileIdsWithStatus(TileDownloadStatus.Cached)
 
+internal fun Map<DownloadTileId, TileDownloadSnapshot>.selectedCachedTileIds(
+    selectedTileIds: Collection<DownloadTileId>,
+): Set<DownloadTileId> {
+    if (selectedTileIds.isEmpty()) {
+        return emptySet()
+    }
+    val selectedTileIdSet = selectedTileIds.toSet()
+    return entries
+        .asSequence()
+        .filter { (tileId, snapshot) -> snapshot.isCached && tileId in selectedTileIdSet }
+        .map(Map.Entry<DownloadTileId, TileDownloadSnapshot>::key)
+        .toCollection(linkedSetOf())
+}
+
 internal fun Map<DownloadTileId, TileDownloadSnapshot>.downloadingTileIds(): Set<DownloadTileId> =
     tileIdsWithStatus(TileDownloadStatus.Downloading)
 

@@ -100,10 +100,7 @@ internal class TileContextRepository(
 
     private fun buildSelectedTileDeletePlan(tileIds: Collection<DownloadTileId>): TileDeletePlan {
         val cachedTileIds = synchronized(this) {
-            val selectedTileIds = tileIds.toSet()
-            cachedTiles.cachedTileIds()
-                .filter(selectedTileIds::contains)
-                .toCollection(linkedSetOf())
+            cachedTiles.selectedCachedTileIds(tileIds)
         }
         return TileDeletePlan(
             mode = TileDeleteMode.Selected,
