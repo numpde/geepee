@@ -467,7 +467,7 @@ internal fun buildTileGridRenderModel(
             canvasHeight = canvasHeight,
         )
         val routeMetrics = displayRouteMetricsById[tileId] ?: EmptyTileRouteMetrics
-        val downloadRequests = mergeTileDownloadRequests(
+        val allDownloadRequests = mergeTileDownloadRequests(
             primary = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
             secondary = visibleSnapshotRequestsForDisplayTile(
                 displayTileId = tileId,
@@ -475,25 +475,34 @@ internal fun buildTileGridRenderModel(
                 tileSnapshots = tileSnapshots,
             ),
         )
-        val downloadState = resolveDisplayTileDownloadState(
-            downloadRequests = downloadRequests,
-            tileSnapshots = tileSnapshots,
-        )
-        if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
-            return@mapNotNull null
-        }
         val (displayRect, outlineStyle) = resolveTileDisplayRect(
             screenRect = actualScreenRect,
             routeMetrics = routeMetrics,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
-        val estimatedBytes = if (downloadRequests.isNotEmpty()) {
-            downloadRequests.sumOf(TileDownloadRequest::estimatedBytes)
+        val representedDownloadRequests = filterTileRequestsForDisplayRepresentation(
+            routeModel = routeModel,
+            viewBounds = bounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            displayRect = displayRect,
+            outlineStyle = outlineStyle,
+            downloadRequests = allDownloadRequests,
+        )
+        val downloadState = resolveDisplayTileDownloadState(
+            downloadRequests = representedDownloadRequests,
+            tileSnapshots = tileSnapshots,
+        )
+        if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
+            return@mapNotNull null
+        }
+        val estimatedBytes = if (representedDownloadRequests.isNotEmpty()) {
+            representedDownloadRequests.sumOf(TileDownloadRequest::estimatedBytes)
         } else {
             estimateTileBytes(routeMetrics, cachedAverageBytes)
         }
-        val cachedTileIds = downloadRequests.mapNotNull { request ->
+        val cachedTileIds = representedDownloadRequests.mapNotNull { request ->
             tileSnapshots[request.tileId]
                 ?.takeIf { snapshot -> snapshot.status == TileDownloadStatus.Cached }
                 ?.let { request.tileId }
@@ -519,7 +528,7 @@ internal fun buildTileGridRenderModel(
                         canvasHeight = canvasHeight,
                     ).intersect(displayRect)
                 },
-            downloadRequests = downloadRequests,
+            downloadRequests = representedDownloadRequests,
             selected = cachedTileIds.isNotEmpty() && cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
             label = tileLabel(
@@ -546,6 +555,31 @@ private fun mergeTileDownloadRequests(
         .associateBy(TileDownloadRequest::tileId)
         .values
         .sortedBy { request -> request.tileId.cacheKey }
+}
+
+private fun filterTileRequestsForDisplayRepresentation(
+    routeModel: RouteModel,
+    viewBounds: Bounds,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    displayRect: ScreenRect,
+    outlineStyle: TileGridOutlineStyle,
+    downloadRequests: List<TileDownloadRequest>,
+): List<TileDownloadRequest> {
+    if (outlineStyle != TileGridOutlineStyle.ViewProxyDashed) {
+        return downloadRequests
+    }
+    return downloadRequests.filter { request ->
+        projectedBoundsToScreenRect(
+            projectedBounds = projectedBoundsForGeoBounds(
+                tileGeoBounds(request.tileId),
+                routeModel.projection,
+            ),
+            viewBounds = viewBounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+        ).intersects(displayRect)
+    }
 }
 
 private fun visibleSnapshotRequestsForDisplayTile(

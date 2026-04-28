@@ -511,8 +511,10 @@ class TileContextTest {
         val tile = renderModel.tiles.single()
         assertEquals(anchorTile, tile.tileId)
         assertEquals(TileGridOutlineStyle.ViewProxyDashed, tile.outlineStyle)
-        assertTrue(tile.cachedTileIds.contains(offscreenCachedChild))
+        assertTrue(tile.cachedTileIds.isEmpty())
         assertTrue(tile.cachedCoverageRects.isEmpty())
+        assertTrue(tile.downloadRequests.isNotEmpty())
+        assertEquals(null, tile.downloadState)
     }
 
     @Test
