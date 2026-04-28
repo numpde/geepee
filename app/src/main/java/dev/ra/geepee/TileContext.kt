@@ -937,6 +937,32 @@ internal fun tileIntersectsProjectedBounds(
         tileBounds.maxY >= bounds.minY
 }
 
+internal fun Collection<DownloadTileId>.tilesIntersectingProjectedBounds(
+    projection: Projection,
+    bounds: Bounds,
+): Set<DownloadTileId> {
+    return filterTo(linkedSetOf()) { tileId ->
+        tileIntersectsProjectedBounds(
+            tileId = tileId,
+            projection = projection,
+            bounds = bounds,
+        )
+    }
+}
+
+internal fun Collection<DownloadTileId>.tilesIntersectingRoute(
+    routeModel: RouteModel,
+    config: TileContextConfig,
+): Set<DownloadTileId> {
+    return filterTo(linkedSetOf()) { tileId ->
+        tileRouteMetrics(
+            routeModel = routeModel,
+            tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection),
+            haloMeters = config.fetchHaloMeters,
+        ).intersectsRoute
+    }
+}
+
 private fun normalizeOverpassElement(element: JsonObject): TileContextFeature? {
     val type = element["type"]?.jsonPrimitive?.contentOrNull
     val tags = element["tags"]?.jsonObject ?: return null

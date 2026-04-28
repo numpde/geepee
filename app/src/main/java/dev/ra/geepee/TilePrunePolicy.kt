@@ -136,13 +136,10 @@ private fun deleteUnusedProtectedTileIds(
                 focus = focus,
                 config = config,
             )
-            protectedTileIds += cachedTileIds.filter { tileId ->
-                tileIntersectsProjectedBounds(
-                    tileId = tileId,
-                    projection = routeModel.projection,
-                    bounds = focusBounds,
-                )
-            }
+            protectedTileIds += cachedTileIds.tilesIntersectingProjectedBounds(
+                projection = routeModel.projection,
+                bounds = focusBounds,
+            )
         }
     }
 

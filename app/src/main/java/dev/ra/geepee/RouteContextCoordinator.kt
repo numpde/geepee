@@ -446,15 +446,10 @@ internal fun cachedRouteTileIds(
     tileIds: Collection<DownloadTileId>,
     config: TileContextConfig,
 ): Set<DownloadTileId> {
-    return tileIds
-        .filter { tileId ->
-            tileRouteMetrics(
-                routeModel = routeModel,
-                tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection),
-                haloMeters = config.fetchHaloMeters,
-            ).intersectsRoute
-        }
-        .toSet()
+    return tileIds.tilesIntersectingRoute(
+        routeModel = routeModel,
+        config = config,
+    )
 }
 
 internal fun tileContainsTile(
