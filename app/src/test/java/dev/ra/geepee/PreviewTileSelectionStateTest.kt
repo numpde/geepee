@@ -290,6 +290,11 @@ private fun previewTile(
         },
         progressFraction = null,
         cachedTileIds = if (status == TileDownloadStatus.Cached) setOf(tileId) else emptySet(),
+        cachedCoverageRects = if (status == TileDownloadStatus.Cached) {
+            listOf(ScreenRect(0f, 0f, 10f, 10f))
+        } else {
+            emptyList()
+        },
         downloadRequests = downloadRequests,
         selected = false,
         estimatedBytes = estimatedBytes,

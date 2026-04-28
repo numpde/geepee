@@ -105,6 +105,21 @@ private fun DrawScope.drawTileCell(
         )
     }
 
+    if (showFills && tile.cachedCoverageRects.isNotEmpty()) {
+        val coverageFill = when {
+            tile.selected -> colors.routeAhead.copy(alpha = 0.2f)
+            state == TileGridDownloadState.Downloading -> colors.onRoute.copy(alpha = 0.18f)
+            else -> colors.onRoute.copy(alpha = 0.16f)
+        }
+        tile.cachedCoverageRects.forEach { coverageRect ->
+            drawRect(
+                color = coverageFill,
+                topLeft = Offset(coverageRect.left, coverageRect.top),
+                size = Size(coverageRect.width, coverageRect.height),
+            )
+        }
+    }
+
     val borderColor = when {
         tile.selected -> colors.routeAhead.copy(alpha = 0.72f)
         else -> when (state) {

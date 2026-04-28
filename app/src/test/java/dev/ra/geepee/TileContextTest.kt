@@ -290,6 +290,7 @@ class TileContextTest {
                     downloadState = null,
                     progressFraction = null,
                     cachedTileIds = emptySet(),
+                    cachedCoverageRects = emptyList(),
                     downloadRequests = emptyList(),
                     selected = false,
                     estimatedBytes = 0L,
@@ -302,6 +303,7 @@ class TileContextTest {
                     downloadState = null,
                     progressFraction = null,
                     cachedTileIds = emptySet(),
+                    cachedCoverageRects = emptyList(),
                     downloadRequests = emptyList(),
                     selected = false,
                     estimatedBytes = 0L,
@@ -392,6 +394,72 @@ class TileContextTest {
 
         assertTrue(displayTile.downloadRequests.isNotEmpty())
         assertTrue(displayTile.downloadRequests.all { request -> request.tileId.zoom > displayTile.tileId.zoom })
+    }
+
+    @Test
+    fun childTileScreenRectWithinDisplayTileMapsChildQuadrant() {
+        val displayTileId = DownloadTileId(zoom = 10, x = 100, y = 200)
+        val displayRect = ScreenRect(left = 20f, top = 40f, right = 180f, bottom = 200f)
+        val childTileRect = childTileScreenRectWithinDisplayTile(
+            displayTileId = displayTileId,
+            displayScreenRect = displayRect,
+            childTileId = DownloadTileId(zoom = 11, x = 201, y = 401),
+        )
+
+        assertEquals(100f, childTileRect.left, 0.001f)
+        assertEquals(120f, childTileRect.top, 0.001f)
+        assertEquals(180f, childTileRect.right, 0.001f)
+        assertEquals(200f, childTileRect.bottom, 0.001f)
+    }
+
+    @Test
+    fun tileGridRenderModelShowsCachedCoverageRectsForPartialTile() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val baseModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val partialTile = baseModel.tiles.first { it.downloadRequests.size >= 2 }
+        val cachedRequest = partialTile.downloadRequests.first()
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = mapOf(
+                cachedRequest.tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = cachedRequest.estimatedBytes,
+                    actualBytes = cachedRequest.estimatedBytes,
+                ),
+            ),
+        )
+        val renderedPartialTile = renderModel.tiles.first { it.tileId == partialTile.tileId }
+
+        assertEquals(TileGridDownloadState.Partial, renderedPartialTile.downloadState)
+        assertEquals(setOf(cachedRequest.tileId), renderedPartialTile.cachedTileIds)
+        assertEquals(1, renderedPartialTile.cachedCoverageRects.size)
+        assertTrue(renderedPartialTile.label == null)
+        val coverageRect = renderedPartialTile.cachedCoverageRects.single()
+        val epsilon = 0.001f
+        assertTrue(coverageRect.left + epsilon >= renderedPartialTile.screenRect.left)
+        assertTrue(coverageRect.top + epsilon >= renderedPartialTile.screenRect.top)
+        assertTrue(coverageRect.right <= renderedPartialTile.screenRect.right + epsilon)
+        assertTrue(coverageRect.bottom <= renderedPartialTile.screenRect.bottom + epsilon)
     }
 
     @Test

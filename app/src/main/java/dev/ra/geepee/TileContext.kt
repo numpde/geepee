@@ -232,6 +232,7 @@ internal data class TileGridDisplayTile(
     val downloadState: TileGridDownloadState?,
     val progressFraction: Float?,
     val cachedTileIds: Set<DownloadTileId>,
+    val cachedCoverageRects: List<ScreenRect>,
     val downloadRequests: List<TileDownloadRequest>,
     val selected: Boolean,
     val estimatedBytes: Long,
@@ -486,6 +487,15 @@ internal fun buildTileGridRenderModel(
             downloadState = downloadState.state,
             progressFraction = downloadState.progressFraction,
             cachedTileIds = cachedTileIds,
+            cachedCoverageRects = cachedTileIds
+                .sortedBy(DownloadTileId::cacheKey)
+                .map { cachedTileId ->
+                    childTileScreenRectWithinDisplayTile(
+                        displayTileId = tileId,
+                        displayScreenRect = displayRect,
+                        childTileId = cachedTileId,
+                    )
+                },
             downloadRequests = downloadRequests,
             selected = cachedTileIds.isNotEmpty() && cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
@@ -695,6 +705,31 @@ private fun parentTileIdAtZoom(
         zoom = parentZoom,
         x = tileId.x shr zoomDelta,
         y = tileId.y shr zoomDelta,
+    )
+}
+
+internal fun childTileScreenRectWithinDisplayTile(
+    displayTileId: DownloadTileId,
+    displayScreenRect: ScreenRect,
+    childTileId: DownloadTileId,
+): ScreenRect {
+    require(childTileId.zoom >= displayTileId.zoom) {
+        "Child tile ${childTileId.cacheKey} must not be coarser than display tile ${displayTileId.cacheKey}"
+    }
+    if (childTileId.zoom == displayTileId.zoom) {
+        return displayScreenRect
+    }
+    val zoomDelta = childTileId.zoom - displayTileId.zoom
+    val gridSize = 1 shl zoomDelta
+    val childOffsetX = childTileId.x - (displayTileId.x shl zoomDelta)
+    val childOffsetY = childTileId.y - (displayTileId.y shl zoomDelta)
+    val cellWidth = displayScreenRect.width / gridSize.toFloat()
+    val cellHeight = displayScreenRect.height / gridSize.toFloat()
+    return ScreenRect(
+        left = displayScreenRect.left + cellWidth * childOffsetX.toFloat(),
+        top = displayScreenRect.top + cellHeight * childOffsetY.toFloat(),
+        right = displayScreenRect.left + cellWidth * (childOffsetX + 1).toFloat(),
+        bottom = displayScreenRect.top + cellHeight * (childOffsetY + 1).toFloat(),
     )
 }
 
@@ -982,10 +1017,7 @@ private fun tileLabel(
             formatTileMegabytes(estimatedBytes, approximate = false)
         }
         TileGridDownloadState.Partial -> {
-            if (minDimensionPx < 92f) {
-                return null
-            }
-            "Partial"
+            null
         }
         null -> {
             if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {
