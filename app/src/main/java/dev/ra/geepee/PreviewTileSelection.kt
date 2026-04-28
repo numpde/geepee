@@ -9,7 +9,7 @@ internal data class PreviewTileUiState(
     ): ResolvedPreviewTileUiState {
         return ResolvedPreviewTileUiState(
             uiState = this,
-            resolvedSelection = selectionState.resolve(tileSnapshots),
+            selectionState = selectionState.resolve(tileSnapshots),
         )
     }
 }
@@ -32,26 +32,9 @@ internal data class PreviewTileSelectionState(
 
     fun resolve(
         tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-    ): ResolvedPreviewTileSelectionState {
-        val normalizedState = retainCached(tileSnapshots)
-        return ResolvedPreviewTileSelectionState(normalizedState)
-    }
+    ): PreviewTileSelectionState = retainCached(tileSnapshots)
 
     fun clear(): PreviewTileSelectionState = PreviewTileSelectionState()
-
-    internal fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        if (tile?.hasCachedCoverage != true) {
-            return this
-        }
-        return copy(selectedTileIds = tile.toggledSelection(selectedTileIds))
-    }
-}
-
-internal data class ResolvedPreviewTileSelectionState(
-    private val selectionState: PreviewTileSelectionState,
-) {
-    val selectedTileIds: Set<DownloadTileId>
-        get() = selectionState.selectedTileIds
 
     val deleteMode: TileDeleteMode
         get() = if (selectedTileIds.isNotEmpty()) {
@@ -66,19 +49,26 @@ internal data class ResolvedPreviewTileSelectionState(
     val deleteTilesActionLabel: String
         get() = deleteMode.actionLabel
 
+    internal fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
+        if (tile?.hasCachedCoverage != true) {
+            return this
+        }
+        return copy(selectedTileIds = tile.toggledSelection(selectedTileIds))
+    }
+
     fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
         if (tile == null) {
-            return PreviewTileTapResult(selectionState)
+            return PreviewTileTapResult(this)
         }
         return if (selectionModeActive) {
-            PreviewTileTapResult(selectionState.toggleCachedTile(tile))
+            PreviewTileTapResult(toggleCachedTile(tile))
         } else if (tile.hasCachedCoverage) {
-            PreviewTileTapResult(selectionState)
+            PreviewTileTapResult(this)
         } else if (tile.downloadRequests.isEmpty()) {
-            PreviewTileTapResult(selectionState)
+            PreviewTileTapResult(this)
         } else {
             PreviewTileTapResult(
-                selectionState = selectionState,
+                selectionState = this,
                 downloadRequest = PreviewTileDownloadRequest(
                     tileRequests = tile.downloadRequests,
                 ),
@@ -87,25 +77,25 @@ internal data class ResolvedPreviewTileSelectionState(
     }
 
     fun onLongPress(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        return selectionState.toggleCachedTile(tile)
+        return toggleCachedTile(tile)
     }
 }
 
 internal data class ResolvedPreviewTileUiState(
     private val uiState: PreviewTileUiState,
-    private val resolvedSelection: ResolvedPreviewTileSelectionState,
+    private val selectionState: PreviewTileSelectionState,
 ) {
     val selectedTileIds: Set<DownloadTileId>
-        get() = resolvedSelection.selectedTileIds
+        get() = selectionState.selectedTileIds
 
     val deleteTilesActionLabel: String
-        get() = resolvedSelection.deleteTilesActionLabel
+        get() = selectionState.deleteTilesActionLabel
 
     val pendingDeletePlan: TileDeletePlan?
         get() = uiState.pendingDeletePlan
 
     fun onTap(tile: TileGridDisplayTile?): PreviewTileTapTransition {
-        val tapResult = resolvedSelection.onTap(tile)
+        val tapResult = selectionState.onTap(tile)
         return PreviewTileTapTransition(
             uiState = uiState.copy(selectionState = tapResult.selectionState),
             downloadRequest = tapResult.downloadRequest,
@@ -114,7 +104,7 @@ internal data class ResolvedPreviewTileUiState(
 
     fun onLongPress(tile: TileGridDisplayTile?): PreviewTileUiState {
         return uiState.copy(
-            selectionState = resolvedSelection.onLongPress(tile),
+            selectionState = selectionState.onLongPress(tile),
         )
     }
 
