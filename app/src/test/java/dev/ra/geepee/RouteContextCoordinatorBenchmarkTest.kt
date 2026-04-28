@@ -12,7 +12,7 @@ class RouteContextCoordinatorBenchmarkTest {
         val sourcePack = loadCoordinatorBenchmarkTileFixture("tile-context/10-571-356-local.json")
         val routeModel = loadCoordinatorBenchmarkRouteModel()
 
-        val coldRouteContextNanos = benchmarkCoordinatorNanos(iterations = 5) {
+        val coldRouteContextNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
                 prefix = "geepee-route-context-coordinator-bench",
                 sourcePack = sourcePack,
@@ -43,7 +43,7 @@ class RouteContextCoordinatorBenchmarkTest {
             )
             try {
                 awaitRouteContextRebuild(coordinator, routeModel)
-                benchmarkCoordinatorNanos(iterations = 100) {
+                benchmarkNanos(iterations = 100) {
                     awaitRouteContextRebuild(coordinator, routeModel)
                 }
             } finally {
@@ -54,8 +54,8 @@ class RouteContextCoordinatorBenchmarkTest {
         println(
             buildString {
                 appendLine("ROUTE_CONTEXT_COORDINATOR_BENCH tile=${sourcePack.tileId.cacheKey}")
-                appendLine("ROUTE_CONTEXT_COORDINATOR_BENCH cold_rebuild_avg_ms=${formatCoordinatorMillis(coldRouteContextNanos)}")
-                appendLine("ROUTE_CONTEXT_COORDINATOR_BENCH warm_rebuild_avg_ms=${formatCoordinatorMillis(warmRouteContextNanos)}")
+                appendLine("ROUTE_CONTEXT_COORDINATOR_BENCH cold_rebuild_avg_ms=${formatBenchmarkMillis(coldRouteContextNanos)}")
+                appendLine("ROUTE_CONTEXT_COORDINATOR_BENCH warm_rebuild_avg_ms=${formatBenchmarkMillis(warmRouteContextNanos)}")
             },
         )
     }
@@ -86,7 +86,7 @@ class RouteContextCoordinatorBenchmarkTest {
             ),
         )
 
-        val coldNearbyWayNanos = benchmarkCoordinatorNanos(iterations = 5) {
+        val coldNearbyWayNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
                 prefix = "geepee-route-context-coordinator-bench",
                 sourcePack = sourcePack,
@@ -129,7 +129,7 @@ class RouteContextCoordinatorBenchmarkTest {
                     tileDownloads = tileDownloads,
                     focusWindowWidthMeters = 1_000.0,
                 )
-                benchmarkCoordinatorNanos(iterations = 100) {
+                benchmarkNanos(iterations = 100) {
                     awaitNearbyWayRebuild(
                         coordinator = coordinator,
                         routeModel = routeModel,
@@ -147,26 +147,11 @@ class RouteContextCoordinatorBenchmarkTest {
         println(
             buildString {
                 appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH tile=${sourcePack.tileId.cacheKey}")
-                appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH cold_rebuild_avg_ms=${formatCoordinatorMillis(coldNearbyWayNanos)}")
-                appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH warm_rebuild_avg_ms=${formatCoordinatorMillis(warmNearbyWayNanos)}")
+                appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH cold_rebuild_avg_ms=${formatBenchmarkMillis(coldNearbyWayNanos)}")
+                appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH warm_rebuild_avg_ms=${formatBenchmarkMillis(warmNearbyWayNanos)}")
             },
         )
     }
-}
-
-private fun benchmarkCoordinatorNanos(
-    iterations: Int,
-    block: () -> Unit,
-): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
-}
-
-private fun formatCoordinatorMillis(nanos: Long): String {
-    return "%.3f".format(nanos / 1_000_000.0)
 }
 
 private fun awaitRouteContextRebuild(

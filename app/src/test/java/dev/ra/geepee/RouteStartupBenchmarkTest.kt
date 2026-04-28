@@ -32,16 +32,16 @@ class RouteStartupBenchmarkTest {
         }
         check(warmupRuntime.currentAnalysis != null)
 
-        val applyWithoutFixNanos = startupBenchmarkNanos(iterations = 30) {
+        val applyWithoutFixNanos = benchmarkNanos(iterations = 30) {
             val runtime = RouteRuntimeState()
             runtime.applyRoute(route)
         }
-        val applyWithOnRouteFixNanos = startupBenchmarkNanos(iterations = 12) {
+        val applyWithOnRouteFixNanos = benchmarkNanos(iterations = 12) {
             val runtime = RouteRuntimeState()
             runtime.acceptFix(onRouteFix, sessionActive = true, batterySaverEnabled = true)
             runtime.applyRoute(route)
         }
-        val applyWithFarFixNanos = startupBenchmarkNanos(iterations = 12) {
+        val applyWithFarFixNanos = benchmarkNanos(iterations = 12) {
             val runtime = RouteRuntimeState()
             runtime.acceptFix(farFix, sessionActive = true, batterySaverEnabled = true)
             runtime.applyRoute(route)
@@ -50,27 +50,12 @@ class RouteStartupBenchmarkTest {
         println(
             buildString {
                 appendLine("STARTUP_BENCH route_points=${route.pointCount} route_edges=${route.edges.size}")
-                appendLine("STARTUP_BENCH apply_without_fix_ms=${startupFormatNanosMillis(applyWithoutFixNanos)}")
-                appendLine("STARTUP_BENCH apply_with_on_route_fix_ms=${startupFormatNanosMillis(applyWithOnRouteFixNanos)}")
-                appendLine("STARTUP_BENCH apply_with_far_fix_ms=${startupFormatNanosMillis(applyWithFarFixNanos)}")
+                appendLine("STARTUP_BENCH apply_without_fix_ms=${formatBenchmarkMillis(applyWithoutFixNanos)}")
+                appendLine("STARTUP_BENCH apply_with_on_route_fix_ms=${formatBenchmarkMillis(applyWithOnRouteFixNanos)}")
+                appendLine("STARTUP_BENCH apply_with_far_fix_ms=${formatBenchmarkMillis(applyWithFarFixNanos)}")
             },
         )
     }
-}
-
-private fun startupBenchmarkNanos(
-    iterations: Int,
-    block: () -> Unit,
-): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
-}
-
-private fun startupFormatNanosMillis(nanos: Long): String {
-    return "%.3f".format(nanos / 1_000_000.0)
 }
 
 private fun loadTiszaRouteModelForStartupBench(): RouteModel {

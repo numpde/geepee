@@ -162,11 +162,7 @@ internal fun benchmarkRouteMapInfoNanos(
     iterations: Int,
     block: () -> Unit,
 ): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
+    return benchmarkNanos(iterations = iterations, block = block)
 }
 
 internal fun requireRouteMapInfoBenchmarkOptIn() {

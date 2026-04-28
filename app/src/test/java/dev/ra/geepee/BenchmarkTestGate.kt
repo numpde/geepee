@@ -13,3 +13,18 @@ internal fun requireBenchmarkOptIn() {
         propertyEnabled || envEnabled,
     )
 }
+
+internal fun benchmarkNanos(
+    iterations: Int,
+    block: () -> Unit,
+): Long {
+    val startedAt = System.nanoTime()
+    repeat(iterations) {
+        block()
+    }
+    return (System.nanoTime() - startedAt) / iterations.toLong()
+}
+
+internal fun formatBenchmarkMillis(nanos: Long): String {
+    return "%.3f".format(nanos / 1_000_000.0)
+}

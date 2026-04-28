@@ -97,28 +97,13 @@ class TileContextBenchmarkTest {
                 appendLine("TILE_BENCH zoomed_visible_tiles=${zoomedModel.tiles.size} zoomed_labeled_tiles=${zoomedModel.tiles.count { it.label != null }}")
                 appendLine("TILE_BENCH full_route_polylines=${fullRouteRender.gradientPolylines.size} full_route_draw_segments=${fullRouteRender.gradientPolylines.sumOf { max(0, it.points.size - 1) }}")
                 appendLine("TILE_BENCH simplified_route_draw_segments=$simplifiedRouteDrawSegments")
-                appendLine("TILE_BENCH index_avg_ms=${formatNanosMillis(indexNanos)}")
-                appendLine("TILE_BENCH full_frame_avg_ms=${formatNanosMillis(fullOverviewNanos)}")
-                appendLine("TILE_BENCH zoomed_frame_avg_ms=${formatNanosMillis(zoomedOverviewNanos)}")
-                appendLine("TILE_BENCH full_route_render_avg_ms=${formatNanosMillis(fullRouteRenderNanos)}")
+                appendLine("TILE_BENCH index_avg_ms=${formatBenchmarkMillis(indexNanos)}")
+                appendLine("TILE_BENCH full_frame_avg_ms=${formatBenchmarkMillis(fullOverviewNanos)}")
+                appendLine("TILE_BENCH zoomed_frame_avg_ms=${formatBenchmarkMillis(zoomedOverviewNanos)}")
+                appendLine("TILE_BENCH full_route_render_avg_ms=${formatBenchmarkMillis(fullRouteRenderNanos)}")
             },
         )
     }
-}
-
-private fun benchmarkNanos(
-    iterations: Int,
-    block: () -> Unit,
-): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
-}
-
-private fun formatNanosMillis(nanos: Long): String {
-    return "%.3f".format(nanos / 1_000_000.0)
 }
 
 private fun loadTiszaRouteModel(): RouteModel {

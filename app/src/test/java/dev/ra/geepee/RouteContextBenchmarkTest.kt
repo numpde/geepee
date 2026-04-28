@@ -44,27 +44,12 @@ class RouteContextBenchmarkTest {
         println(
             buildString {
                 appendLine("ROUTE_CONTEXT_BENCH packs=${packs.size}")
-                appendLine("ROUTE_CONTEXT_BENCH parse_avg_ms=${formatBenchMillis(parseNanos)}")
-                appendLine("ROUTE_CONTEXT_BENCH routeTiles=${routeTiles.size} route_tiles_avg_ms=${formatBenchMillis(routeTilesNanos)}")
-                appendLine("ROUTE_CONTEXT_BENCH pois=${context.pois.size} nearbyWays=${context.nearbyWays.size} context_avg_ms=${formatBenchMillis(contextNanos)}")
+                appendLine("ROUTE_CONTEXT_BENCH parse_avg_ms=${formatBenchmarkMillis(parseNanos)}")
+                appendLine("ROUTE_CONTEXT_BENCH routeTiles=${routeTiles.size} route_tiles_avg_ms=${formatBenchmarkMillis(routeTilesNanos)}")
+                appendLine("ROUTE_CONTEXT_BENCH pois=${context.pois.size} nearbyWays=${context.nearbyWays.size} context_avg_ms=${formatBenchmarkMillis(contextNanos)}")
             },
         )
     }
-}
-
-private fun benchmarkNanos(
-    iterations: Int,
-    block: () -> Unit,
-): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
-}
-
-private fun formatBenchMillis(nanos: Long): String {
-    return "%.3f".format(nanos / 1_000_000.0)
 }
 
 private fun loadBenchmarkTiszaRouteModel(): RouteModel {

@@ -22,7 +22,7 @@ class RouteContextRuntimePathBenchmarkTest {
             ) ?: routeModel.bounds,
         )
 
-        val coldRuntimeLoadNanos = benchmarkRuntimePathNanos(iterations = 5) {
+        val coldRuntimeLoadNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
                 prefix = "geepee-runtime-path-bench",
                 sourcePack = sourcePack,
@@ -31,7 +31,7 @@ class RouteContextRuntimePathBenchmarkTest {
             }
         }
 
-        val coldOverlayBuildNanos = benchmarkRuntimePathNanos(iterations = 5) {
+        val coldOverlayBuildNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
                 prefix = "geepee-runtime-path-bench",
                 sourcePack = sourcePack,
@@ -57,7 +57,7 @@ class RouteContextRuntimePathBenchmarkTest {
                     config = DefaultTileContextConfig,
                 ),
             )
-            val warmOverlayLoadNanos = benchmarkRuntimePathNanos(iterations = 100) {
+            val warmOverlayLoadNanos = benchmarkNanos(iterations = 100) {
                 requireNotNull(
                     repository.loadRouteTileOverlayBundle(
                         routeModel = routeModel,
@@ -66,7 +66,7 @@ class RouteContextRuntimePathBenchmarkTest {
                     ),
                 )
             }
-            val warmNearbyWayQueryNanos = benchmarkRuntimePathNanos(iterations = 100) {
+            val warmNearbyWayQueryNanos = benchmarkNanos(iterations = 100) {
                 queryRouteTileOverlayNearbyWays(
                     routeModel = routeModel,
                     bundle = bundle,
@@ -83,10 +83,10 @@ class RouteContextRuntimePathBenchmarkTest {
         println(
             buildString {
                 appendLine("RUNTIME_PATH_BENCH tile=${sourcePack.tileId.cacheKey}")
-                appendLine("RUNTIME_PATH_BENCH cold_runtime_load_avg_ms=${formatRuntimePathMillis(coldRuntimeLoadNanos)}")
-                appendLine("RUNTIME_PATH_BENCH cold_overlay_build_avg_ms=${formatRuntimePathMillis(coldOverlayBuildNanos)}")
-                appendLine("RUNTIME_PATH_BENCH warm_overlay_load_avg_ms=${formatRuntimePathMillis(warmMetrics.overlayLoadNanos)}")
-                appendLine("RUNTIME_PATH_BENCH warm_nearby_query_avg_ms=${formatRuntimePathMillis(warmMetrics.nearbyWayQueryNanos)}")
+                appendLine("RUNTIME_PATH_BENCH cold_runtime_load_avg_ms=${formatBenchmarkMillis(coldRuntimeLoadNanos)}")
+                appendLine("RUNTIME_PATH_BENCH cold_overlay_build_avg_ms=${formatBenchmarkMillis(coldOverlayBuildNanos)}")
+                appendLine("RUNTIME_PATH_BENCH warm_overlay_load_avg_ms=${formatBenchmarkMillis(warmMetrics.overlayLoadNanos)}")
+                appendLine("RUNTIME_PATH_BENCH warm_nearby_query_avg_ms=${formatBenchmarkMillis(warmMetrics.nearbyWayQueryNanos)}")
             },
         )
     }
@@ -96,21 +96,6 @@ private data class RuntimePathWarmMetrics(
     val overlayLoadNanos: Long,
     val nearbyWayQueryNanos: Long,
 )
-
-private fun benchmarkRuntimePathNanos(
-    iterations: Int,
-    block: () -> Unit,
-): Long {
-    val startedAt = System.nanoTime()
-    repeat(iterations) {
-        block()
-    }
-    return (System.nanoTime() - startedAt) / iterations.toLong()
-}
-
-private fun formatRuntimePathMillis(nanos: Long): String {
-    return "%.3f".format(nanos / 1_000_000.0)
-}
 
 private fun loadRuntimePathTileFixture(path: String): TileContextPack {
     return loadRouteMapInfoTileFixture(path)
