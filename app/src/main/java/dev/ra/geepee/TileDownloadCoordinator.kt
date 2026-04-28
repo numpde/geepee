@@ -5,6 +5,9 @@ import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
+
+private const val TILE_DOWNLOAD_CONCURRENCY = 2
 
 internal sealed interface TileDownloadUpdate {
     data class Progress(
@@ -23,13 +26,38 @@ internal sealed interface TileDownloadUpdate {
     data object Cancelled : TileDownloadUpdate
 }
 
+internal fun interface TileDownloadWorker {
+    fun download(
+        tileId: DownloadTileId,
+        onProgress: (downloadedBytes: Long, actualBytes: Long?) -> Unit,
+        cancellation: TileDownloadCancellation,
+    ): TileDownloadSnapshot
+}
+
 internal class TileDownloadCoordinator(
-    private val tileContextRepository: TileContextRepository,
-    private val tileContextConfig: TileContextConfig,
+    private val downloadWorker: TileDownloadWorker,
     private val callbackExecutor: Executor,
     private val logTag: String,
 ) {
-    private val tileDownloadExecutor: ExecutorService = Executors.newCachedThreadPool()
+    constructor(
+        tileContextRepository: TileContextRepository,
+        tileContextConfig: TileContextConfig,
+        callbackExecutor: Executor,
+        logTag: String,
+    ) : this(
+        downloadWorker = TileDownloadWorker { tileId, onProgress, cancellation ->
+            tileContextRepository.downloadTile(
+                tileId = tileId,
+                config = tileContextConfig,
+                cancellation = cancellation,
+                onProgress = onProgress,
+            )
+        },
+        callbackExecutor = callbackExecutor,
+        logTag = logTag,
+    )
+
+    private val tileDownloadExecutor: ExecutorService = Executors.newFixedThreadPool(TILE_DOWNLOAD_CONCURRENCY)
 
     private var nextRequestId = 1L
     private val activeDownloads = linkedMapOf<DownloadTileId, ActiveTileDownload>()
@@ -41,13 +69,11 @@ internal class TileDownloadCoordinator(
     ) {
         val requestId = synchronized(this) { nextRequestId++ }
         val cancellation = TileDownloadCancellation()
-        val future = tileDownloadExecutor.submit {
+        val future = FutureTask {
             try {
-                val cachedSnapshot = tileContextRepository.downloadTile(
+                val cachedSnapshot = downloadWorker.download(
                     tileId = tileId,
-                    config = tileContextConfig,
-                    cancellation = cancellation,
-                ) { downloadedBytes, contentLengthBytes ->
+                    onProgress = { downloadedBytes, contentLengthBytes ->
                     dispatchProgressIfActive(
                         tileId = tileId,
                         requestId = requestId,
@@ -57,7 +83,9 @@ internal class TileDownloadCoordinator(
                         ),
                         onUpdate = onUpdate,
                     )
-                }
+                    },
+                    cancellation = cancellation,
+                )
                 dispatchTerminalIfActive(
                     tileId = tileId,
                     requestId = requestId,
@@ -82,13 +110,19 @@ internal class TileDownloadCoordinator(
                 )
             }
         }
-        synchronized(this) {
-            activeDownloads[tileId] = ActiveTileDownload(
-                requestId = requestId,
-                cancellation = cancellation,
-                future = future,
+        val previousActiveDownload = synchronized(this) {
+            activeDownloads.put(
+                tileId,
+                ActiveTileDownload(
+                    requestId = requestId,
+                    cancellation = cancellation,
+                    future = future,
+                ),
             )
         }
+        previousActiveDownload?.cancellation?.cancel()
+        previousActiveDownload?.future?.cancel(true)
+        tileDownloadExecutor.execute(future)
     }
 
     fun cancelDownload(

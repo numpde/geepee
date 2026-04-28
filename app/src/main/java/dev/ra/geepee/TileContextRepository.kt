@@ -24,6 +24,7 @@ private const val TILE_CONTEXT_SCHEMA_VERSION = 1
 private const val OVERPASS_CONNECT_TIMEOUT_MILLIS = 20_000
 private const val OVERPASS_READ_TIMEOUT_MILLIS = 90_000
 private const val OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+private const val MAX_TILE_DOWNLOAD_BYTES = 12L * 1024L * 1024L
 private const val TILE_CONTEXT_REPOSITORY_LOG_TAG = "TileContextRepository"
 private const val TILE_RUNTIME_MEMORY_CACHE_LIMIT = 32
 private const val ROUTE_TILE_OVERLAY_MEMORY_CACHE_LIMIT = 96
@@ -363,6 +364,7 @@ internal class TileContextRepository(
             }
 
             val contentLength = connection.contentLengthLong.takeIf { it > 0L }
+            ensureTileDownloadWithinSizeLimit(contentLength ?: 0L, limitBytes = MAX_TILE_DOWNLOAD_BYTES)
             var downloadedBytes = 0L
             val responseBytes = ByteArrayOutputStream()
 
@@ -376,6 +378,7 @@ internal class TileContextRepository(
                     }
                     responseBytes.write(buffer, 0, read)
                     downloadedBytes += read.toLong()
+                    ensureTileDownloadWithinSizeLimit(downloadedBytes, limitBytes = MAX_TILE_DOWNLOAD_BYTES)
                     onProgress(downloadedBytes, contentLength)
                 }
             }
@@ -691,6 +694,24 @@ internal class TileContextRepository(
             out body geom($south,$west,$north,$east);
         """.trimIndent()
     }
+}
+
+internal fun ensureTileDownloadWithinSizeLimit(
+    byteCount: Long,
+    limitBytes: Long,
+) {
+    if (byteCount <= 0L) {
+        return
+    }
+    if (byteCount > limitBytes) {
+        throw IOException(
+            "Tile response too large (${formatTileDownloadMegabytes(byteCount)} > ${formatTileDownloadMegabytes(limitBytes)})",
+        )
+    }
+}
+
+private fun formatTileDownloadMegabytes(bytes: Long): String {
+    return String.format("%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
 }
 
 private data class RouteTileOverlayCacheKey(

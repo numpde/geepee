@@ -129,7 +129,7 @@ internal data class TileDownloadSnapshot(
     val progressFraction: Float?
         get() = if (status == TileDownloadStatus.Downloading) {
             val denominator = max(actualBytes ?: estimatedBytes, 1L)
-            (downloadedBytes.toDouble() / denominator.toDouble()).coerceIn(0.0, 0.99).toFloat()
+            (downloadedBytes.toDouble() / denominator.toDouble()).coerceIn(0.0, 1.0).toFloat()
         } else {
             null
         }

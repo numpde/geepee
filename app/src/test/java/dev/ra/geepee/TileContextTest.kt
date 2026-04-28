@@ -334,6 +334,34 @@ class TileContextTest {
         assertTrue(renderModel.tiles.any { it.tileId == routeMetrics.keys.first() && it.selected })
     }
 
+    @Test
+    fun downloadingSnapshotCanReachFullProgress() {
+        val snapshot = TileDownloadSnapshot(
+            status = TileDownloadStatus.Downloading,
+            estimatedBytes = 100L,
+            downloadedBytes = 100L,
+            actualBytes = 100L,
+        )
+
+        assertEquals(1.0f, snapshot.progressFraction ?: 0f, 0.0001f)
+    }
+
+    @Test
+    fun oversizedTileDownloadFailsBeforeBufferingUnboundedData() {
+        ensureTileDownloadWithinSizeLimit(
+            byteCount = 1024L,
+            limitBytes = 2048L,
+        )
+
+        assertThrows(java.io.IOException::class.java) {
+            ensureTileDownloadWithinSizeLimit(
+                byteCount = 2049L,
+                limitBytes = 2048L,
+            )
+        }
+    }
+
+    @Test
     fun buildRouteTileMetricsIndexContainsOnlyIntersectingTiles() {
         val route = buildRouteModel(
             listOf(
