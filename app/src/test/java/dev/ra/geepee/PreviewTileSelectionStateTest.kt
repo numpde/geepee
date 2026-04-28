@@ -184,6 +184,45 @@ class PreviewTileSelectionStateTest {
     }
 
     @Test
+    fun onTapOnPartiallySelectedTileSelectsRemainingCachedCoverageThenClearsIt() {
+        val firstTileId = DownloadTileId(zoom = 10, x = 1, y = 2)
+        val secondTileId = DownloadTileId(zoom = 10, x = 1, y = 3)
+        val tile = TileGridDisplayTile(
+            tileId = DownloadTileId(zoom = 9, x = 0, y = 1),
+            screenRect = ScreenRect(0f, 0f, 20f, 20f),
+            routeMetrics = TileRouteMetrics(
+                intersectsRoute = true,
+                intersectingEdgeCount = 1,
+                intersectingRouteMeters = 100.0,
+            ),
+            downloadState = TileGridDownloadState.Partial,
+            progressFraction = null,
+            cachedCoverageTiles = listOf(
+                TileCoverageRect(firstTileId, ScreenRect(0f, 0f, 10f, 20f)),
+                TileCoverageRect(secondTileId, ScreenRect(10f, 0f, 20f, 20f)),
+            ),
+            selectedCachedTileIds = setOf(firstTileId),
+            downloadRequests = emptyList(),
+            estimatedBytes = 100_000L,
+            label = null,
+        )
+        val tileSnapshots = mapOf(
+            firstTileId to TileDownloadSnapshot(status = TileDownloadStatus.Cached, estimatedBytes = 50_000L),
+            secondTileId to TileDownloadSnapshot(status = TileDownloadStatus.Cached, estimatedBytes = 50_000L),
+        )
+
+        val fullySelected = PreviewTileSelectionState(setOf(firstTileId))
+            .resolve(tileSnapshots)
+            .onTap(tile)
+        assertEquals(setOf(firstTileId, secondTileId), fullySelected.selectionState.selectedTileIds)
+
+        val cleared = fullySelected.selectionState
+            .resolve(tileSnapshots)
+            .onTap(tile)
+        assertEquals(emptySet<DownloadTileId>(), cleared.selectionState.selectedTileIds)
+    }
+
+    @Test
     fun onTapOnUncachedTileDoesNothingDuringSelectionMode() {
         val cachedTile = previewTile(
             tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
@@ -289,14 +328,13 @@ private fun previewTile(
             null -> null
         },
         progressFraction = null,
-        cachedTileIds = if (status == TileDownloadStatus.Cached) setOf(tileId) else emptySet(),
-        cachedCoverageRects = if (status == TileDownloadStatus.Cached) {
-            listOf(ScreenRect(0f, 0f, 10f, 10f))
+        cachedCoverageTiles = if (status == TileDownloadStatus.Cached) {
+            listOf(TileCoverageRect(tileId = tileId, screenRect = ScreenRect(0f, 0f, 10f, 10f)))
         } else {
             emptyList()
         },
+        selectedCachedTileIds = emptySet(),
         downloadRequests = downloadRequests,
-        selected = false,
         estimatedBytes = estimatedBytes,
         label = null,
     )

@@ -64,6 +64,7 @@ private fun DrawScope.drawTileCell(
     val size = Size(rect.width, rect.height)
     val cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
     val state = tile.downloadState
+    val selectionState = tile.selectionState
 
     val showFills = visualStyle == TileGridVisualStyle.Preview
     val showProgress = visualStyle == TileGridVisualStyle.Preview
@@ -83,9 +84,10 @@ private fun DrawScope.drawTileCell(
     }
 
     val stateFill = if (showFills) {
-        when {
-            tile.selected -> colors.nearbyWay.copy(alpha = 0.06f)
-            else -> when (state) {
+        when (selectionState) {
+            TileGridSelectionState.FullySelected -> colors.nearbyWay.copy(alpha = 0.06f)
+            TileGridSelectionState.PartiallySelected -> colors.nearbyWay.copy(alpha = 0.035f)
+            TileGridSelectionState.Unselected -> when (state) {
                 TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
                 TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.1f)
                 TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.06f)
@@ -106,10 +108,10 @@ private fun DrawScope.drawTileCell(
     }
 
     if (showFills && tile.cachedCoverageRects.isNotEmpty()) {
-        val coverageFill = when {
-            tile.selected -> colors.onRoute.copy(alpha = 0.18f)
-            state == TileGridDownloadState.Downloading -> colors.onRoute.copy(alpha = 0.18f)
-            else -> colors.onRoute.copy(alpha = 0.16f)
+        val coverageFill = if (state == TileGridDownloadState.Downloading) {
+            colors.onRoute.copy(alpha = 0.18f)
+        } else {
+            colors.onRoute.copy(alpha = 0.16f)
         }
         tile.cachedCoverageRects.forEach { coverageRect ->
             drawRect(
@@ -118,11 +120,26 @@ private fun DrawScope.drawTileCell(
                 size = Size(coverageRect.width, coverageRect.height),
             )
         }
+        val selectedCoverageFill = when (selectionState) {
+            TileGridSelectionState.FullySelected -> colors.nearbyWay.copy(alpha = 0.12f)
+            TileGridSelectionState.PartiallySelected -> colors.nearbyWay.copy(alpha = 0.1f)
+            TileGridSelectionState.Unselected -> Color.Transparent
+        }
+        if (selectedCoverageFill.alpha > 0f) {
+            tile.selectedCoverageRects.forEach { coverageRect ->
+                drawRect(
+                    color = selectedCoverageFill,
+                    topLeft = Offset(coverageRect.left, coverageRect.top),
+                    size = Size(coverageRect.width, coverageRect.height),
+                )
+            }
+        }
     }
 
-    val borderColor = when {
-        tile.selected -> colors.nearbyWay.copy(alpha = 0.76f)
-        else -> when (state) {
+    val borderColor = when (selectionState) {
+        TileGridSelectionState.FullySelected -> colors.nearbyWay.copy(alpha = 0.76f)
+        TileGridSelectionState.PartiallySelected -> colors.nearbyWay.copy(alpha = 0.58f)
+        TileGridSelectionState.Unselected -> when (state) {
             TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
             TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.52f)
             TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.36f)
@@ -142,7 +159,8 @@ private fun DrawScope.drawTileCell(
         style = Stroke(
             width = when (visualStyle) {
                 TileGridVisualStyle.Preview -> when {
-                    tile.selected -> 2.2.dp.toPx()
+                    selectionState == TileGridSelectionState.FullySelected -> 2.2.dp.toPx()
+                    selectionState == TileGridSelectionState.PartiallySelected -> 1.8.dp.toPx()
                     tile.routeMetrics.intersectsRoute -> 1.5.dp.toPx()
                     else -> 0.8.dp.toPx()
                 }

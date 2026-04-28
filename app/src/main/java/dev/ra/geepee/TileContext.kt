@@ -262,6 +262,12 @@ internal enum class TileGridDownloadState {
     Error,
 }
 
+internal enum class TileGridSelectionState {
+    Unselected,
+    PartiallySelected,
+    FullySelected,
+}
+
 private val EmptyTileRouteMetrics = TileRouteMetrics(
     intersectsRoute = false,
     intersectingEdgeCount = 0,
@@ -275,12 +281,37 @@ internal data class TileGridDisplayTile(
     val routeMetrics: TileRouteMetrics,
     val downloadState: TileGridDownloadState?,
     val progressFraction: Float?,
-    val cachedTileIds: Set<DownloadTileId>,
-    val cachedCoverageRects: List<ScreenRect>,
+    val cachedCoverageTiles: List<TileCoverageRect>,
+    val selectedCachedTileIds: Set<DownloadTileId>,
     val downloadRequests: List<TileDownloadRequest>,
-    val selected: Boolean,
     val estimatedBytes: Long,
     val label: String?,
+) {
+    val cachedTileIds: Set<DownloadTileId>
+        get() = cachedCoverageTiles.mapTo(linkedSetOf(), TileCoverageRect::tileId)
+
+    val cachedCoverageRects: List<ScreenRect>
+        get() = cachedCoverageTiles.map(TileCoverageRect::screenRect)
+
+    val selectedCoverageRects: List<ScreenRect>
+        get() = cachedCoverageTiles
+            .filter { coverageTile -> coverageTile.tileId in selectedCachedTileIds }
+            .map(TileCoverageRect::screenRect)
+
+    val selectionState: TileGridSelectionState
+        get() = when {
+            selectedCachedTileIds.isEmpty() -> TileGridSelectionState.Unselected
+            selectedCachedTileIds.size == cachedCoverageTiles.size -> TileGridSelectionState.FullySelected
+            else -> TileGridSelectionState.PartiallySelected
+        }
+
+    val selected: Boolean
+        get() = selectionState == TileGridSelectionState.FullySelected
+}
+
+internal data class TileCoverageRect(
+    val tileId: DownloadTileId,
+    val screenRect: ScreenRect,
 )
 
 internal data class TileGridRenderModel(
@@ -520,7 +551,7 @@ internal fun buildTileGridRenderModel(
         val downloadState = resolveDisplayTileDownloadState(
             downloadRequests = representation.downloadRequests,
             tileSnapshots = tileSnapshots,
-            hasCachedCoverage = representation.cachedCoverage.cachedTileIds.isNotEmpty(),
+            hasCachedCoverage = representation.cachedCoverage.coverageTiles.isNotEmpty(),
         )
         if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
             return@mapNotNull null
@@ -537,11 +568,11 @@ internal fun buildTileGridRenderModel(
             routeMetrics = routeMetrics,
             downloadState = downloadState.state,
             progressFraction = downloadState.progressFraction,
-            cachedTileIds = representation.cachedCoverage.cachedTileIds,
-            cachedCoverageRects = representation.cachedCoverage.cachedCoverageRects,
+            cachedCoverageTiles = representation.cachedCoverage.coverageTiles,
+            selectedCachedTileIds = representation.cachedCoverage.coverageTiles
+                .mapTo(linkedSetOf()) { coverageTile -> coverageTile.tileId }
+                .intersect(selectedTileIds),
             downloadRequests = representation.downloadRequests,
-            selected = representation.cachedCoverage.cachedTileIds.isNotEmpty() &&
-                representation.cachedCoverage.cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
             label = tileLabel(
                 routeMetrics = routeMetrics,
@@ -606,14 +637,18 @@ private fun resolveDisplayTileRepresentation(
     return DisplayTileRepresentation(
         downloadRequests = representedDownloadRequests,
         cachedCoverage = DisplayTileCoverage(
-            cachedTileIds = cachedTileIds,
-            cachedCoverageRects = cachedTileIds.mapNotNull { cachedTileId ->
+            coverageTiles = cachedTileIds.mapNotNull { cachedTileId ->
                 cachedTileId.screenRectInViewport(
                     routeModel = routeModel,
                     viewBounds = viewBounds,
                     canvasWidth = canvasWidth,
                     canvasHeight = canvasHeight,
-                ).intersect(representedScreenRect)
+                ).intersect(representedScreenRect)?.let { coverageRect ->
+                    TileCoverageRect(
+                        tileId = cachedTileId,
+                        screenRect = coverageRect,
+                    )
+                }
             },
         ),
     )
@@ -698,8 +733,7 @@ private data class ResolvedDisplayTileDownloadState(
 )
 
 private data class DisplayTileCoverage(
-    val cachedTileIds: Set<DownloadTileId>,
-    val cachedCoverageRects: List<ScreenRect>,
+    val coverageTiles: List<TileCoverageRect>,
 )
 
 private data class DisplayTileRepresentation(

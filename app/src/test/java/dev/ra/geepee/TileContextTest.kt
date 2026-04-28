@@ -289,10 +289,9 @@ class TileContextTest {
                     routeMetrics = metrics,
                     downloadState = null,
                     progressFraction = null,
-                    cachedTileIds = emptySet(),
-                    cachedCoverageRects = emptyList(),
+                    cachedCoverageTiles = emptyList(),
+                    selectedCachedTileIds = emptySet(),
                     downloadRequests = emptyList(),
-                    selected = false,
                     estimatedBytes = 0L,
                     label = null,
                 ),
@@ -302,10 +301,9 @@ class TileContextTest {
                     routeMetrics = metrics,
                     downloadState = null,
                     progressFraction = null,
-                    cachedTileIds = emptySet(),
-                    cachedCoverageRects = emptyList(),
+                    cachedCoverageTiles = emptyList(),
+                    selectedCachedTileIds = emptySet(),
                     downloadRequests = emptyList(),
-                    selected = false,
                     estimatedBytes = 0L,
                     label = null,
                 ),
@@ -357,6 +355,52 @@ class TileContextTest {
 
         assertEquals(1, renderModel.tiles.count { it.selected })
         assertTrue(renderModel.tiles.any { it.tileId == selectedTile.tileId && it.selected })
+    }
+
+    @Test
+    fun tileGridRenderModelMarksPartiallySelectedTiles() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val baseModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val selectedTile = baseModel.tiles.first { it.downloadRequests.size >= 2 }
+        val cachedRequests = selectedTile.downloadRequests.take(2)
+        val selectedRequest = cachedRequests.first()
+        val cachedSnapshots = cachedRequests.associate { request ->
+            request.tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = request.estimatedBytes,
+                actualBytes = request.estimatedBytes,
+            )
+        }
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = cachedSnapshots,
+            selectedTileIds = setOf(selectedRequest.tileId),
+        )
+
+        val renderedTile = renderModel.tiles.first { it.tileId == selectedTile.tileId }
+        assertEquals(TileGridSelectionState.PartiallySelected, renderedTile.selectionState)
+        assertFalse(renderedTile.selected)
+        assertEquals(setOf(selectedRequest.tileId), renderedTile.selectedCachedTileIds)
+        assertEquals(1, renderedTile.selectedCoverageRects.size)
     }
 
     @Test
