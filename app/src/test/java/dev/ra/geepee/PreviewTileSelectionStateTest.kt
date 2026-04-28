@@ -197,11 +197,13 @@ class PreviewTileSelectionStateTest {
             ),
             downloadState = TileGridDownloadState.Partial,
             progressFraction = null,
-            cachedCoverageTiles = listOf(
-                TileCoverageRect(firstTileId, ScreenRect(0f, 0f, 10f, 20f)),
-                TileCoverageRect(secondTileId, ScreenRect(10f, 0f, 20f, 20f)),
+            representedCoverage = TileGridRepresentedCoverage(
+                coverageTiles = listOf(
+                    TileCoverageRect(firstTileId, ScreenRect(0f, 0f, 10f, 20f)),
+                    TileCoverageRect(secondTileId, ScreenRect(10f, 0f, 20f, 20f)),
+                ),
+                selectedTileIds = setOf(firstTileId),
             ),
-            selectedCachedTileIds = setOf(firstTileId),
             downloadRequests = emptyList(),
             estimatedBytes = 100_000L,
             label = null,
@@ -328,12 +330,13 @@ private fun previewTile(
             null -> null
         },
         progressFraction = null,
-        cachedCoverageTiles = if (status == TileDownloadStatus.Cached) {
-            listOf(TileCoverageRect(tileId = tileId, screenRect = ScreenRect(0f, 0f, 10f, 10f)))
-        } else {
-            emptyList()
-        },
-        selectedCachedTileIds = emptySet(),
+        representedCoverage = TileGridRepresentedCoverage(
+            coverageTiles = if (status == TileDownloadStatus.Cached) {
+                listOf(TileCoverageRect(tileId = tileId, screenRect = ScreenRect(0f, 0f, 10f, 10f)))
+            } else {
+                emptyList()
+            },
+        ),
         downloadRequests = downloadRequests,
         estimatedBytes = estimatedBytes,
         label = null,
