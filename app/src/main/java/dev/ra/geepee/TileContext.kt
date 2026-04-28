@@ -196,6 +196,13 @@ internal data class ScreenRect(
     ): Boolean {
         return left >= 0f && top >= 0f && right <= width && bottom <= height
     }
+
+    fun fullyContains(
+        width: Float,
+        height: Float,
+    ): Boolean {
+        return left <= 0f && top <= 0f && right >= width && bottom >= height
+    }
 }
 
 internal data class TileRouteMetrics(
@@ -203,6 +210,11 @@ internal data class TileRouteMetrics(
     val intersectingEdgeCount: Int,
     val intersectingRouteMeters: Double,
 )
+
+internal enum class TileGridOutlineStyle {
+    Solid,
+    ViewProxyDashed,
+}
 
 private val EmptyTileRouteMetrics = TileRouteMetrics(
     intersectsRoute = false,
@@ -213,6 +225,7 @@ private val EmptyTileRouteMetrics = TileRouteMetrics(
 internal data class TileGridDisplayTile(
     val tileId: DownloadTileId,
     val screenRect: ScreenRect,
+    val outlineStyle: TileGridOutlineStyle = TileGridOutlineStyle.Solid,
     val routeMetrics: TileRouteMetrics,
     val snapshot: TileDownloadSnapshot?,
     val selected: Boolean,
@@ -400,7 +413,7 @@ internal fun buildTileGridRenderModel(
     val tiles = visibleTileIds.mapNotNull { tileId ->
         val geoBounds = tileGeoBounds(tileId)
         val projectedBounds = projectedBoundsForGeoBounds(geoBounds, routeModel.projection)
-        val screenRect = projectedBoundsToScreenRect(
+        val actualScreenRect = projectedBoundsToScreenRect(
             projectedBounds = projectedBounds,
             viewBounds = bounds,
             canvasWidth = canvasWidth,
@@ -411,11 +424,18 @@ internal fun buildTileGridRenderModel(
         if (!shouldDisplayTileInRouteView(routeMetrics, snapshot)) {
             return@mapNotNull null
         }
+        val (displayRect, outlineStyle) = resolveTileDisplayRect(
+            screenRect = actualScreenRect,
+            routeMetrics = routeMetrics,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+        )
         val estimatedBytes = snapshot?.actualBytes
             ?: estimateTileBytes(routeMetrics, cachedAverageBytes)
         TileGridDisplayTile(
             tileId = tileId,
-            screenRect = screenRect,
+            screenRect = displayRect,
+            outlineStyle = outlineStyle,
             routeMetrics = routeMetrics,
             snapshot = snapshot,
             selected = tileId in selectedTileIds,
@@ -424,12 +444,44 @@ internal fun buildTileGridRenderModel(
                 routeMetrics = routeMetrics,
                 snapshot = snapshot,
                 estimatedBytes = estimatedBytes,
-                minDimensionPx = min(screenRect.width, screenRect.height),
+                minDimensionPx = min(displayRect.width, displayRect.height),
             ),
         )
     }
 
     return TileGridRenderModel(tiles)
+}
+
+private fun resolveTileDisplayRect(
+    screenRect: ScreenRect,
+    routeMetrics: TileRouteMetrics,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): Pair<ScreenRect, TileGridOutlineStyle> {
+    if (
+        routeMetrics.intersectsRoute &&
+        screenRect.fullyContains(width = canvasWidth, height = canvasHeight)
+    ) {
+        return buildViewportProxyTileRect(
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+        ) to TileGridOutlineStyle.ViewProxyDashed
+    }
+    return screenRect to TileGridOutlineStyle.Solid
+}
+
+private fun buildViewportProxyTileRect(
+    canvasWidth: Float,
+    canvasHeight: Float,
+): ScreenRect {
+    val minDimension = min(canvasWidth, canvasHeight)
+    val inset = (minDimension * 0.08f).coerceIn(18f, 56f)
+    return ScreenRect(
+        left = inset,
+        top = inset,
+        right = max(inset, canvasWidth - inset),
+        bottom = max(inset, canvasHeight - inset),
+    )
 }
 
 internal fun buildRouteTileMetricsIndex(

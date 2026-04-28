@@ -10,7 +10,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -120,7 +122,7 @@ private fun DrawScope.drawTileCell(
         topLeft = topLeft,
         size = size,
         cornerRadius = cornerRadius,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(
+        style = Stroke(
             width = when (visualStyle) {
                 TileGridVisualStyle.Preview -> when {
                     tile.selected -> 2.2.dp.toPx()
@@ -128,6 +130,13 @@ private fun DrawScope.drawTileCell(
                     else -> 0.8.dp.toPx()
                 }
                 TileGridVisualStyle.LiveOverlay -> if (tile.routeMetrics.intersectsRoute) 1.dp.toPx() else 0.7.dp.toPx()
+            },
+            pathEffect = if (tile.outlineStyle == TileGridOutlineStyle.ViewProxyDashed) {
+                PathEffect.dashPathEffect(
+                    intervals = floatArrayOf(16.dp.toPx(), 10.dp.toPx()),
+                )
+            } else {
+                null
             },
         ),
     )

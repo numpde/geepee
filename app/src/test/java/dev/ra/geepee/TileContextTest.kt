@@ -153,6 +153,53 @@ class TileContextTest {
     }
 
     @Test
+    fun tileGridRenderModelUsesViewProxyOutlineForOversizedRouteTile() {
+        val anchorTile = DownloadTileId(zoom = 10, x = 512, y = 512)
+        val anchorBounds = tileGeoBounds(anchorTile)
+        val centerLat = (anchorBounds.south + anchorBounds.north) / 2.0
+        val centerLon = (anchorBounds.west + anchorBounds.east) / 2.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = centerLat, lon = centerLon - 0.0001),
+                    GeoPoint(lat = centerLat, lon = centerLon + 0.0001),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            routeTileMetricsById = buildRouteTileMetricsIndex(
+                routeModel = route,
+                config = config,
+            ),
+            bounds = route.bounds,
+            canvasWidth = 400f,
+            canvasHeight = 240f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+
+        val tile = renderModel.tiles.single()
+        assertEquals(anchorTile, tile.tileId)
+        assertEquals(TileGridOutlineStyle.ViewProxyDashed, tile.outlineStyle)
+        assertTrue(tile.screenRect.left > 0f)
+        assertTrue(tile.screenRect.top > 0f)
+        assertTrue(tile.screenRect.right < 400f)
+        assertTrue(tile.screenRect.bottom < 240f)
+        assertEquals(
+            tile.tileId,
+            renderModel.tileAt(
+                ScreenPoint(
+                    x = tile.screenRect.left + tile.screenRect.width / 2f,
+                    y = tile.screenRect.top + tile.screenRect.height / 2f,
+                ),
+            )?.tileId,
+        )
+    }
+
+    @Test
     fun tileGridRenderModelCanFilterToFullyVisibleTiles() {
         val metrics = TileRouteMetrics(
             intersectsRoute = false,
