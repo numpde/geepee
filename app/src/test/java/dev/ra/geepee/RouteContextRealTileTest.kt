@@ -1,9 +1,5 @@
 package dev.ra.geepee
 
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -87,29 +83,9 @@ private fun RouteMapInfoFixture.fixAt(
     index: Int,
     timestampMillis: Long,
 ): LocationFix {
-    val point = geoPoints[index]
-    val previousPoint = geoPoints[maxOf(0, index - 1)]
-    val nextPoint = geoPoints[minOf(geoPoints.lastIndex, index + 1)]
-    return LocationFix(
-        lat = point.lat,
-        lon = point.lon,
-        accuracyMeters = 4f,
-        headingDegrees = bearingDegreesForRealTileTest(previousPoint, nextPoint).toFloat(),
-        speedMetersPerSecond = 4f,
+    return buildRouteFixtureLocationFix(
+        geoPoints = geoPoints,
+        index = index,
         timestampMillis = timestampMillis,
-        bearingAccuracyDegrees = 8f,
     )
-}
-
-private fun bearingDegreesForRealTileTest(
-    start: GeoPoint,
-    end: GeoPoint,
-): Double {
-    val startLat = start.lat * PI / 180.0
-    val endLat = end.lat * PI / 180.0
-    val deltaLon = (end.lon - start.lon) * PI / 180.0
-    val y = sin(deltaLon) * cos(endLat)
-    val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(deltaLon)
-    val bearing = Math.toDegrees(atan2(y, x))
-    return (bearing + 360.0) % 360.0
 }

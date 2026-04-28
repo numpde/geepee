@@ -1,8 +1,6 @@
 package dev.ra.geepee
 
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.random.Random
 import org.junit.Assert.assertNotEquals
@@ -353,7 +351,7 @@ class RouteMatcherTest {
     @Test
     fun matcherHandlesRealTiszaStartHairpinNearOverlap() {
         val fixture = loadRouteMapInfoRouteFixture()
-        val nearOverlapMeters = distanceBetweenGeoPoints(
+        val nearOverlapMeters = distanceBetweenGeoPointsMeters(
             fixture.geoPoints[TISZA_START_HAIRPIN_PRE_APEX_INDEX],
             fixture.geoPoints[TISZA_START_HAIRPIN_RETURN_INDEX],
         )
@@ -471,17 +469,10 @@ private fun RouteMapInfoRouteFixture.fixAt(
     index: Int,
     timestampMillis: Long,
 ): LocationFix {
-    val point = geoPoints[index]
-    val previousPoint = geoPoints[maxOf(0, index - 1)]
-    val nextPoint = geoPoints[minOf(geoPoints.lastIndex, index + 1)]
-    return LocationFix(
-        lat = point.lat,
-        lon = point.lon,
-        accuracyMeters = 4f,
-        headingDegrees = bearingDegrees(previousPoint, nextPoint).toFloat(),
-        speedMetersPerSecond = 4f,
+    return buildRouteFixtureLocationFix(
+        geoPoints = geoPoints,
+        index = index,
         timestampMillis = timestampMillis,
-        bearingAccuracyDegrees = 8f,
     )
 }
 
@@ -507,38 +498,11 @@ private fun RouteMapInfoRouteFixture.noisyFixAt(
             (sigmaMeters * 1.5).toFloat(),
             (((extraOffsetMeters?.let { hypot(it.east, it.north) } ?: 0.0) + sigmaMeters) * 0.9).toFloat(),
         ),
-        headingDegrees = bearingDegrees(previousPoint, nextPoint).toFloat(),
+        headingDegrees = bearingDegreesBetweenGeoPoints(previousPoint, nextPoint).toFloat(),
         speedMetersPerSecond = 4f,
         timestampMillis = timestampMillis,
         bearingAccuracyDegrees = 10f,
     )
-}
-
-private fun distanceBetweenGeoPoints(start: GeoPoint, end: GeoPoint): Double {
-    val startLatRadians = Math.toRadians(start.lat)
-    val endLatRadians = Math.toRadians(end.lat)
-    val deltaX = Math.toRadians(end.lon - start.lon) * cos((startLatRadians + endLatRadians) / 2.0)
-    val deltaY = endLatRadians - startLatRadians
-    return hypot(deltaX, deltaY) * 6_371_000.0
-}
-
-private fun GeoPoint.offsetByMeters(
-    eastMeters: Double,
-    northMeters: Double,
-): GeoPoint {
-    val latRadians = Math.toRadians(lat)
-    val deltaLat = Math.toDegrees(northMeters / 6_371_000.0)
-    val deltaLon = Math.toDegrees(eastMeters / (6_371_000.0 * cos(latRadians)))
-    return GeoPoint(
-        lat = lat + deltaLat,
-        lon = lon + deltaLon,
-    )
-}
-
-private fun bearingDegrees(start: GeoPoint, end: GeoPoint): Double {
-    val deltaLatRadians = Math.toRadians(end.lat - start.lat)
-    val deltaLonRadians = Math.toRadians(end.lon - start.lon)
-    return normalizeDegrees(Math.toDegrees(atan2(deltaLonRadians, deltaLatRadians)))
 }
 
 private fun gaussianMeters(
@@ -549,10 +513,6 @@ private fun gaussianMeters(
     val u2 = random.nextDouble()
     return kotlin.math.sqrt(-2.0 * kotlin.math.ln(u1)) *
         kotlin.math.cos(2.0 * Math.PI * u2) * sigmaMeters
-}
-
-private fun normalizeDegrees(degrees: Double): Double {
-    return ((degrees % 360.0) + 360.0) % 360.0
 }
 
 private fun assertHairpinRun(

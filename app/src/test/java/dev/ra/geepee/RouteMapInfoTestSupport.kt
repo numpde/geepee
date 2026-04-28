@@ -7,6 +7,10 @@ import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 
 internal data class RouteMapInfoFixture(
     val sourcePack: TileContextPack,
@@ -67,6 +71,59 @@ internal fun buildRouteMetersByIndex(routeModel: RouteModel): List<Double> {
     return routeModel.segments.flatMap { segment ->
         segment.cumulativeMeters.map { segment.offsetMeters + it }
     }
+}
+
+internal fun buildRouteFixtureLocationFix(
+    geoPoints: List<GeoPoint>,
+    index: Int,
+    timestampMillis: Long,
+    accuracyMeters: Float = 4f,
+    speedMetersPerSecond: Float = 4f,
+    bearingAccuracyDegrees: Float = 8f,
+): LocationFix {
+    val point = geoPoints[index]
+    val previousPoint = geoPoints[maxOf(0, index - 1)]
+    val nextPoint = geoPoints[minOf(geoPoints.lastIndex, index + 1)]
+    return LocationFix(
+        lat = point.lat,
+        lon = point.lon,
+        accuracyMeters = accuracyMeters,
+        headingDegrees = bearingDegreesBetweenGeoPoints(previousPoint, nextPoint).toFloat(),
+        speedMetersPerSecond = speedMetersPerSecond,
+        timestampMillis = timestampMillis,
+        bearingAccuracyDegrees = bearingAccuracyDegrees,
+    )
+}
+
+internal fun distanceBetweenGeoPointsMeters(start: GeoPoint, end: GeoPoint): Double {
+    val startLatRadians = Math.toRadians(start.lat)
+    val endLatRadians = Math.toRadians(end.lat)
+    val deltaX = Math.toRadians(end.lon - start.lon) * cos((startLatRadians + endLatRadians) / 2.0)
+    val deltaY = endLatRadians - startLatRadians
+    return hypot(deltaX, deltaY) * 6_371_000.0
+}
+
+internal fun GeoPoint.offsetByMeters(
+    eastMeters: Double,
+    northMeters: Double,
+): GeoPoint {
+    val latRadians = Math.toRadians(lat)
+    val deltaLat = Math.toDegrees(northMeters / 6_371_000.0)
+    val deltaLon = Math.toDegrees(eastMeters / (6_371_000.0 * cos(latRadians)))
+    return GeoPoint(
+        lat = lat + deltaLat,
+        lon = lon + deltaLon,
+    )
+}
+
+internal fun bearingDegreesBetweenGeoPoints(start: GeoPoint, end: GeoPoint): Double {
+    val startLat = Math.toRadians(start.lat)
+    val endLat = Math.toRadians(end.lat)
+    val deltaLon = Math.toRadians(end.lon - start.lon)
+    val y = sin(deltaLon) * cos(endLat)
+    val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(deltaLon)
+    val bearing = Math.toDegrees(atan2(y, x))
+    return ((bearing % 360.0) + 360.0) % 360.0
 }
 
 internal fun buildRouteMapInfoFocus(
