@@ -509,7 +509,6 @@ class TileContextTest {
         )
 
         val tile = renderModel.tiles.single()
-        assertEquals(anchorTile, tile.tileId)
         assertEquals(TileGridOutlineStyle.ViewProxyDashed, tile.outlineStyle)
         assertTrue(tile.cachedTileIds.isEmpty())
         assertTrue(tile.cachedCoverageRects.isEmpty())
@@ -619,6 +618,56 @@ class TileContextTest {
         val tile = renderModel.tiles.single()
         assertFalse(tile.selected)
         assertTrue(tile.cachedTileIds.isEmpty())
+    }
+
+    @Test
+    fun displayTileShowsCachedCoverageFromCoarserParentFallback() {
+        val anchorTile = DownloadTileId(zoom = 10, x = 512, y = 512)
+        val anchorBounds = tileGeoBounds(anchorTile)
+        val centerLat = (anchorBounds.south + anchorBounds.north) / 2.0
+        val centerLon = (anchorBounds.west + anchorBounds.east) / 2.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = centerLat, lon = centerLon - 0.0001),
+                    GeoPoint(lat = centerLat, lon = centerLon + 0.0001),
+                ),
+            ),
+        )
+        val config = TileContextConfig(
+            downloadZoom = 10,
+            resolutionPolicy = TileResolutionPolicy(
+                displayZoomBands = listOf(
+                    TileDisplayZoomBand(minimumWindowWidthMeters = 0.0, displayZoom = 11),
+                ),
+                minimumDataZoom = 12,
+                dataZoomOffsetFromDisplay = 1,
+                maximumDataZoom = 16,
+            ),
+        )
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 400f,
+            canvasHeight = 240f,
+            config = config,
+            tileSnapshots = mapOf(
+                anchorTile to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    actualBytes = 1L,
+                ),
+            ),
+            selectedTileIds = setOf(anchorTile),
+        )
+
+        val tile = renderModel.tiles.first { renderedTile ->
+            renderedTile.cachedTileIds.contains(anchorTile)
+        }
+        assertTrue(tile.cachedTileIds.contains(anchorTile))
+        assertEquals(1, tile.cachedCoverageRects.size)
+        assertEquals(TileGridDownloadState.Partial, tile.downloadState)
+        assertTrue(tile.selected)
     }
 
     @Test

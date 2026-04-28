@@ -457,6 +457,12 @@ internal fun buildTileGridRenderModel(
         zoom = tileResolution.displayZoom,
     )
     val cachedAverageBytes = cachedAverageBytes(tileSnapshots)
+    val viewportScreenRect = ScreenRect(
+        left = 0f,
+        top = 0f,
+        right = canvasWidth,
+        bottom = canvasHeight,
+    )
     val tiles = visibleTileIds.mapNotNull { tileId ->
         val geoBounds = tileGeoBounds(tileId)
         val projectedBounds = projectedBoundsForGeoBounds(geoBounds, routeModel.projection)
@@ -467,32 +473,39 @@ internal fun buildTileGridRenderModel(
             canvasHeight = canvasHeight,
         )
         val routeMetrics = displayRouteMetricsById[tileId] ?: EmptyTileRouteMetrics
-        val allDownloadRequests = mergeTileDownloadRequests(
-            primary = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
-            secondary = visibleSnapshotRequestsForDisplayTile(
-                displayTileId = tileId,
-                displayZoom = tileResolution.displayZoom,
-                tileSnapshots = tileSnapshots,
-            ),
-        )
         val (displayRect, outlineStyle) = resolveTileDisplayRect(
             screenRect = actualScreenRect,
             routeMetrics = routeMetrics,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
+        val representedScreenRect = if (outlineStyle == TileGridOutlineStyle.ViewProxyDashed) {
+            viewportScreenRect
+        } else {
+            displayRect
+        }
         val representedDownloadRequests = filterTileRequestsForDisplayRepresentation(
             routeModel = routeModel,
             viewBounds = bounds,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
-            displayRect = displayRect,
-            outlineStyle = outlineStyle,
-            downloadRequests = allDownloadRequests,
+            representedScreenRect = representedScreenRect,
+            downloadRequests = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
+        )
+        val coverage = resolveDisplayTileCoverage(
+            displayTileId = tileId,
+            displayZoom = tileResolution.displayZoom,
+            routeModel = routeModel,
+            viewBounds = bounds,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            representedScreenRect = representedScreenRect,
+            tileSnapshots = tileSnapshots,
         )
         val downloadState = resolveDisplayTileDownloadState(
             downloadRequests = representedDownloadRequests,
             tileSnapshots = tileSnapshots,
+            hasCachedCoverage = coverage.cachedTileIds.isNotEmpty(),
         )
         if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
             return@mapNotNull null
@@ -502,11 +515,6 @@ internal fun buildTileGridRenderModel(
         } else {
             estimateTileBytes(routeMetrics, cachedAverageBytes)
         }
-        val cachedTileIds = representedDownloadRequests.mapNotNull { request ->
-            tileSnapshots[request.tileId]
-                ?.takeIf { snapshot -> snapshot.status == TileDownloadStatus.Cached }
-                ?.let { request.tileId }
-        }.toSet()
         TileGridDisplayTile(
             tileId = tileId,
             screenRect = displayRect,
@@ -514,22 +522,10 @@ internal fun buildTileGridRenderModel(
             routeMetrics = routeMetrics,
             downloadState = downloadState.state,
             progressFraction = downloadState.progressFraction,
-            cachedTileIds = cachedTileIds,
-            cachedCoverageRects = cachedTileIds
-                .sortedBy(DownloadTileId::cacheKey)
-                .mapNotNull { cachedTileId ->
-                    projectedBoundsToScreenRect(
-                        projectedBounds = projectedBoundsForGeoBounds(
-                            tileGeoBounds(cachedTileId),
-                            routeModel.projection,
-                        ),
-                        viewBounds = bounds,
-                        canvasWidth = canvasWidth,
-                        canvasHeight = canvasHeight,
-                    ).intersect(displayRect)
-                },
+            cachedTileIds = coverage.cachedTileIds,
+            cachedCoverageRects = coverage.cachedCoverageRects,
             downloadRequests = representedDownloadRequests,
-            selected = cachedTileIds.isNotEmpty() && cachedTileIds.all(selectedTileIds::contains),
+            selected = coverage.cachedTileIds.isNotEmpty() && coverage.cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
             label = tileLabel(
                 routeMetrics = routeMetrics,
@@ -544,59 +540,69 @@ internal fun buildTileGridRenderModel(
     return TileGridRenderModel(tiles)
 }
 
-private fun mergeTileDownloadRequests(
-    primary: List<TileDownloadRequest>,
-    secondary: List<TileDownloadRequest>,
-): List<TileDownloadRequest> {
-    if (secondary.isEmpty()) {
-        return primary
-    }
-    return (primary + secondary)
-        .associateBy(TileDownloadRequest::tileId)
-        .values
-        .sortedBy { request -> request.tileId.cacheKey }
-}
-
 private fun filterTileRequestsForDisplayRepresentation(
     routeModel: RouteModel,
     viewBounds: Bounds,
     canvasWidth: Float,
     canvasHeight: Float,
-    displayRect: ScreenRect,
-    outlineStyle: TileGridOutlineStyle,
+    representedScreenRect: ScreenRect,
     downloadRequests: List<TileDownloadRequest>,
 ): List<TileDownloadRequest> {
-    if (outlineStyle != TileGridOutlineStyle.ViewProxyDashed) {
-        return downloadRequests
-    }
     return downloadRequests.filter { request ->
-        projectedBoundsToScreenRect(
-            projectedBounds = projectedBoundsForGeoBounds(
-                tileGeoBounds(request.tileId),
-                routeModel.projection,
-            ),
+        request.tileId.screenRectInViewport(
+            routeModel = routeModel,
             viewBounds = viewBounds,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
-        ).intersects(displayRect)
+        ).intersects(representedScreenRect)
     }
 }
 
-private fun visibleSnapshotRequestsForDisplayTile(
+private fun resolveDisplayTileCoverage(
     displayTileId: DownloadTileId,
     displayZoom: Int,
+    routeModel: RouteModel,
+    viewBounds: Bounds,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    representedScreenRect: ScreenRect,
     tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-): List<TileDownloadRequest> {
-    return tileSnapshots
+): DisplayTileCoverage {
+    val cachedTileIds = tileSnapshots
         .mapNotNull { (tileId, snapshot) ->
-            if (parentTileIdAtZoom(tileId, displayZoom) != displayTileId) {
+            if (snapshot.status != TileDownloadStatus.Cached) {
                 return@mapNotNull null
             }
-            TileDownloadRequest(
-                tileId = tileId,
-                estimatedBytes = snapshot.actualBytes ?: snapshot.estimatedBytes,
+            val representsDisplayTile =
+                parentTileIdAtZoom(tileId, displayZoom) == displayTileId ||
+                    tileContainsTile(tileId, displayTileId)
+            if (!representsDisplayTile) {
+                return@mapNotNull null
+            }
+            val screenRect = tileId.screenRectInViewport(
+                routeModel = routeModel,
+                viewBounds = viewBounds,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
             )
+            if (!screenRect.intersects(representedScreenRect)) {
+                return@mapNotNull null
+            }
+            tileId
         }
+        .sortedBy(DownloadTileId::cacheKey)
+        .toCollection(linkedSetOf())
+    return DisplayTileCoverage(
+        cachedTileIds = cachedTileIds,
+        cachedCoverageRects = cachedTileIds.mapNotNull { cachedTileId ->
+            cachedTileId.screenRectInViewport(
+                routeModel = routeModel,
+                viewBounds = viewBounds,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
+            ).intersect(representedScreenRect)
+        },
+    )
 }
 
 private fun resolveTileDisplayRect(
@@ -677,6 +683,11 @@ private data class ResolvedDisplayTileDownloadState(
     val progressFraction: Float?,
 )
 
+private data class DisplayTileCoverage(
+    val cachedTileIds: Set<DownloadTileId>,
+    val cachedCoverageRects: List<ScreenRect>,
+)
+
 private fun buildDisplayTileDownloadRequests(
     routeTileMetricsById: Map<DownloadTileId, TileRouteMetrics>,
     displayZoom: Int,
@@ -702,10 +713,11 @@ private fun buildDisplayTileDownloadRequests(
 private fun resolveDisplayTileDownloadState(
     downloadRequests: List<TileDownloadRequest>,
     tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+    hasCachedCoverage: Boolean,
 ): ResolvedDisplayTileDownloadState {
     if (downloadRequests.isEmpty()) {
         return ResolvedDisplayTileDownloadState(
-            state = null,
+            state = if (hasCachedCoverage) TileGridDownloadState.Partial else null,
             progressFraction = null,
         )
     }
@@ -714,7 +726,7 @@ private fun resolveDisplayTileDownloadState(
     }
     if (snapshots.isEmpty()) {
         return ResolvedDisplayTileDownloadState(
-            state = null,
+            state = if (hasCachedCoverage) TileGridDownloadState.Partial else null,
             progressFraction = null,
         )
     }
@@ -725,6 +737,7 @@ private fun resolveDisplayTileDownloadState(
         hasDownloading -> TileGridDownloadState.Downloading
         cachedCount == downloadRequests.size -> TileGridDownloadState.Cached
         cachedCount > 0 -> TileGridDownloadState.Partial
+        hasCachedCoverage -> TileGridDownloadState.Partial
         hasError -> TileGridDownloadState.Error
         else -> null
     }
@@ -762,6 +775,23 @@ private fun parentTileIdAtZoom(
         zoom = parentZoom,
         x = tileId.x shr zoomDelta,
         y = tileId.y shr zoomDelta,
+    )
+}
+
+private fun DownloadTileId.screenRectInViewport(
+    routeModel: RouteModel,
+    viewBounds: Bounds,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): ScreenRect {
+    return projectedBoundsToScreenRect(
+        projectedBounds = projectedBoundsForGeoBounds(
+            tileGeoBounds(this),
+            routeModel.projection,
+        ),
+        viewBounds = viewBounds,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
     )
 }
 
