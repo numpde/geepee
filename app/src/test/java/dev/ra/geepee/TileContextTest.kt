@@ -518,6 +518,110 @@ class TileContextTest {
     }
 
     @Test
+    fun proxyDisplayTileRepresentsOnlyVisibleChildRequests() {
+        val anchorTile = DownloadTileId(zoom = 10, x = 512, y = 512)
+        val anchorBounds = tileGeoBounds(anchorTile)
+        val centerLat = (anchorBounds.south + anchorBounds.north) / 2.0
+        val centerLon = (anchorBounds.west + anchorBounds.east) / 2.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = centerLat, lon = centerLon - 0.0001),
+                    GeoPoint(lat = centerLat, lon = centerLon + 0.0001),
+                ),
+            ),
+        )
+        val config = TileContextConfig(
+            downloadZoom = 10,
+            resolutionPolicy = TileResolutionPolicy(
+                displayZoomBands = listOf(
+                    TileDisplayZoomBand(minimumWindowWidthMeters = 0.0, displayZoom = 10),
+                ),
+                minimumDataZoom = 12,
+                dataZoomOffsetFromDisplay = 1,
+                maximumDataZoom = 16,
+            ),
+        )
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 400f,
+            canvasHeight = 240f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+
+        val tile = renderModel.tiles.single()
+        assertEquals(TileGridOutlineStyle.ViewProxyDashed, tile.outlineStyle)
+        assertTrue(tile.downloadRequests.isNotEmpty())
+        tile.downloadRequests.forEach { request ->
+            val childRect = projectedBoundsToScreenRect(
+                projectedBounds = projectedBoundsForGeoBounds(
+                    tileGeoBounds(request.tileId),
+                    route.projection,
+                ),
+                viewBounds = route.bounds,
+                canvasWidth = 400f,
+                canvasHeight = 240f,
+            )
+            assertTrue(childRect.intersects(tile.screenRect))
+        }
+    }
+
+    @Test
+    fun proxyDisplayTileIsNotSelectedByHiddenCachedChild() {
+        val anchorTile = DownloadTileId(zoom = 10, x = 512, y = 512)
+        val anchorBounds = tileGeoBounds(anchorTile)
+        val centerLat = (anchorBounds.south + anchorBounds.north) / 2.0
+        val centerLon = (anchorBounds.west + anchorBounds.east) / 2.0
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = centerLat, lon = centerLon - 0.0001),
+                    GeoPoint(lat = centerLat, lon = centerLon + 0.0001),
+                ),
+            ),
+        )
+        val config = TileContextConfig(
+            downloadZoom = 10,
+            resolutionPolicy = TileResolutionPolicy(
+                displayZoomBands = listOf(
+                    TileDisplayZoomBand(minimumWindowWidthMeters = 0.0, displayZoom = 10),
+                ),
+                minimumDataZoom = 12,
+                dataZoomOffsetFromDisplay = 1,
+                maximumDataZoom = 16,
+            ),
+        )
+        val offscreenCachedChild = DownloadTileId(
+            zoom = 12,
+            x = anchorTile.x shl 2,
+            y = anchorTile.y shl 2,
+        )
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 400f,
+            canvasHeight = 240f,
+            config = config,
+            tileSnapshots = mapOf(
+                offscreenCachedChild to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    actualBytes = 1L,
+                ),
+            ),
+            selectedTileIds = setOf(offscreenCachedChild),
+        )
+
+        val tile = renderModel.tiles.single()
+        assertFalse(tile.selected)
+        assertTrue(tile.cachedTileIds.isEmpty())
+    }
+
+    @Test
     fun downloadingSnapshotCanReachFullProgress() {
         val snapshot = TileDownloadSnapshot(
             status = TileDownloadStatus.Downloading,

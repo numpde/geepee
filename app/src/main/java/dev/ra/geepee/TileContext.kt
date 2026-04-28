@@ -959,7 +959,7 @@ private fun tilesForGeoBounds(
     return tiles
 }
 
-private fun projectedBoundsToScreenRect(
+internal fun projectedBoundsToScreenRect(
     projectedBounds: Bounds,
     viewBounds: Bounds,
     canvasWidth: Float,

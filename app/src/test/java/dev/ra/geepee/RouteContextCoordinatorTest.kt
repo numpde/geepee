@@ -582,6 +582,41 @@ class RouteContextCoordinatorTest {
     }
 
     @Test
+    fun nearbyWayTileCoverageCountsCoveredLocalTilesRatherThanLoadedBundleCount() {
+        val parentTile = DownloadTileId(zoom = 10, x = 10, y = 20)
+        val childTile = DownloadTileId(zoom = 12, x = (parentTile.x shl 2) + 1, y = (parentTile.y shl 2) + 2)
+        val fineLocalTileIds = buildSet {
+            for (x in (parentTile.x shl 2) until ((parentTile.x + 1) shl 2)) {
+                for (y in (parentTile.y shl 2) until ((parentTile.y + 1) shl 2)) {
+                    add(DownloadTileId(zoom = 12, x = x, y = y))
+                }
+            }
+        }
+        val coverage = NearbyWayTileCoverage(
+            localTileIds = fineLocalTileIds,
+            loadedTileCoverages = listOf(
+                NearbyWayLoadedTileCoverage(
+                    tileRevision = NearbyWayLoadedTileRevision(
+                        tileId = parentTile,
+                        updatedAtMillis = 10L,
+                    ),
+                    coveredLocalTileIds = fineLocalTileIds - childTile,
+                ),
+                NearbyWayLoadedTileCoverage(
+                    tileRevision = NearbyWayLoadedTileRevision(
+                        tileId = childTile,
+                        updatedAtMillis = 20L,
+                    ),
+                    coveredLocalTileIds = setOf(childTile),
+                ),
+            ),
+        )
+
+        assertEquals(2, coverage.loadedTileIds.size)
+        assertEquals(fineLocalTileIds.size, coverage.loadedLocalTileCount)
+    }
+
+    @Test
     fun nearbyWayTileCoverage_buildsConsistentStatusViews() {
         val coverage = NearbyWayTileCoverage(
             localTileIds = setOf(
