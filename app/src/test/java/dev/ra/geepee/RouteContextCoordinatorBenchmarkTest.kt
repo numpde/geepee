@@ -4,7 +4,6 @@ import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Test
 
 class RouteContextCoordinatorBenchmarkTest {
@@ -225,47 +224,13 @@ private fun awaitNearbyWayRebuild(
 }
 
 private fun loadCoordinatorBenchmarkTileFixture(path: String): TileContextPack {
-    val resource = requireNotNull(RouteContextCoordinatorBenchmarkTest::class.java.classLoader?.getResource("dev/ra/geepee/$path")) {
-        "Missing tile fixture resource: $path"
-    }
-    return tileContextPackFromJson(File(resource.toURI()).readText())
+    return loadRouteMapInfoTileFixture(path)
 }
 
 private fun loadCoordinatorBenchmarkRouteModel(): RouteModel {
-    return buildRouteModel(listOf(loadCoordinatorBenchmarkGeoPoints().values.toList()))
+    return loadRouteMapInfoRouteModel()
 }
 
 private fun loadCoordinatorBenchmarkGeoPoints(): Map<Int, GeoPoint> {
-    val routeFile = resolveCoordinatorBenchmarkRepoFile("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    return buildMap(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            put(
-                index,
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-}
-
-private fun resolveCoordinatorBenchmarkRepoFile(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")))
-    var current: File? = cwd.absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath")
+    return loadRouteMapInfoGeoPointsByIndex()
 }

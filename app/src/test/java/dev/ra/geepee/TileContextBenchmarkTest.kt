@@ -1,7 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.max
 import kotlin.math.min
 import org.junit.Test
@@ -124,40 +122,7 @@ private fun formatNanosMillis(nanos: Long): String {
 }
 
 private fun loadTiszaRouteModel(): RouteModel {
-    val routeFile = resolveRepoFileForTileBench("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-    return buildRouteModel(listOf(geoPoints))
-}
-
-private fun resolveRepoFileForTileBench(relativePath: String): File {
-    val workingDirectory = requireNotNull(System.getProperty("user.dir")) {
-        "Expected a working directory for repo fixture lookup."
-    }
-    var current: File? = File(workingDirectory).absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath from $workingDirectory")
+    return loadRouteMapInfoRouteModel()
 }
 
 private fun shrinkBounds(

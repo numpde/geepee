@@ -1,7 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -10,7 +8,6 @@ import kotlin.random.Random
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 
 private val TISZA_START_HAIRPIN_POINT_INDICES = listOf(35, 38, 40, 42, 45, 48, 50, 52, 55)
@@ -454,29 +451,8 @@ private data class OffsetMeters(
 )
 
 private fun loadTiszaFixture(): RouteFixture {
-    val routeFile = resolveRepoFile("routes/unneplos-tisza-ride.gpx")
-    // `GpxParser` depends on android.util.Xml, which is unavailable in plain JVM unit tests.
-    // Keep parsing here minimal, then hand the result to `buildRouteModel()` as the source of
-    // truth for all route geometry.
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
+    val geoPoints = loadRouteMapInfoGeoPoints()
     val routeModel = buildRouteModel(listOf(geoPoints))
-
     require(geoPoints.size >= 2) { "Expected at least two GPX points in the Tisza fixture." }
 
     return RouteFixture(
@@ -557,22 +533,6 @@ private fun RouteFixture.noisyFixAt(
         timestampMillis = timestampMillis,
         bearingAccuracyDegrees = 10f,
     )
-}
-
-private fun resolveRepoFile(relativePath: String): File {
-    val workingDirectory = requireNotNull(System.getProperty("user.dir")) {
-        "Expected a working directory for repo fixture lookup."
-    }
-    var current: File? = File(workingDirectory).absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    fail("Could not locate repo file: $relativePath from $workingDirectory")
-    error("unreachable")
 }
 
 private fun distanceBetweenGeoPoints(start: GeoPoint, end: GeoPoint): Double {

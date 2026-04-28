@@ -1,7 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Test
 
 class RouteTileOverlayBenchmarkTest {
@@ -68,43 +66,9 @@ private fun formatRouteTileOverlayMillis(nanos: Long): String {
 }
 
 private fun loadRouteOverlayBenchmarkTileFixture(path: String): TileContextPack {
-    val resource = requireNotNull(RouteTileOverlayBenchmarkTest::class.java.classLoader?.getResource("dev/ra/geepee/$path")) {
-        "Missing tile fixture resource: $path"
-    }
-    return tileContextPackFromJson(File(resource.toURI()).readText())
+    return loadRouteMapInfoTileFixture(path)
 }
 
 private fun loadRouteOverlayBenchmarkRouteModel(): RouteModel {
-    val routeFile = resolveRouteOverlayBenchmarkRepoFile("routes/unneplos-tisza-ride.gpx")
-    val document = DocumentBuilderFactory.newInstance()
-        .apply { isNamespaceAware = true }
-        .newDocumentBuilder()
-        .parse(routeFile)
-    val trackPoints = document.getElementsByTagNameNS("*", "trkpt")
-    val geoPoints = buildList(trackPoints.length) {
-        for (index in 0 until trackPoints.length) {
-            val node = trackPoints.item(index)
-            val attributes = node.attributes
-            add(
-                GeoPoint(
-                    lat = attributes.getNamedItem("lat").nodeValue.toDouble(),
-                    lon = attributes.getNamedItem("lon").nodeValue.toDouble(),
-                ),
-            )
-        }
-    }
-    return buildRouteModel(listOf(geoPoints))
-}
-
-private fun resolveRouteOverlayBenchmarkRepoFile(relativePath: String): File {
-    val cwd = File(requireNotNull(System.getProperty("user.dir")))
-    var current: File? = cwd.absoluteFile
-    repeat(8) {
-        val candidate = current?.resolve(relativePath)
-        if (candidate?.isFile == true) {
-            return candidate
-        }
-        current = current?.parentFile
-    }
-    error("Could not locate repo file: $relativePath")
+    return loadRouteMapInfoRouteModel()
 }

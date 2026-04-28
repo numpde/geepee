@@ -36,6 +36,12 @@ internal fun loadRouteMapInfoGeoPoints(): List<GeoPoint> {
     return loadGpxGeoPointsFixture("unneplos-tisza-ride.gpx")
 }
 
+internal fun loadRouteMapInfoGeoPointsByIndex(): Map<Int, GeoPoint> {
+    return loadRouteMapInfoGeoPoints()
+        .mapIndexed { index, point -> index to point }
+        .toMap()
+}
+
 internal fun loadRouteMapInfoRouteModel(): RouteModel {
     return buildRouteModel(listOf(loadRouteMapInfoGeoPoints()))
 }
