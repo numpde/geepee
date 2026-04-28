@@ -15,30 +15,28 @@ class TileDeletePlanTest {
 
     @Test
     fun deleteTilesDialogCopyExplainsSelectedTileDeletion() {
-        val copy = TileDeletePlan(
+        val plan = TileDeletePlan(
             mode = TileDeleteMode.Selected,
             tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
             freedBytes = 2_400_000L,
         )
-            .dialogCopy
 
-        assertEquals("Delete selected tiles?", copy.title)
-        assertTrue(copy.message.contains("selected downloaded tiles"))
-        assertTrue(copy.message.contains("even if they are on the current route"))
-        assertTrue(copy.message.contains("about 2.4 MB"))
+        assertEquals("Delete selected tiles?", plan.dialogTitle)
+        assertTrue(plan.dialogMessage.contains("selected downloaded tiles"))
+        assertTrue(plan.dialogMessage.contains("even if they are on the current route"))
+        assertTrue(plan.dialogMessage.contains("about 2.4 MB"))
     }
 
     @Test
     fun deleteTilesDialogCopyExplainsUnusedTileDeletion() {
-        val copy = TileDeletePlan(
+        val plan = TileDeletePlan(
             mode = TileDeleteMode.Unused,
             tileIds = setOf(DownloadTileId(zoom = 10, x = 1, y = 2)),
             freedBytes = 1_200_000L,
         )
-            .dialogCopy
 
-        assertEquals("Delete unused tiles?", copy.title)
-        assertTrue(copy.message.contains("not needed for the current route or current view"))
-        assertTrue(copy.message.contains("about 1.2 MB"))
+        assertEquals("Delete unused tiles?", plan.dialogTitle)
+        assertTrue(plan.dialogMessage.contains("not needed for the current route or current view"))
+        assertTrue(plan.dialogMessage.contains("about 1.2 MB"))
     }
 }

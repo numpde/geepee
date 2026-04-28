@@ -11,14 +11,13 @@ internal fun TileDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val copy = plan.dialogCopy
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = copy.title)
+            Text(text = plan.dialogTitle)
         },
         text = {
-            Text(text = copy.message)
+            Text(text = plan.dialogMessage)
         },
         confirmButton = {
             TextButton(

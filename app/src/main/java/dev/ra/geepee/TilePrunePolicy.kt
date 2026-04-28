@@ -31,12 +31,10 @@ internal data class TileDeletePlan(
         get() = tileIds.size
 }
 
-internal data class TileDeleteDialogCopy(
-    val title: String,
-    val message: String,
-)
+internal val TileDeletePlan.dialogTitle: String
+    get() = mode.confirmTitle
 
-internal val TileDeletePlan.dialogCopy: TileDeleteDialogCopy
+internal val TileDeletePlan.dialogMessage: String
     get() {
         val actionText = if (tileCount == 0) {
             "Nothing would be deleted right now."
@@ -44,26 +42,20 @@ internal val TileDeletePlan.dialogCopy: TileDeleteDialogCopy
             "This will delete $tileCount downloaded tiles and free ${formatStorageMegabytes(freedBytes)}."
         }
         return when (mode) {
-            TileDeleteMode.Selected -> TileDeleteDialogCopy(
-                title = mode.confirmTitle,
-                message = buildString {
-                    append("This will delete exactly the selected downloaded tiles, even if they are on the current route or were used recently.")
-                    append("\n\n")
-                    append("Derived map-info cache for those tiles will also be removed.")
-                    append("\n\n")
-                    append(actionText)
-                },
-            )
-            TileDeleteMode.Unused -> TileDeleteDialogCopy(
-                title = mode.confirmTitle,
-                message = buildString {
-                    append("This removes downloaded tiles that are not needed for the current route or current view, are not being downloaded, and were not used recently.")
-                    append("\n\n")
-                    append("Derived map-info cache for those tiles will also be removed.")
-                    append("\n\n")
-                    append(actionText)
-                },
-            )
+            TileDeleteMode.Selected -> buildString {
+                append("This will delete exactly the selected downloaded tiles, even if they are on the current route or were used recently.")
+                append("\n\n")
+                append("Derived map-info cache for those tiles will also be removed.")
+                append("\n\n")
+                append(actionText)
+            }
+            TileDeleteMode.Unused -> buildString {
+                append("This removes downloaded tiles that are not needed for the current route or current view, are not being downloaded, and were not used recently.")
+                append("\n\n")
+                append("Derived map-info cache for those tiles will also be removed.")
+                append("\n\n")
+                append(actionText)
+            }
         }
     }
 
