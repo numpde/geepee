@@ -7,9 +7,9 @@ class RouteContextRuntimePathBenchmarkTest {
     @Test
     fun benchmarkRepositoryBackedOverlayAndLocalNearbyWayPath() {
         requireBenchmarkOptIn()
-        val sourcePack = loadRuntimePathTileFixture("tile-context/10-571-356-local.json")
-        val routeModel = loadRuntimePathRouteModel()
-        val focusPoint = loadRuntimePathGeoPoints().getValue(6_854)
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
+        val routeModel = loadRouteMapInfoRouteModel()
+        val focusPoint = loadRouteMapInfoGeoPointsByIndex().getValue(6_854)
         val focus = MapInfoFocus(
             centerGeoPoint = focusPoint,
             windowWidthMeters = 1_000.0,
@@ -96,15 +96,3 @@ private data class RuntimePathWarmMetrics(
     val overlayLoadNanos: Long,
     val nearbyWayQueryNanos: Long,
 )
-
-private fun loadRuntimePathTileFixture(path: String): TileContextPack {
-    return loadRouteMapInfoTileFixture(path)
-}
-
-private fun loadRuntimePathRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
-}
-
-private fun loadRuntimePathGeoPoints(): Map<Int, GeoPoint> {
-    return loadRouteMapInfoGeoPointsByIndex()
-}

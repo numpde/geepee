@@ -8,7 +8,7 @@ class TileContextBenchmarkTest {
     @Test
     fun benchmarkTiszaTileOverviewHotPath() {
         requireBenchmarkOptIn()
-        val route = loadTiszaRouteModel()
+        val route = loadRouteMapInfoRouteModel()
         val config = DefaultTileContextConfig
         val viewportWidth = 1080f
         val viewportHeight = 2340f
@@ -104,10 +104,6 @@ class TileContextBenchmarkTest {
             },
         )
     }
-}
-
-private fun loadTiszaRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
 }
 
 private fun shrinkBounds(

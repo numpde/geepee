@@ -15,9 +15,9 @@ class TileContextRepositoryTest {
     @Test
     fun deleteTilesRemovesSourceRuntimeOverlayAndManifestEntry() {
         withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
-            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val pack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
             requireNotNull(
                 repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
             )
@@ -89,12 +89,12 @@ class TileContextRepositoryTest {
     @Test
     fun buildTileDeletePlanFallsBackToUnusedPolicyWhenSelectionIsEmpty() {
         withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
-            val protectedPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val protectedPack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             val deletablePack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
                 west = 21.0,
             )
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
             repository.storeTilePack(protectedPack)
             repository.storeTilePack(deletablePack)
             requireNotNull(
@@ -139,7 +139,7 @@ class TileContextRepositoryTest {
                 tileId = DownloadTileId(zoom = 10, x = 571, y = 355),
                 west = 21.02,
             )
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
             repository.storeTilePack(pack)
             repository.storeTilePack(extraUnusedPack)
             requireNotNull(
@@ -257,7 +257,7 @@ class TileContextRepositoryTest {
     @Test
     fun runtimePackLoadsReuseInMemoryCache() {
         withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
-            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val pack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
 
             val first = requireNotNull(repository.loadRuntimePack(pack.tileId))
@@ -270,9 +270,9 @@ class TileContextRepositoryTest {
     @Test
     fun routeTileOverlayLoadsReuseInMemoryCache() {
         withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
-            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val pack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
 
             val first = requireNotNull(
                 repository.loadRouteTileOverlayBundle(routeModel, pack.tileId, DefaultTileContextConfig),
@@ -289,9 +289,9 @@ class TileContextRepositoryTest {
     @Test
     fun cachedOnlyOverlayLoadDoesNotBuildMissingOverlay() {
         withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
-            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val pack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
 
             val cachedOnlyBeforeBuild = repository.peekCachedRouteTileOverlayBundles(
                 routeModel = routeModel,
@@ -318,9 +318,9 @@ class TileContextRepositoryTest {
     @Test
     fun concurrentRouteTileOverlayLoadsShareSingleOverlayBuild() {
         withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
-            val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
+            val pack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
-            val routeModel = loadRepositoryRouteModel()
+            val routeModel = loadRouteMapInfoRouteModel()
             val startLatch = CountDownLatch(1)
             val executor = Executors.newFixedThreadPool(2)
             try {
@@ -346,8 +346,8 @@ class TileContextRepositoryTest {
     @Test
     fun storingNewTilePackInvalidatesRuntimeAndOverlayCaches() {
         withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
-            val originalPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
-            val routeModel = loadRepositoryRouteModel()
+            val originalPack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
+            val routeModel = loadRouteMapInfoRouteModel()
             val routePointInTile = requireNotNull(findRoutePointWithinBounds(routeModel, originalPack.queryBounds)) {
                 "Expected Tisza route fixture to intersect tile fixture bounds"
             }
@@ -390,14 +390,6 @@ class TileContextRepositoryTest {
             assertTrue(secondOverlay.overlay.context.pois.any { poi -> poi.featureId == "test:drinking_water:extra" })
         }
     }
-}
-
-private fun loadRepositoryTileFixture(path: String): TileContextPack {
-    return loadRouteMapInfoTileFixture(path)
-}
-
-private fun loadRepositoryRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
 }
 
 private fun findRoutePointWithinBounds(

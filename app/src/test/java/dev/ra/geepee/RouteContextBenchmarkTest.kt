@@ -7,7 +7,7 @@ class RouteContextBenchmarkTest {
     @Test
     fun benchmarkFullTiszaRouteContextAgainstPulledCachedTiles() {
         requireBenchmarkOptIn()
-        val routeModel = loadBenchmarkTiszaRouteModel()
+        val routeModel = loadRouteMapInfoRouteModel()
         val tileFiles = listOf(
             "/tmp/geepee-all-tiles/569/350.json",
             "/tmp/geepee-all-tiles/569/363.json",
@@ -50,8 +50,4 @@ class RouteContextBenchmarkTest {
             },
         )
     }
-}
-
-private fun loadBenchmarkTiszaRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
 }

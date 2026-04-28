@@ -6,7 +6,7 @@ class RouteStartupBenchmarkTest {
     @Test
     fun benchmarkTiszaRouteApplyPath() {
         requireBenchmarkOptIn()
-        val route = loadTiszaRouteModelForStartupBench()
+        val route = loadRouteMapInfoRouteModel()
         val onRouteFix = LocationFix(
             lat = 48.128297,
             lon = 22.540450,
@@ -56,8 +56,4 @@ class RouteStartupBenchmarkTest {
             },
         )
     }
-}
-
-private fun loadTiszaRouteModelForStartupBench(): RouteModel {
-    return loadRouteMapInfoRouteModel()
 }

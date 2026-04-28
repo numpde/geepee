@@ -6,7 +6,7 @@ class TileRuntimePackBenchmarkTest {
     @Test
     fun benchmarkRealTileRuntimePackCompileAndCodec() {
         requireBenchmarkOptIn()
-        val sourcePack = loadBenchmarkRuntimeTileFixture("tile-context/10-571-356-local.json")
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
 
         val compileNanos = benchmarkNanos(iterations = 10) {
             compileTileRuntimePack(sourcePack)
@@ -33,8 +33,4 @@ class TileRuntimePackBenchmarkTest {
             },
         )
     }
-}
-
-private fun loadBenchmarkRuntimeTileFixture(path: String): TileContextPack {
-    return loadRouteMapInfoTileFixture(path)
 }

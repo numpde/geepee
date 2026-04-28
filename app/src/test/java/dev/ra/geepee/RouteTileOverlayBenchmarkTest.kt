@@ -6,8 +6,8 @@ class RouteTileOverlayBenchmarkTest {
     @Test
     fun benchmarkRealTileOverlayCompileAgainstDirectContext() {
         requireBenchmarkOptIn()
-        val routeModel = loadRouteOverlayBenchmarkRouteModel()
-        val sourcePack = loadRouteOverlayBenchmarkTileFixture("tile-context/10-571-356-local.json")
+        val routeModel = loadRouteMapInfoRouteModel()
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
         val runtimePack = compileTileRuntimePack(sourcePack)
 
         val directContextNanos = benchmarkNanos(iterations = 10) {
@@ -48,12 +48,4 @@ class RouteTileOverlayBenchmarkTest {
             },
         )
     }
-}
-
-private fun loadRouteOverlayBenchmarkTileFixture(path: String): TileContextPack {
-    return loadRouteMapInfoTileFixture(path)
-}
-
-private fun loadRouteOverlayBenchmarkRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
 }

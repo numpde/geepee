@@ -9,8 +9,8 @@ class RouteContextCoordinatorBenchmarkTest {
     @Test
     fun benchmarkRepositoryBackedRouteContextRebuild() {
         requireBenchmarkOptIn()
-        val sourcePack = loadCoordinatorBenchmarkTileFixture("tile-context/10-571-356-local.json")
-        val routeModel = loadCoordinatorBenchmarkRouteModel()
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
+        val routeModel = loadRouteMapInfoRouteModel()
 
         val coldRouteContextNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
@@ -63,9 +63,9 @@ class RouteContextCoordinatorBenchmarkTest {
     @Test
     fun benchmarkRepositoryBackedNearbyWayRebuild() {
         requireBenchmarkOptIn()
-        val sourcePack = loadCoordinatorBenchmarkTileFixture("tile-context/10-571-356-local.json")
-        val routeModel = loadCoordinatorBenchmarkRouteModel()
-        val focusPoint = loadCoordinatorBenchmarkGeoPoints().getValue(6_854)
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
+        val routeModel = loadRouteMapInfoRouteModel()
+        val focusPoint = loadRouteMapInfoGeoPointsByIndex().getValue(6_854)
         val analysis = analyzeLocationAgainstModel(
             model = routeModel,
             fix = LocationFix(
@@ -204,16 +204,4 @@ private fun awaitNearbyWayRebuild(
     )
     check(latch.await(5, TimeUnit.SECONDS)) { "Timed out waiting for nearby-way rebuild" }
     return checkNotNull(result)
-}
-
-private fun loadCoordinatorBenchmarkTileFixture(path: String): TileContextPack {
-    return loadRouteMapInfoTileFixture(path)
-}
-
-private fun loadCoordinatorBenchmarkRouteModel(): RouteModel {
-    return loadRouteMapInfoRouteModel()
-}
-
-private fun loadCoordinatorBenchmarkGeoPoints(): Map<Int, GeoPoint> {
-    return loadRouteMapInfoGeoPointsByIndex()
 }
