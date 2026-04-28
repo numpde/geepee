@@ -290,7 +290,7 @@ internal data class TileGridDisplayTile(
         get() = representedCoverage.coverageTiles
 
     val selectedCachedTileIds: Set<DownloadTileId>
-        get() = representedCoverage.selectedTileIds
+        get() = representedCoverage.representedSelectedTileIds
 
     val cachedTileIds: Set<DownloadTileId>
         get() = representedCoverage.cachedTileIds
@@ -330,6 +330,9 @@ internal data class TileGridRepresentedCoverage(
     val cachedTileIds: Set<DownloadTileId>
         get() = coverageTiles.mapTo(linkedSetOf(), TileCoverageRect::tileId)
 
+    val representedSelectedTileIds: Set<DownloadTileId>
+        get() = cachedTileIds.intersect(selectedTileIds)
+
     val hasCachedCoverage: Boolean
         get() = coverageTiles.isNotEmpty()
 
@@ -337,15 +340,15 @@ internal data class TileGridRepresentedCoverage(
         get() = coverageTiles.map(TileCoverageRect::screenRect)
 
     val selectedCoverageTiles: List<TileCoverageRect>
-        get() = coverageTiles.filter { coverageTile -> coverageTile.tileId in selectedTileIds }
+        get() = coverageTiles.filter { coverageTile -> coverageTile.tileId in representedSelectedTileIds }
 
     val selectedCoverageRects: List<ScreenRect>
         get() = selectedCoverageTiles.map(TileCoverageRect::screenRect)
 
     val selectionState: TileGridSelectionState
         get() = when {
-            selectedTileIds.isEmpty() -> TileGridSelectionState.Unselected
-            selectedTileIds.size == coverageTiles.size -> TileGridSelectionState.FullySelected
+            representedSelectedTileIds.isEmpty() -> TileGridSelectionState.Unselected
+            representedSelectedTileIds.size == cachedTileIds.size -> TileGridSelectionState.FullySelected
             else -> TileGridSelectionState.PartiallySelected
         }
 
@@ -620,9 +623,7 @@ internal fun buildTileGridRenderModel(
             progressFraction = downloadState.progressFraction,
             representedCoverage = TileGridRepresentedCoverage(
                 coverageTiles = representation.cachedCoverage.coverageTiles,
-                selectedTileIds = representation.cachedCoverage.coverageTiles
-                    .mapTo(linkedSetOf()) { coverageTile -> coverageTile.tileId }
-                    .intersect(selectedTileIds),
+                selectedTileIds = selectedTileIds,
             ),
             downloadRequests = representation.downloadRequests,
             estimatedBytes = estimatedBytes,

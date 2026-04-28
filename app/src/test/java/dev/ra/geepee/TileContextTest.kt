@@ -402,6 +402,25 @@ class TileContextTest {
     }
 
     @Test
+    fun representedCoverageIgnoresNonRepresentedSelectedTileIds() {
+        val coveredTileId = DownloadTileId(zoom = 12, x = 100, y = 200)
+        val unrelatedTileId = DownloadTileId(zoom = 12, x = 999, y = 999)
+        val coverage = TileGridRepresentedCoverage(
+            coverageTiles = listOf(
+                TileCoverageRect(
+                    tileId = coveredTileId,
+                    screenRect = ScreenRect(0f, 0f, 20f, 20f),
+                ),
+            ),
+            selectedTileIds = setOf(coveredTileId, unrelatedTileId),
+        )
+
+        assertEquals(setOf(coveredTileId), coverage.representedSelectedTileIds)
+        assertEquals(TileGridSelectionState.FullySelected, coverage.selectionState)
+        assertEquals(1, coverage.selectedCoverageRects.size)
+    }
+
+    @Test
     fun tileResolutionPolicyUsesConfiguredDisplayAndDataZoomLadder() {
         val policy = TileResolutionPolicy()
 
