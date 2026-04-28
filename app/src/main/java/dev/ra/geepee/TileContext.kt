@@ -198,6 +198,25 @@ internal data class ScreenRect(
     ): Boolean {
         return left >= 0f && top >= 0f && right <= width && bottom <= height
     }
+
+    fun intersects(other: ScreenRect): Boolean {
+        return left < other.right &&
+            right > other.left &&
+            top < other.bottom &&
+            bottom > other.top
+    }
+
+    fun intersect(other: ScreenRect): ScreenRect? {
+        if (!intersects(other)) {
+            return null
+        }
+        return ScreenRect(
+            left = max(left, other.left),
+            top = max(top, other.top),
+            right = min(right, other.right),
+            bottom = min(bottom, other.bottom),
+        )
+    }
 }
 
 internal data class TileRouteMetrics(
@@ -489,12 +508,16 @@ internal fun buildTileGridRenderModel(
             cachedTileIds = cachedTileIds,
             cachedCoverageRects = cachedTileIds
                 .sortedBy(DownloadTileId::cacheKey)
-                .map { cachedTileId ->
-                    childTileScreenRectWithinDisplayTile(
-                        displayTileId = tileId,
-                        displayScreenRect = displayRect,
-                        childTileId = cachedTileId,
-                    )
+                .mapNotNull { cachedTileId ->
+                    projectedBoundsToScreenRect(
+                        projectedBounds = projectedBoundsForGeoBounds(
+                            tileGeoBounds(cachedTileId),
+                            routeModel.projection,
+                        ),
+                        viewBounds = bounds,
+                        canvasWidth = canvasWidth,
+                        canvasHeight = canvasHeight,
+                    ).intersect(displayRect)
                 },
             downloadRequests = downloadRequests,
             selected = cachedTileIds.isNotEmpty() && cachedTileIds.all(selectedTileIds::contains),
