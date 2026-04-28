@@ -1,6 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
 import org.junit.Test
 
 class TileRuntimePackBenchmarkTest {
@@ -52,8 +51,5 @@ private fun formatTileRuntimeMillis(nanos: Long): String {
 }
 
 private fun loadBenchmarkRuntimeTileFixture(path: String): TileContextPack {
-    val resource = requireNotNull(TileRuntimePackBenchmarkTest::class.java.classLoader?.getResource("dev/ra/geepee/$path")) {
-        "Missing tile fixture resource: $path"
-    }
-    return tileContextPackFromJson(File(resource.toURI()).readText())
+    return loadRouteMapInfoTileFixture(path)
 }

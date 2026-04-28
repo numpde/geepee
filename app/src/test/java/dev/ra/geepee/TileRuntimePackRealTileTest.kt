@@ -1,6 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,7 +7,7 @@ import org.junit.Test
 class TileRuntimePackRealTileTest {
     @Test
     fun realDownloadedTileCompilesIntoRuntimePackAndRoundTrips() {
-        val sourcePack = loadRuntimeTileFixture("tile-context/10-571-356-local.json")
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
 
         val compiled = compileTileRuntimePack(sourcePack)
         val restored = tileRuntimePackFromByteArray(tileRuntimePackToByteArray(compiled))
@@ -24,7 +23,7 @@ class TileRuntimePackRealTileTest {
 
     @Test
     fun realDownloadedTileRuntimePackKeepsFeatureCoverageInLeaves() {
-        val sourcePack = loadRuntimeTileFixture("tile-context/10-571-356-local.json")
+        val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
         val compiled = compileTileRuntimePack(sourcePack)
         val leafNodes = compiled.quadtreeNodes.filter(TileRuntimeQuadtreeNode::isLeaf)
         val rootBounds = compiled.quadtreeNodes.first().bounds
@@ -49,13 +48,6 @@ class TileRuntimePackRealTileTest {
                 assertLocalPointWithin(rootBounds, point)
             }
         }
-    }
-
-    private fun loadRuntimeTileFixture(path: String): TileContextPack {
-        val resource = requireNotNull(javaClass.classLoader?.getResource("dev/ra/geepee/$path")) {
-            "Missing tile fixture resource: $path"
-        }
-        return tileContextPackFromJson(File(resource.toURI()).readText())
     }
 
     private fun assertLocalPointWithin(
