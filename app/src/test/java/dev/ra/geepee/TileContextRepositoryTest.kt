@@ -1,7 +1,6 @@
 package dev.ra.geepee
 
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -15,7 +14,7 @@ import org.junit.Test
 class TileContextRepositoryTest {
     @Test
     fun deleteTilesRemovesSourceRuntimeOverlayAndManifestEntry() {
-        withRepositoryRoot { cacheRoot, repository ->
+        withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
             val routeModel = loadRepositoryRouteModel()
@@ -62,7 +61,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun pruneTilesKeepsProtectedTilesAndDeletesTheRest() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val protectedPack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
                 west = 21.0,
@@ -89,7 +88,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun buildTileDeletePlanFallsBackToUnusedPolicyWhenSelectionIsEmpty() {
-        withRepositoryRoot { cacheRoot, repository ->
+        withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
             val protectedPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             val deletablePack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
@@ -131,7 +130,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun buildTileDeletePlanPrefersExplicitSelectedCachedTiles() {
-        withRepositoryRoot { cacheRoot, repository ->
+        withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
             val pack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 355),
                 west = 21.0,
@@ -179,7 +178,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun buildTileDeletePlanFallsBackToUnusedPolicyWhenSelectionHasNoCachedTiles() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val protectedPack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
                 west = 21.0,
@@ -206,7 +205,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun storeTilePackPersistsProvidedDownloadMetadata() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val pack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
                 west = 21.0,
@@ -234,7 +233,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun loadingTileArtifactsTouchesAndPersistsLastAccessTime() {
-        withRepositoryRoot { cacheRoot, repository ->
+        withTileContextRepositoryRoot(prefix = "geepee-tile-context-repo-test") { cacheRoot, repository ->
             val pack = syntheticRepositoryPack(
                 tileId = DownloadTileId(zoom = 10, x = 570, y = 356),
                 west = 21.0,
@@ -257,7 +256,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun runtimePackLoadsReuseInMemoryCache() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
 
@@ -270,7 +269,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun routeTileOverlayLoadsReuseInMemoryCache() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
             val routeModel = loadRepositoryRouteModel()
@@ -289,7 +288,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun cachedOnlyOverlayLoadDoesNotBuildMissingOverlay() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
             val routeModel = loadRepositoryRouteModel()
@@ -318,7 +317,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun concurrentRouteTileOverlayLoadsShareSingleOverlayBuild() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val pack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             repository.storeTilePack(pack)
             val routeModel = loadRepositoryRouteModel()
@@ -346,7 +345,7 @@ class TileContextRepositoryTest {
 
     @Test
     fun storingNewTilePackInvalidatesRuntimeAndOverlayCaches() {
-        withRepository { repository ->
+        withTileContextRepository(prefix = "geepee-tile-context-repo-test") { repository ->
             val originalPack = loadRepositoryTileFixture("tile-context/10-571-356-local.json")
             val routeModel = loadRepositoryRouteModel()
             val routePointInTile = requireNotNull(findRoutePointWithinBounds(routeModel, originalPack.queryBounds)) {
@@ -390,24 +389,6 @@ class TileContextRepositoryTest {
             assertEquals(firstOverlay.overlay.context.pois.size + 1, secondOverlay.overlay.context.pois.size)
             assertTrue(secondOverlay.overlay.context.pois.any { poi -> poi.featureId == "test:drinking_water:extra" })
         }
-    }
-}
-
-private inline fun withRepository(block: (TileContextRepository) -> Unit) {
-    val cacheRoot = Files.createTempDirectory("geepee-tile-context-repo-test").toFile()
-    try {
-        block(TileContextRepository(cacheRoot))
-    } finally {
-        cacheRoot.deleteRecursively()
-    }
-}
-
-private inline fun withRepositoryRoot(block: (File, TileContextRepository) -> Unit) {
-    val cacheRoot = Files.createTempDirectory("geepee-tile-context-repo-test").toFile()
-    try {
-        block(cacheRoot, TileContextRepository(cacheRoot))
-    } finally {
-        cacheRoot.deleteRecursively()
     }
 }
 

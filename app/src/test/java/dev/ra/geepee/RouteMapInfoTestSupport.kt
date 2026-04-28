@@ -91,12 +91,45 @@ internal inline fun <T> withRouteMapInfoRepository(
     sourcePack: TileContextPack,
     block: (TileContextRepository) -> T,
 ): T {
-    val cacheRoot = Files.createTempDirectory("geepee-route-map-info-test").toFile()
+    return withSeededTileContextRepository(
+        prefix = "geepee-route-map-info-test",
+        sourcePack = sourcePack,
+        block = block,
+    )
+}
+
+internal inline fun <T> withTileContextRepository(
+    prefix: String = "geepee-tile-context-test",
+    block: (TileContextRepository) -> T,
+): T {
+    val cacheRoot = Files.createTempDirectory(prefix).toFile()
     try {
-        TileContextRepository(cacheRoot).storeTilePack(sourcePack)
         return block(TileContextRepository(cacheRoot))
     } finally {
         cacheRoot.deleteRecursively()
+    }
+}
+
+internal inline fun <T> withTileContextRepositoryRoot(
+    prefix: String = "geepee-tile-context-test",
+    block: (File, TileContextRepository) -> T,
+): T {
+    val cacheRoot = Files.createTempDirectory(prefix).toFile()
+    try {
+        return block(cacheRoot, TileContextRepository(cacheRoot))
+    } finally {
+        cacheRoot.deleteRecursively()
+    }
+}
+
+internal inline fun <T> withSeededTileContextRepository(
+    prefix: String = "geepee-tile-context-test",
+    sourcePack: TileContextPack,
+    block: (TileContextRepository) -> T,
+): T {
+    return withTileContextRepository(prefix = prefix) { repository ->
+        repository.storeTilePack(sourcePack)
+        block(repository)
     }
 }
 

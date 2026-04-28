@@ -1,7 +1,6 @@
 package dev.ra.geepee
 
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Test
@@ -14,7 +13,10 @@ class RouteContextCoordinatorBenchmarkTest {
         val routeModel = loadCoordinatorBenchmarkRouteModel()
 
         val coldRouteContextNanos = benchmarkCoordinatorNanos(iterations = 5) {
-            withCoordinatorRepository(sourcePack) { repository ->
+            withSeededTileContextRepository(
+                prefix = "geepee-route-context-coordinator-bench",
+                sourcePack = sourcePack,
+            ) { repository ->
                 val coordinator = RouteContextCoordinator(
                     tileContextRepository = repository,
                     tileContextConfig = DefaultTileContextConfig,
@@ -29,7 +31,10 @@ class RouteContextCoordinatorBenchmarkTest {
             }
         }
 
-        val warmRouteContextNanos = withCoordinatorRepository(sourcePack) { repository ->
+        val warmRouteContextNanos = withSeededTileContextRepository(
+            prefix = "geepee-route-context-coordinator-bench",
+            sourcePack = sourcePack,
+        ) { repository ->
             val coordinator = RouteContextCoordinator(
                 tileContextRepository = repository,
                 tileContextConfig = DefaultTileContextConfig,
@@ -82,7 +87,10 @@ class RouteContextCoordinatorBenchmarkTest {
         )
 
         val coldNearbyWayNanos = benchmarkCoordinatorNanos(iterations = 5) {
-            withCoordinatorRepository(sourcePack) { repository ->
+            withSeededTileContextRepository(
+                prefix = "geepee-route-context-coordinator-bench",
+                sourcePack = sourcePack,
+            ) { repository ->
                 val coordinator = RouteContextCoordinator(
                     tileContextRepository = repository,
                     tileContextConfig = DefaultTileContextConfig,
@@ -103,7 +111,10 @@ class RouteContextCoordinatorBenchmarkTest {
             }
         }
 
-        val warmNearbyWayNanos = withCoordinatorRepository(sourcePack) { repository ->
+        val warmNearbyWayNanos = withSeededTileContextRepository(
+            prefix = "geepee-route-context-coordinator-bench",
+            sourcePack = sourcePack,
+        ) { repository ->
             val coordinator = RouteContextCoordinator(
                 tileContextRepository = repository,
                 tileContextConfig = DefaultTileContextConfig,
@@ -140,19 +151,6 @@ class RouteContextCoordinatorBenchmarkTest {
                 appendLine("ROUTE_CONTEXT_COORDINATOR_NEARBY_BENCH warm_rebuild_avg_ms=${formatCoordinatorMillis(warmNearbyWayNanos)}")
             },
         )
-    }
-}
-
-private inline fun <T> withCoordinatorRepository(
-    sourcePack: TileContextPack,
-    block: (TileContextRepository) -> T,
-): T {
-    val cacheRoot = Files.createTempDirectory("geepee-route-context-coordinator-bench").toFile()
-    try {
-        TileContextRepository(cacheRoot).storeTilePack(sourcePack)
-        return block(TileContextRepository(cacheRoot))
-    } finally {
-        cacheRoot.deleteRecursively()
     }
 }
 

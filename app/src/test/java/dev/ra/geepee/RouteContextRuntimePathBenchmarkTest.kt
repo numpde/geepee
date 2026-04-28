@@ -1,7 +1,6 @@
 package dev.ra.geepee
 
 import java.io.File
-import java.nio.file.Files
 import org.junit.Test
 
 class RouteContextRuntimePathBenchmarkTest {
@@ -24,13 +23,19 @@ class RouteContextRuntimePathBenchmarkTest {
         )
 
         val coldRuntimeLoadNanos = benchmarkRuntimePathNanos(iterations = 5) {
-            withSeededRepository(sourcePack) { repository ->
+            withSeededTileContextRepository(
+                prefix = "geepee-runtime-path-bench",
+                sourcePack = sourcePack,
+            ) { repository ->
                 requireNotNull(repository.loadRuntimePack(sourcePack.tileId))
             }
         }
 
         val coldOverlayBuildNanos = benchmarkRuntimePathNanos(iterations = 5) {
-            withSeededRepository(sourcePack) { repository ->
+            withSeededTileContextRepository(
+                prefix = "geepee-runtime-path-bench",
+                sourcePack = sourcePack,
+            ) { repository ->
                 requireNotNull(
                     repository.loadRouteTileOverlayBundle(
                         routeModel = routeModel,
@@ -41,7 +46,10 @@ class RouteContextRuntimePathBenchmarkTest {
             }
         }
 
-        val warmMetrics = withSeededRepository(sourcePack) { repository ->
+        val warmMetrics = withSeededTileContextRepository(
+            prefix = "geepee-runtime-path-bench",
+            sourcePack = sourcePack,
+        ) { repository ->
             val bundle = requireNotNull(
                 repository.loadRouteTileOverlayBundle(
                     routeModel = routeModel,
@@ -88,19 +96,6 @@ private data class RuntimePathWarmMetrics(
     val overlayLoadNanos: Long,
     val nearbyWayQueryNanos: Long,
 )
-
-private inline fun <T> withSeededRepository(
-    sourcePack: TileContextPack,
-    block: (TileContextRepository) -> T,
-): T {
-    val cacheRoot = Files.createTempDirectory("geepee-runtime-path-bench").toFile()
-    try {
-        TileContextRepository(cacheRoot).storeTilePack(sourcePack)
-        return block(TileContextRepository(cacheRoot))
-    } finally {
-        cacheRoot.deleteRecursively()
-    }
-}
 
 private fun benchmarkRuntimePathNanos(
     iterations: Int,
