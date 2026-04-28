@@ -479,39 +479,29 @@ internal fun buildTileGridRenderModel(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
-        val representedScreenRect = if (outlineStyle == TileGridOutlineStyle.ViewProxyDashed) {
-            viewportScreenRect
-        } else {
-            displayRect
-        }
-        val representedDownloadRequests = filterTileRequestsForDisplayRepresentation(
-            routeModel = routeModel,
-            viewBounds = bounds,
-            canvasWidth = canvasWidth,
-            canvasHeight = canvasHeight,
-            representedScreenRect = representedScreenRect,
-            downloadRequests = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
-        )
-        val coverage = resolveDisplayTileCoverage(
+        val representation = resolveDisplayTileRepresentation(
             displayTileId = tileId,
             displayZoom = tileResolution.displayZoom,
+            displayRect = displayRect,
+            outlineStyle = outlineStyle,
+            viewportScreenRect = viewportScreenRect,
             routeModel = routeModel,
             viewBounds = bounds,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
-            representedScreenRect = representedScreenRect,
+            downloadRequests = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
             tileSnapshots = tileSnapshots,
         )
         val downloadState = resolveDisplayTileDownloadState(
-            downloadRequests = representedDownloadRequests,
+            downloadRequests = representation.downloadRequests,
             tileSnapshots = tileSnapshots,
-            hasCachedCoverage = coverage.cachedTileIds.isNotEmpty(),
+            hasCachedCoverage = representation.cachedCoverage.cachedTileIds.isNotEmpty(),
         )
         if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
             return@mapNotNull null
         }
-        val estimatedBytes = if (representedDownloadRequests.isNotEmpty()) {
-            representedDownloadRequests.sumOf(TileDownloadRequest::estimatedBytes)
+        val estimatedBytes = if (representation.downloadRequests.isNotEmpty()) {
+            representation.downloadRequests.sumOf(TileDownloadRequest::estimatedBytes)
         } else {
             estimateTileBytes(routeMetrics, cachedAverageBytes)
         }
@@ -522,10 +512,11 @@ internal fun buildTileGridRenderModel(
             routeMetrics = routeMetrics,
             downloadState = downloadState.state,
             progressFraction = downloadState.progressFraction,
-            cachedTileIds = coverage.cachedTileIds,
-            cachedCoverageRects = coverage.cachedCoverageRects,
-            downloadRequests = representedDownloadRequests,
-            selected = coverage.cachedTileIds.isNotEmpty() && coverage.cachedTileIds.all(selectedTileIds::contains),
+            cachedTileIds = representation.cachedCoverage.cachedTileIds,
+            cachedCoverageRects = representation.cachedCoverage.cachedCoverageRects,
+            downloadRequests = representation.downloadRequests,
+            selected = representation.cachedCoverage.cachedTileIds.isNotEmpty() &&
+                representation.cachedCoverage.cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
             label = tileLabel(
                 routeMetrics = routeMetrics,
@@ -540,68 +531,66 @@ internal fun buildTileGridRenderModel(
     return TileGridRenderModel(tiles)
 }
 
-private fun filterTileRequestsForDisplayRepresentation(
+private fun resolveDisplayTileRepresentation(
+    displayTileId: DownloadTileId,
+    displayZoom: Int,
+    displayRect: ScreenRect,
+    outlineStyle: TileGridOutlineStyle,
+    viewportScreenRect: ScreenRect,
     routeModel: RouteModel,
     viewBounds: Bounds,
     canvasWidth: Float,
     canvasHeight: Float,
-    representedScreenRect: ScreenRect,
     downloadRequests: List<TileDownloadRequest>,
-): List<TileDownloadRequest> {
-    return downloadRequests.filter { request ->
-        request.tileId.screenRectInViewport(
+    tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+): DisplayTileRepresentation {
+    val representedScreenRect = when (outlineStyle) {
+        TileGridOutlineStyle.ViewProxyDashed -> viewportScreenRect
+        TileGridOutlineStyle.Solid -> displayRect
+    }
+    val representedDownloadRequests = downloadRequests.filter { request ->
+        request.tileId.intersectsRepresentedScreenRect(
             routeModel = routeModel,
             viewBounds = viewBounds,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
-        ).intersects(representedScreenRect)
+            representedScreenRect = representedScreenRect,
+        )
     }
-}
-
-private fun resolveDisplayTileCoverage(
-    displayTileId: DownloadTileId,
-    displayZoom: Int,
-    routeModel: RouteModel,
-    viewBounds: Bounds,
-    canvasWidth: Float,
-    canvasHeight: Float,
-    representedScreenRect: ScreenRect,
-    tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
-): DisplayTileCoverage {
     val cachedTileIds = tileSnapshots
         .mapNotNull { (tileId, snapshot) ->
             if (snapshot.status != TileDownloadStatus.Cached) {
                 return@mapNotNull null
             }
-            val representsDisplayTile =
-                parentTileIdAtZoom(tileId, displayZoom) == displayTileId ||
-                    tileContainsTile(tileId, displayTileId)
-            if (!representsDisplayTile) {
+            if (!tileId.representsDisplayTile(displayTileId, displayZoom)) {
                 return@mapNotNull null
             }
-            val screenRect = tileId.screenRectInViewport(
+            if (!tileId.intersectsRepresentedScreenRect(
                 routeModel = routeModel,
                 viewBounds = viewBounds,
                 canvasWidth = canvasWidth,
                 canvasHeight = canvasHeight,
-            )
-            if (!screenRect.intersects(representedScreenRect)) {
+                representedScreenRect = representedScreenRect,
+            )) {
                 return@mapNotNull null
             }
             tileId
         }
         .sortedBy(DownloadTileId::cacheKey)
         .toCollection(linkedSetOf())
-    return DisplayTileCoverage(
-        cachedTileIds = cachedTileIds,
-        cachedCoverageRects = cachedTileIds.mapNotNull { cachedTileId ->
-            cachedTileId.screenRectInViewport(
-                routeModel = routeModel,
-                viewBounds = viewBounds,
-                canvasWidth = canvasWidth,
-                canvasHeight = canvasHeight,
-            ).intersect(representedScreenRect)
-        },
+    return DisplayTileRepresentation(
+        downloadRequests = representedDownloadRequests,
+        cachedCoverage = DisplayTileCoverage(
+            cachedTileIds = cachedTileIds,
+            cachedCoverageRects = cachedTileIds.mapNotNull { cachedTileId ->
+                cachedTileId.screenRectInViewport(
+                    routeModel = routeModel,
+                    viewBounds = viewBounds,
+                    canvasWidth = canvasWidth,
+                    canvasHeight = canvasHeight,
+                ).intersect(representedScreenRect)
+            },
+        ),
     )
 }
 
@@ -686,6 +675,11 @@ private data class ResolvedDisplayTileDownloadState(
 private data class DisplayTileCoverage(
     val cachedTileIds: Set<DownloadTileId>,
     val cachedCoverageRects: List<ScreenRect>,
+)
+
+private data class DisplayTileRepresentation(
+    val downloadRequests: List<TileDownloadRequest>,
+    val cachedCoverage: DisplayTileCoverage,
 )
 
 private fun buildDisplayTileDownloadRequests(
@@ -793,6 +787,29 @@ private fun DownloadTileId.screenRectInViewport(
         canvasWidth = canvasWidth,
         canvasHeight = canvasHeight,
     )
+}
+
+private fun DownloadTileId.intersectsRepresentedScreenRect(
+    routeModel: RouteModel,
+    viewBounds: Bounds,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    representedScreenRect: ScreenRect,
+): Boolean {
+    return screenRectInViewport(
+        routeModel = routeModel,
+        viewBounds = viewBounds,
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+    ).intersects(representedScreenRect)
+}
+
+private fun DownloadTileId.representsDisplayTile(
+    displayTileId: DownloadTileId,
+    displayZoom: Int,
+): Boolean {
+    return parentTileIdAtZoom(this, displayZoom) == displayTileId ||
+        tileContainsTile(this, displayTileId)
 }
 
 internal fun childTileScreenRectWithinDisplayTile(
