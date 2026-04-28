@@ -84,6 +84,7 @@ internal data class NearbyWayTileCoverage(
 
 internal data class NearbyWayQueryCacheKey(
     val routeFingerprint: String,
+    val localTileIds: List<DownloadTileId>,
     val localTileRevisions: List<NearbyWayLoadedTileRevision>,
     val focusBoundsBucket: NearbyWayFocusBoundsBucket,
 )
@@ -403,6 +404,7 @@ internal fun buildNearbyWayQueryCacheKey(
 ): NearbyWayQueryCacheKey {
     return NearbyWayQueryCacheKey(
         routeFingerprint = routeFingerprint(routeModel),
+        localTileIds = queryFocus.localTileIds.sortedBy(DownloadTileId::cacheKey),
         localTileRevisions = tileCoverage.loadedTileRevisions,
         focusBoundsBucket = nearbyWayFocusBoundsBucket(queryFocus.focus),
     )

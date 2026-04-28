@@ -236,6 +236,61 @@ class RouteContextCoordinatorTest {
     }
 
     @Test
+    fun nearbyWayQueryCacheKey_changesWhenTargetLocalTileCoverageChanges() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0, 0.01),
+                ),
+            ),
+        )
+        val baseFocus = NearbyWayQueryFocus(
+            focus = MapInfoFocus(
+                centerGeoPoint = GeoPoint(0.0, 0.0020),
+                windowWidthMeters = 100.0,
+                projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            ),
+            localTileIds = setOf(
+                DownloadTileId(zoom = 12, x = 1, y = 1),
+            ),
+            expandedProjectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            dataZoom = 12,
+        )
+        val widenedCoverageFocus = baseFocus.copy(
+            localTileIds = setOf(
+                DownloadTileId(zoom = 12, x = 1, y = 1),
+                DownloadTileId(zoom = 12, x = 2, y = 1),
+            ),
+        )
+        val tileCoverage = NearbyWayTileCoverage(
+            localTileIds = baseFocus.localTileIds,
+            loadedTileCoverages = listOf(
+                NearbyWayLoadedTileCoverage(
+                    tileRevision = NearbyWayLoadedTileRevision(
+                        tileId = DownloadTileId(zoom = 10, x = 0, y = 0),
+                        updatedAtMillis = 123L,
+                    ),
+                    coveredLocalTileIds = baseFocus.localTileIds,
+                ),
+            ),
+        )
+
+        val baseKey = buildNearbyWayQueryCacheKey(
+            routeModel = routeModel,
+            queryFocus = baseFocus,
+            tileCoverage = tileCoverage,
+        )
+        val widenedCoverageKey = buildNearbyWayQueryCacheKey(
+            routeModel = routeModel,
+            queryFocus = widenedCoverageFocus,
+            tileCoverage = tileCoverage,
+        )
+
+        assertNotEquals(baseKey, widenedCoverageKey)
+    }
+
+    @Test
     fun resolveNearbyWayQueryFocus_usesViewportBoundsForLocalTileCoverage() {
         val routeModel = buildRouteModel(
             rawSegments = listOf(
