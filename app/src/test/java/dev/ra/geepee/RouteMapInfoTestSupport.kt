@@ -14,14 +14,31 @@ internal data class RouteMapInfoFixture(
     val geoPoints: List<GeoPoint>,
 )
 
+internal data class RouteMapInfoRouteFixture(
+    val geoPoints: List<GeoPoint>,
+    val routeModel: RouteModel,
+    val routeMetersByIndex: List<Double>,
+)
+
 internal fun loadRouteMapInfoFixture(
     tileFixturePath: String = "tile-context/10-571-356-local.json",
 ): RouteMapInfoFixture {
-    val geoPoints = loadRouteMapInfoGeoPoints()
+    val routeFixture = loadRouteMapInfoRouteFixture()
     return RouteMapInfoFixture(
         sourcePack = loadRouteMapInfoTileFixture(tileFixturePath),
+        geoPoints = routeFixture.geoPoints,
+        routeModel = routeFixture.routeModel,
+    )
+}
+
+internal fun loadRouteMapInfoRouteFixture(): RouteMapInfoRouteFixture {
+    val geoPoints = loadRouteMapInfoGeoPoints()
+    val routeModel = buildRouteModel(listOf(geoPoints))
+    require(geoPoints.size >= 2) { "Expected at least two GPX points in the Tisza fixture." }
+    return RouteMapInfoRouteFixture(
         geoPoints = geoPoints,
-        routeModel = buildRouteModel(listOf(geoPoints)),
+        routeModel = routeModel,
+        routeMetersByIndex = buildRouteMetersByIndex(routeModel),
     )
 }
 
@@ -44,6 +61,12 @@ internal fun loadRouteMapInfoGeoPointsByIndex(): Map<Int, GeoPoint> {
 
 internal fun loadRouteMapInfoRouteModel(): RouteModel {
     return buildRouteModel(listOf(loadRouteMapInfoGeoPoints()))
+}
+
+internal fun buildRouteMetersByIndex(routeModel: RouteModel): List<Double> {
+    return routeModel.segments.flatMap { segment ->
+        segment.cumulativeMeters.map { segment.offsetMeters + it }
+    }
 }
 
 internal fun buildRouteMapInfoFocus(

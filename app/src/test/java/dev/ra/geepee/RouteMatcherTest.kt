@@ -352,7 +352,7 @@ class RouteMatcherTest {
 
     @Test
     fun matcherHandlesRealTiszaStartHairpinNearOverlap() {
-        val fixture = loadTiszaFixture()
+        val fixture = loadRouteMapInfoRouteFixture()
         val nearOverlapMeters = distanceBetweenGeoPoints(
             fixture.geoPoints[TISZA_START_HAIRPIN_PRE_APEX_INDEX],
             fixture.geoPoints[TISZA_START_HAIRPIN_RETURN_INDEX],
@@ -373,7 +373,7 @@ class RouteMatcherTest {
 
     @Test
     fun matcherHandlesNoisyRealTiszaStartHairpin() {
-        val fixture = loadTiszaFixture()
+        val fixture = loadRouteMapInfoRouteFixture()
         val noiseSource = Random(17)
 
         assertHairpinRun(
@@ -395,7 +395,7 @@ class RouteMatcherTest {
 
     @Test
     fun matcherHandlesStressNoisyRealTiszaStartHairpinWithOutliers() {
-        val fixture = loadTiszaFixture()
+        val fixture = loadRouteMapInfoRouteFixture()
         val noiseSource = Random(71)
         val outlierOffsetsByIndex = mapOf(
             42 to OffsetMeters(east = 8.0, north = -10.0),
@@ -422,14 +422,8 @@ class RouteMatcherTest {
     }
 }
 
-private data class RouteFixture(
-    val geoPoints: List<GeoPoint>,
-    val routeModel: RouteModel,
-    val routeMetersByIndex: List<Double>,
-)
-
 private data class HairpinRun(
-    val fixture: RouteFixture,
+    val fixture: RouteMapInfoRouteFixture,
     val matchesByPointIndex: Map<Int, RouteAnalysis>,
 ) {
     val orderedMatches: List<RouteAnalysis>
@@ -450,22 +444,7 @@ private data class OffsetMeters(
     val north: Double,
 )
 
-private fun loadTiszaFixture(): RouteFixture {
-    val geoPoints = loadRouteMapInfoGeoPoints()
-    val routeModel = buildRouteModel(listOf(geoPoints))
-    require(geoPoints.size >= 2) { "Expected at least two GPX points in the Tisza fixture." }
-
-    return RouteFixture(
-        geoPoints = geoPoints,
-        routeModel = routeModel,
-        routeMetersByIndex = routeModel.segments
-            .flatMap { segment ->
-                segment.cumulativeMeters.map { segment.offsetMeters + it }
-            },
-    )
-}
-
-private fun RouteFixture.runTiszaStartHairpin(
+private fun RouteMapInfoRouteFixture.runTiszaStartHairpin(
     buildFix: (pointIndex: Int, timestampMillis: Long) -> LocationFix,
 ): HairpinRun {
     val matcher = RouteMatcher(routeModel)
@@ -488,7 +467,7 @@ private fun RouteFixture.runTiszaStartHairpin(
     )
 }
 
-private fun RouteFixture.fixAt(
+private fun RouteMapInfoRouteFixture.fixAt(
     index: Int,
     timestampMillis: Long,
 ): LocationFix {
@@ -506,7 +485,7 @@ private fun RouteFixture.fixAt(
     )
 }
 
-private fun RouteFixture.noisyFixAt(
+private fun RouteMapInfoRouteFixture.noisyFixAt(
     index: Int,
     timestampMillis: Long,
     random: Random,
