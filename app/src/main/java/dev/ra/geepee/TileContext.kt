@@ -42,6 +42,7 @@ private const val MAX_EDGE_ESTIMATE_BONUS_BYTES = 180_000L
 private const val ROUTE_LENGTH_ESTIMATE_BYTES_PER_METER = 8.0
 private const val MAX_ROUTE_LENGTH_ESTIMATE_BONUS_BYTES = 260_000L
 private const val TILE_CONTEXT_PACK_SCHEMA_VERSION = 1
+private const val TILE_GRID_PROXY_EDGE_MARGIN_PX = 1f
 
 internal val DefaultTileContextConfig = TileContextConfig()
 
@@ -195,13 +196,6 @@ internal data class ScreenRect(
         height: Float,
     ): Boolean {
         return left >= 0f && top >= 0f && right <= width && bottom <= height
-    }
-
-    fun fullyContains(
-        width: Float,
-        height: Float,
-    ): Boolean {
-        return left <= 0f && top <= 0f && right >= width && bottom >= height
     }
 }
 
@@ -458,16 +452,28 @@ private fun resolveTileDisplayRect(
     canvasWidth: Float,
     canvasHeight: Float,
 ): Pair<ScreenRect, TileGridOutlineStyle> {
-    if (
-        routeMetrics.intersectsRoute &&
-        screenRect.fullyContains(width = canvasWidth, height = canvasHeight)
-    ) {
+    if (shouldUseViewportProxyOutline(screenRect, routeMetrics, canvasWidth, canvasHeight)) {
         return buildViewportProxyTileRect(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         ) to TileGridOutlineStyle.ViewProxyDashed
     }
     return screenRect to TileGridOutlineStyle.Solid
+}
+
+internal fun shouldUseViewportProxyOutline(
+    screenRect: ScreenRect,
+    routeMetrics: TileRouteMetrics,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): Boolean {
+    if (!routeMetrics.intersectsRoute) {
+        return false
+    }
+    return screenRect.left < -TILE_GRID_PROXY_EDGE_MARGIN_PX &&
+        screenRect.top < -TILE_GRID_PROXY_EDGE_MARGIN_PX &&
+        screenRect.right > canvasWidth + TILE_GRID_PROXY_EDGE_MARGIN_PX &&
+        screenRect.bottom > canvasHeight + TILE_GRID_PROXY_EDGE_MARGIN_PX
 }
 
 private fun buildViewportProxyTileRect(

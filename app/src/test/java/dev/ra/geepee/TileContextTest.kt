@@ -200,6 +200,75 @@ class TileContextTest {
     }
 
     @Test
+    fun viewportProxyOutlineIsSuppressedWhenRealTileEdgeTouchesViewBoundary() {
+        val routeMetrics = TileRouteMetrics(
+            intersectsRoute = true,
+            intersectingEdgeCount = 1,
+            intersectingRouteMeters = 100.0,
+        )
+
+        assertFalse(
+            shouldUseViewportProxyOutline(
+                screenRect = ScreenRect(
+                    left = 0f,
+                    top = -50f,
+                    right = 450f,
+                    bottom = 290f,
+                ),
+                routeMetrics = routeMetrics,
+                canvasWidth = 400f,
+                canvasHeight = 240f,
+            ),
+        )
+    }
+
+    @Test
+    fun viewportProxyOutlineIsSuppressedWhenRealTileCornerTouchesViewBoundary() {
+        val routeMetrics = TileRouteMetrics(
+            intersectsRoute = true,
+            intersectingEdgeCount = 1,
+            intersectingRouteMeters = 100.0,
+        )
+
+        assertFalse(
+            shouldUseViewportProxyOutline(
+                screenRect = ScreenRect(
+                    left = 0f,
+                    top = 0f,
+                    right = 450f,
+                    bottom = 290f,
+                ),
+                routeMetrics = routeMetrics,
+                canvasWidth = 400f,
+                canvasHeight = 240f,
+            ),
+        )
+    }
+
+    @Test
+    fun viewportProxyOutlineRequiresStrictOverflowPastAllViewEdges() {
+        val routeMetrics = TileRouteMetrics(
+            intersectsRoute = true,
+            intersectingEdgeCount = 1,
+            intersectingRouteMeters = 100.0,
+        )
+
+        assertTrue(
+            shouldUseViewportProxyOutline(
+                screenRect = ScreenRect(
+                    left = -10f,
+                    top = -10f,
+                    right = 410f,
+                    bottom = 250f,
+                ),
+                routeMetrics = routeMetrics,
+                canvasWidth = 400f,
+                canvasHeight = 240f,
+            ),
+        )
+    }
+
+    @Test
     fun tileGridRenderModelCanFilterToFullyVisibleTiles() {
         val metrics = TileRouteMetrics(
             intersectsRoute = false,
@@ -265,7 +334,6 @@ class TileContextTest {
         assertTrue(renderModel.tiles.any { it.tileId == routeMetrics.keys.first() && it.selected })
     }
 
-    @Test
     fun buildRouteTileMetricsIndexContainsOnlyIntersectingTiles() {
         val route = buildRouteModel(
             listOf(
