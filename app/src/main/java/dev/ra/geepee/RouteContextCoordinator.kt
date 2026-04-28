@@ -163,11 +163,7 @@ internal class RouteContextCoordinator(
         routeModel: RouteModel,
         tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
     ) {
-        val cachedTileIds = tileDownloads
-            .asSequence()
-            .filter { (_, snapshot) -> snapshot.status == TileDownloadStatus.Cached }
-            .map(Map.Entry<DownloadTileId, TileDownloadSnapshot>::key)
-            .toSet()
+        val cachedTileIds = tileDownloads.cachedTileIds()
         val warmTileIds = routeMapInfoWarmTileIds(
             routeModel = routeModel,
             cachedTileIds = cachedTileIds,
@@ -354,7 +350,7 @@ internal fun buildNearbyWayTileCoverage(
 ): NearbyWayTileCoverage {
     val cachedTileRevisions = tileDownloads
         .mapNotNull { (tileId, snapshot) ->
-            if (snapshot.status != TileDownloadStatus.Cached) {
+            if (!snapshot.isCached) {
                 return@mapNotNull null
             }
             if (tileId.zoom > queryFocus.dataZoom) {

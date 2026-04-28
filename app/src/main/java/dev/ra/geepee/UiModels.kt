@@ -64,7 +64,7 @@ internal data class GeePeeUiState(
         get() = hasCoarsePermission || hasFinePermission
 
     val hasCachedTiles: Boolean
-        get() = tileDownloads.values.any { it.status == TileDownloadStatus.Cached }
+        get() = tileDownloads.values.any(TileDownloadSnapshot::isCached)
 }
 
 internal enum class OrientationMode {

@@ -136,6 +136,31 @@ internal data class TileDownloadSnapshot(
         }
 }
 
+internal val TileDownloadSnapshot.isDownloading: Boolean
+    get() = status == TileDownloadStatus.Downloading
+
+internal val TileDownloadSnapshot.isCached: Boolean
+    get() = status == TileDownloadStatus.Cached
+
+internal val TileDownloadSnapshot.isError: Boolean
+    get() = status == TileDownloadStatus.Error
+
+internal fun Map<DownloadTileId, TileDownloadSnapshot>.tileIdsWithStatus(
+    status: TileDownloadStatus,
+): Set<DownloadTileId> {
+    return entries
+        .asSequence()
+        .filter { (_, snapshot) -> snapshot.status == status }
+        .map(Map.Entry<DownloadTileId, TileDownloadSnapshot>::key)
+        .toCollection(linkedSetOf())
+}
+
+internal fun Map<DownloadTileId, TileDownloadSnapshot>.cachedTileIds(): Set<DownloadTileId> =
+    tileIdsWithStatus(TileDownloadStatus.Cached)
+
+internal fun Map<DownloadTileId, TileDownloadSnapshot>.downloadingTileIds(): Set<DownloadTileId> =
+    tileIdsWithStatus(TileDownloadStatus.Downloading)
+
 internal class TileDownloadCancellation {
     @Volatile
     private var cancelled = false
@@ -559,7 +584,7 @@ private fun resolveDisplayTileRepresentation(
     }
     val cachedTileIds = tileSnapshots
         .mapNotNull { (tileId, snapshot) ->
-            if (snapshot.status != TileDownloadStatus.Cached) {
+            if (!snapshot.isCached) {
                 return@mapNotNull null
             }
             if (!tileId.representsDisplayTile(displayTileId, displayZoom)) {
@@ -724,9 +749,9 @@ private fun resolveDisplayTileDownloadState(
             progressFraction = null,
         )
     }
-    val cachedCount = snapshots.count { (_, snapshot) -> snapshot.status == TileDownloadStatus.Cached }
-    val hasDownloading = snapshots.any { (_, snapshot) -> snapshot.status == TileDownloadStatus.Downloading }
-    val hasError = snapshots.any { (_, snapshot) -> snapshot.status == TileDownloadStatus.Error }
+    val cachedCount = snapshots.count { (_, snapshot) -> snapshot.isCached }
+    val hasDownloading = snapshots.any { (_, snapshot) -> snapshot.isDownloading }
+    val hasError = snapshots.any { (_, snapshot) -> snapshot.isError }
     val state = when {
         hasDownloading -> TileGridDownloadState.Downloading
         cachedCount == downloadRequests.size -> TileGridDownloadState.Cached
@@ -1062,7 +1087,7 @@ private fun cachedAverageBytes(
     tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
 ): Long? {
     val cachedBytes = tileSnapshots.values
-        .filter { it.status == TileDownloadStatus.Cached }
+        .filter { it.isCached }
         .mapNotNull { it.actualBytes }
     if (cachedBytes.isEmpty()) {
         return null

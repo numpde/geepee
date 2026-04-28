@@ -75,7 +75,7 @@ internal class TileContextRepository(
                 saveManifest()
             }
             deletedTileIds += tileId
-            if (snapshot.status != TileDownloadStatus.Cached) {
+            if (!snapshot.isCached) {
                 Log.w(TILE_CONTEXT_REPOSITORY_LOG_TAG, "Deleted non-cached tile entry ${tileId.cacheKey}")
             }
         }
@@ -100,9 +100,9 @@ internal class TileContextRepository(
 
     private fun buildSelectedTileDeletePlan(tileIds: Collection<DownloadTileId>): TileDeletePlan {
         val cachedTileIds = synchronized(this) {
-            tileIds
-                .toSet()
-                .filter { tileId -> cachedTiles[tileId]?.status == TileDownloadStatus.Cached }
+            val selectedTileIds = tileIds.toSet()
+            cachedTiles.cachedTileIds()
+                .filter(selectedTileIds::contains)
                 .toCollection(linkedSetOf())
         }
         return TileDeletePlan(
@@ -430,7 +430,7 @@ internal class TileContextRepository(
         var changed = false
         tileIds.forEach { tileId ->
             val snapshot = cachedTiles[tileId] ?: return@forEach
-            if (snapshot.status != TileDownloadStatus.Cached) {
+            if (!snapshot.isCached) {
                 return@forEach
             }
             if (accessedAtMillis - snapshot.lastAccessedAtMillis < TILE_ACCESS_TOUCH_INTERVAL_MILLIS) {
@@ -493,7 +493,7 @@ internal class TileContextRepository(
                 "tiles",
                 buildJsonArray {
                     cachedTiles.forEach { (tileId, snapshot) ->
-                        if (snapshot.status == TileDownloadStatus.Cached) {
+                        if (snapshot.isCached) {
                             add(
                                 buildJsonObject {
                                     put("zoom", JsonPrimitive(tileId.zoom))
@@ -614,9 +614,7 @@ internal class TileContextRepository(
 
     private fun pruneCandidateTileIds(policy: TilePrunePolicy): Set<DownloadTileId> {
         return synchronized(this) {
-            cachedTiles
-                .filterValues { snapshot -> snapshot.status == TileDownloadStatus.Cached }
-                .keys
+            cachedTiles.cachedTileIds()
                 .filterNot(policy.protectedTileIds::contains)
                 .toCollection(linkedSetOf())
         }

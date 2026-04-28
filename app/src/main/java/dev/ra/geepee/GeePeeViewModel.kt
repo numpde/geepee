@@ -617,7 +617,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         when (update) {
             is TileDownloadUpdate.Progress -> {
                 val currentSnapshot = tileDownloads[tileId]
-                if (currentSnapshot?.status == TileDownloadStatus.Downloading) {
+                if (currentSnapshot?.isDownloading == true) {
                     if (
                         currentSnapshot.downloadedBytes == update.downloadedBytes &&
                         currentSnapshot.actualBytes == update.actualBytes
@@ -646,7 +646,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             }
 
             TileDownloadUpdate.Cancelled -> {
-                if (tileDownloads[tileId]?.status == TileDownloadStatus.Downloading) {
+                if (tileDownloads[tileId]?.isDownloading == true) {
                     tileDownloads.remove(tileId)
                     recomputeUiState()
                 }

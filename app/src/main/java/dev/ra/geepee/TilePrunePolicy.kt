@@ -115,22 +115,17 @@ private fun deleteUnusedProtectedTileIds(
     val protectedTileIds = linkedSetOf<DownloadTileId>()
     val recentAccessCutoffMillis = nowMillis - retentionMillis
 
-    protectedTileIds += tileDownloads
-        .filterValues { snapshot -> snapshot.status == TileDownloadStatus.Downloading }
-        .keys
+    protectedTileIds += tileDownloads.downloadingTileIds()
 
     protectedTileIds += tileDownloads
         .filterValues { snapshot ->
-            snapshot.status == TileDownloadStatus.Cached &&
+            snapshot.isCached &&
                 snapshot.lastAccessedAtMillis >= recentAccessCutoffMillis
         }
         .keys
 
     if (routeModel != null) {
-        val cachedTileIds = tileDownloads
-            .filterValues { snapshot -> snapshot.status == TileDownloadStatus.Cached }
-            .keys
-            .toSet()
+        val cachedTileIds = tileDownloads.cachedTileIds()
         protectedTileIds += routeMapInfoWarmTileIds(
             routeModel = routeModel,
             cachedTileIds = cachedTileIds,

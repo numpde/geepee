@@ -21,7 +21,7 @@ internal data class PreviewTileSelectionState(
         tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
     ): PreviewTileSelectionState {
         val retainedTileIds = selectedTileIds.filterTo(linkedSetOf()) { tileId ->
-            tileSnapshots[tileId]?.status == TileDownloadStatus.Cached
+            tileSnapshots[tileId]?.isCached == true
         }
         return if (retainedTileIds == selectedTileIds) {
             this
