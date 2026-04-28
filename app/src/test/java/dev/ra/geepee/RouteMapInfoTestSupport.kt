@@ -204,6 +204,20 @@ internal fun awaitRouteMapInfoNearbyWayRebuild(
     return requireNotNull(result)
 }
 
+internal fun awaitRouteMapInfoRouteContextRebuild(
+    coordinator: RouteContextCoordinator,
+    routeModel: RouteModel,
+): List<RoutePoi> {
+    val latch = CountDownLatch(1)
+    var result: List<RoutePoi>? = null
+    coordinator.rebuildRouteContext(routeModel) { rebuilt ->
+        result = rebuilt
+        latch.countDown()
+    }
+    assumeTrue("Timed out waiting for route-context rebuild", latch.await(5, TimeUnit.SECONDS))
+    return requireNotNull(result)
+}
+
 internal fun assertNearbyWaySnippetsEquivalent(
     expected: List<RouteNearbyWaySnippet>,
     actual: List<RouteNearbyWaySnippet>,

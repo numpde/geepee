@@ -1,8 +1,5 @@
 package dev.ra.geepee
 
-import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import org.junit.Test
 
 class RouteContextCoordinatorBenchmarkTest {
@@ -24,7 +21,7 @@ class RouteContextCoordinatorBenchmarkTest {
                     logTag = "RouteContextCoordinatorBenchmarkTest",
                 )
                 try {
-                    awaitRouteContextRebuild(coordinator, routeModel)
+                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
                 } finally {
                     coordinator.shutdown()
                 }
@@ -42,9 +39,9 @@ class RouteContextCoordinatorBenchmarkTest {
                 logTag = "RouteContextCoordinatorBenchmarkTest",
             )
             try {
-                awaitRouteContextRebuild(coordinator, routeModel)
+                awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
                 benchmarkNanos(iterations = 100) {
-                    awaitRouteContextRebuild(coordinator, routeModel)
+                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
                 }
             } finally {
                 coordinator.shutdown()
@@ -85,6 +82,11 @@ class RouteContextCoordinatorBenchmarkTest {
                 updatedAtMillis = sourcePack.fetchedAtMillis,
             ),
         )
+        val focus = buildRouteMapInfoFocus(
+            routeModel = routeModel,
+            focusPoint = analysis.nearestGeoPoint,
+            widthMeters = 1_000.0,
+        )
 
         val coldNearbyWayNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
@@ -98,12 +100,13 @@ class RouteContextCoordinatorBenchmarkTest {
                     logTag = "RouteContextCoordinatorBenchmarkTest",
                 )
                 try {
-                    awaitNearbyWayRebuild(
+                    awaitRouteMapInfoNearbyWayRebuild(
                         coordinator = coordinator,
                         routeModel = routeModel,
                         analysis = analysis,
                         tileDownloads = tileDownloads,
-                        focusWindowWidthMeters = 1_000.0,
+                        focus = focus,
+                        force = true,
                     )
                 } finally {
                     coordinator.shutdown()
@@ -122,20 +125,21 @@ class RouteContextCoordinatorBenchmarkTest {
                 logTag = "RouteContextCoordinatorBenchmarkTest",
             )
             try {
-                awaitNearbyWayRebuild(
+                awaitRouteMapInfoNearbyWayRebuild(
                     coordinator = coordinator,
                     routeModel = routeModel,
                     analysis = analysis,
                     tileDownloads = tileDownloads,
-                    focusWindowWidthMeters = 1_000.0,
+                    focus = focus,
+                    force = true,
                 )
                 benchmarkNanos(iterations = 100) {
-                    awaitNearbyWayRebuild(
+                    awaitRouteMapInfoNearbyWayRebuild(
                         coordinator = coordinator,
                         routeModel = routeModel,
                         analysis = analysis,
                         tileDownloads = tileDownloads,
-                        focusWindowWidthMeters = 1_000.0,
+                        focus = focus,
                         force = true,
                     )
                 }
@@ -152,51 +156,4 @@ class RouteContextCoordinatorBenchmarkTest {
             },
         )
     }
-}
-
-private fun awaitRouteContextRebuild(
-    coordinator: RouteContextCoordinator,
-    routeModel: RouteModel,
-): List<RoutePoi> {
-    val latch = CountDownLatch(1)
-    var result: List<RoutePoi>? = null
-    coordinator.rebuildRouteContext(routeModel) { rebuilt ->
-        result = rebuilt
-        latch.countDown()
-    }
-    check(latch.await(5, TimeUnit.SECONDS)) { "Timed out waiting for route-context rebuild" }
-    return checkNotNull(result)
-}
-
-private fun awaitNearbyWayRebuild(
-    coordinator: RouteContextCoordinator,
-    routeModel: RouteModel,
-    analysis: RouteAnalysis,
-    tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
-    focusWindowWidthMeters: Double,
-    force: Boolean = true,
-): RouteMapInfoState {
-    val latch = CountDownLatch(1)
-    var result: RouteMapInfoState? = null
-    val focus = buildRouteMapInfoFocus(
-        routeModel = routeModel,
-        focusPoint = analysis.nearestGeoPoint,
-        widthMeters = focusWindowWidthMeters,
-    )
-    coordinator.rebuildNearbyWays(
-        routeModel = routeModel,
-        analysis = analysis,
-        tileDownloads = tileDownloads,
-        existingLocalStatus = null,
-        focus = focus,
-        defaultFocusWindowWidthMeters = focusWindowWidthMeters,
-        force = force,
-        onStarted = {},
-        onResult = { rebuilt ->
-            result = rebuilt
-            latch.countDown()
-        },
-    )
-    check(latch.await(5, TimeUnit.SECONDS)) { "Timed out waiting for nearby-way rebuild" }
-    return checkNotNull(result)
 }
