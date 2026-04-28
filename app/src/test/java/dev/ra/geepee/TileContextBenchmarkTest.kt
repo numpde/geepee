@@ -22,12 +22,9 @@ class TileContextBenchmarkTest {
         val indexNanos = benchmarkNanos(iterations = 20) {
             buildRouteTileMetricsIndex(route, config)
         }
-        val routeTileMetricsById = buildRouteTileMetricsIndex(route, config)
-
         val fullOverviewNanos = benchmarkNanos(iterations = 200) {
             buildTileGridRenderModel(
                 routeModel = route,
-                routeTileMetricsById = routeTileMetricsById,
                 bounds = fullBounds,
                 canvasWidth = viewportWidth,
                 canvasHeight = viewportHeight,
@@ -49,7 +46,6 @@ class TileContextBenchmarkTest {
         val zoomedOverviewNanos = benchmarkNanos(iterations = 200) {
             buildTileGridRenderModel(
                 routeModel = route,
-                routeTileMetricsById = routeTileMetricsById,
                 bounds = zoomedBounds,
                 canvasWidth = viewportWidth,
                 canvasHeight = viewportHeight,
@@ -60,7 +56,6 @@ class TileContextBenchmarkTest {
 
         val fullModel = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = routeTileMetricsById,
             bounds = fullBounds,
             canvasWidth = viewportWidth,
             canvasHeight = viewportHeight,
@@ -69,7 +64,6 @@ class TileContextBenchmarkTest {
         )
         val zoomedModel = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = routeTileMetricsById,
             bounds = zoomedBounds,
             canvasWidth = viewportWidth,
             canvasHeight = viewportHeight,
@@ -92,7 +86,7 @@ class TileContextBenchmarkTest {
         println(
             buildString {
                 appendLine("TILE_BENCH route_points=${route.segments.sumOf { it.points.size }} route_edges=${route.edges.size}")
-                appendLine("TILE_BENCH route_intersecting_tiles=${routeTileMetricsById.size}")
+                appendLine("TILE_BENCH route_intersecting_tiles=${buildRouteTileMetricsIndex(route, config).size}")
                 appendLine("TILE_BENCH full_visible_tiles=${fullModel.tiles.size} full_labeled_tiles=${fullModel.tiles.count { it.label != null }}")
                 appendLine("TILE_BENCH zoomed_visible_tiles=${zoomedModel.tiles.size} zoomed_labeled_tiles=${zoomedModel.tiles.count { it.label != null }}")
                 appendLine("TILE_BENCH full_route_polylines=${fullRouteRender.gradientPolylines.size} full_route_draw_segments=${fullRouteRender.gradientPolylines.sumOf { max(0, it.points.size - 1) }}")

@@ -41,10 +41,6 @@ class TileContextTest {
 
         val renderModel = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = buildRouteTileMetricsIndex(
-                routeModel = route,
-                config = TileContextConfig(downloadZoom = 10),
-            ),
             bounds = route.bounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -67,7 +63,17 @@ class TileContextTest {
                 ),
             ),
         )
-        val config = TileContextConfig(downloadZoom = 10)
+        val config = TileContextConfig(
+            downloadZoom = 10,
+            resolutionPolicy = TileResolutionPolicy(
+                displayZoomBands = listOf(
+                    TileDisplayZoomBand(minimumWindowWidthMeters = 0.0, displayZoom = 10),
+                ),
+                minimumDataZoom = 12,
+                dataZoomOffsetFromDisplay = 1,
+                maximumDataZoom = 16,
+            ),
+        )
         val routeMetrics = buildRouteTileMetricsIndex(
             routeModel = route,
             config = config,
@@ -91,7 +97,6 @@ class TileContextTest {
 
         val withoutCache = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = routeMetrics,
             bounds = visibleBounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -100,7 +105,6 @@ class TileContextTest {
         )
         val withCachedOffRouteTile = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = routeMetrics,
             bounds = visibleBounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -130,10 +134,6 @@ class TileContextTest {
 
         val renderModel = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = buildRouteTileMetricsIndex(
-                routeModel = route,
-                config = TileContextConfig(downloadZoom = 10),
-            ),
             bounds = route.bounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
@@ -166,14 +166,20 @@ class TileContextTest {
                 ),
             ),
         )
-        val config = TileContextConfig(downloadZoom = 10)
+        val config = TileContextConfig(
+            downloadZoom = 10,
+            resolutionPolicy = TileResolutionPolicy(
+                displayZoomBands = listOf(
+                    TileDisplayZoomBand(minimumWindowWidthMeters = 0.0, displayZoom = 10),
+                ),
+                minimumDataZoom = 12,
+                dataZoomOffsetFromDisplay = 1,
+                maximumDataZoom = 16,
+            ),
+        )
 
         val renderModel = buildTileGridRenderModel(
             routeModel = route,
-            routeTileMetricsById = buildRouteTileMetricsIndex(
-                routeModel = route,
-                config = config,
-            ),
             bounds = route.bounds,
             canvasWidth = 400f,
             canvasHeight = 240f,
@@ -281,7 +287,10 @@ class TileContextTest {
                     tileId = DownloadTileId(zoom = 10, x = 1, y = 1),
                     screenRect = ScreenRect(left = 10f, top = 20f, right = 110f, bottom = 120f),
                     routeMetrics = metrics,
-                    snapshot = null,
+                    downloadState = null,
+                    progressFraction = null,
+                    cachedTileIds = emptySet(),
+                    downloadRequests = emptyList(),
                     selected = false,
                     estimatedBytes = 0L,
                     label = null,
@@ -290,7 +299,10 @@ class TileContextTest {
                     tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
                     screenRect = ScreenRect(left = -5f, top = 20f, right = 95f, bottom = 120f),
                     routeMetrics = metrics,
-                    snapshot = null,
+                    downloadState = null,
+                    progressFraction = null,
+                    cachedTileIds = emptySet(),
+                    downloadRequests = emptyList(),
                     selected = false,
                     estimatedBytes = 0L,
                     label = null,
@@ -315,23 +327,71 @@ class TileContextTest {
             ),
         )
         val config = TileContextConfig(downloadZoom = 10)
-        val routeMetrics = buildRouteTileMetricsIndex(
+        val baseModel = buildTileGridRenderModel(
             routeModel = route,
-            config = config,
-        )
-        val renderModel = buildTileGridRenderModel(
-            routeModel = route,
-            routeTileMetricsById = routeMetrics,
             bounds = route.bounds,
             canvasWidth = 1200f,
             canvasHeight = 800f,
             config = config,
             tileSnapshots = emptyMap(),
-            selectedTileIds = setOf(routeMetrics.keys.first()),
+        )
+        val selectedTile = baseModel.tiles.first { it.downloadRequests.isNotEmpty() }
+        val selectedSnapshots = selectedTile.downloadRequests.associate { request ->
+            request.tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = request.estimatedBytes,
+                actualBytes = request.estimatedBytes,
+            )
+        }
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = selectedSnapshots,
+            selectedTileIds = selectedSnapshots.keys,
         )
 
         assertEquals(1, renderModel.tiles.count { it.selected })
-        assertTrue(renderModel.tiles.any { it.tileId == routeMetrics.keys.first() && it.selected })
+        assertTrue(renderModel.tiles.any { it.tileId == selectedTile.tileId && it.selected })
+    }
+
+    @Test
+    fun tileResolutionPolicyUsesConfiguredDisplayAndDataZoomLadder() {
+        val policy = TileResolutionPolicy()
+
+        assertEquals(TileResolution(displayZoom = 10, dataZoom = 12), resolveTileResolution(3_000.0, policy))
+        assertEquals(TileResolution(displayZoom = 11, dataZoom = 12), resolveTileResolution(1_500.0, policy))
+        assertEquals(TileResolution(displayZoom = 12, dataZoom = 13), resolveTileResolution(600.0, policy))
+        assertEquals(TileResolution(displayZoom = 13, dataZoom = 14), resolveTileResolution(180.0, policy))
+        assertEquals(TileResolution(displayZoom = 14, dataZoom = 15), resolveTileResolution(60.0, policy))
+    }
+
+    @Test
+    fun tileGridRenderModelDownloadsFinerDataChildrenThanDisplayedMacroTile() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val displayTile = renderModel.tiles.first { it.routeMetrics.intersectsRoute }
+
+        assertTrue(displayTile.downloadRequests.isNotEmpty())
+        assertTrue(displayTile.downloadRequests.all { request -> request.tileId.zoom > displayTile.tileId.zoom })
     }
 
     @Test

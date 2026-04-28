@@ -40,12 +40,16 @@ internal data class PreviewTileSelectionState(
     fun clear(): PreviewTileSelectionState = PreviewTileSelectionState()
 
     internal fun toggleCachedTile(tile: TileGridDisplayTile?): PreviewTileSelectionState {
-        if (tile?.isCached != true) {
+        if (tile?.hasCachedTiles != true) {
             return this
         }
         val nextSelectedTileIds = selectedTileIds.toMutableSet().also { tileIds ->
-            if (!tileIds.add(tile.tileId)) {
-                tileIds.remove(tile.tileId)
+            val cachedTileIds = tile.cachedTileIds
+            val shouldDeselect = cachedTileIds.all(tileIds::contains)
+            if (shouldDeselect) {
+                tileIds.removeAll(cachedTileIds)
+            } else {
+                tileIds.addAll(cachedTileIds)
             }
         }.toSet()
         return copy(selectedTileIds = nextSelectedTileIds)
@@ -77,14 +81,15 @@ internal data class ResolvedPreviewTileSelectionState(
         }
         return if (selectionModeActive) {
             PreviewTileTapResult(selectionState.toggleCachedTile(tile))
-        } else if (tile.isCached) {
+        } else if (tile.hasCachedTiles) {
+            PreviewTileTapResult(selectionState)
+        } else if (tile.downloadRequests.isEmpty()) {
             PreviewTileTapResult(selectionState)
         } else {
             PreviewTileTapResult(
                 selectionState = selectionState,
                 downloadRequest = PreviewTileDownloadRequest(
-                    tileId = tile.tileId,
-                    estimatedBytes = tile.estimatedBytes,
+                    tileRequests = tile.downloadRequests,
                 ),
             )
         }
@@ -160,9 +165,8 @@ internal data class PreviewTileDeleteConfirmation(
 )
 
 internal data class PreviewTileDownloadRequest(
-    val tileId: DownloadTileId,
-    val estimatedBytes: Long,
+    val tileRequests: List<TileDownloadRequest>,
 )
 
-private val TileGridDisplayTile.isCached: Boolean
-    get() = snapshot?.status == TileDownloadStatus.Cached
+private val TileGridDisplayTile.hasCachedTiles: Boolean
+    get() = cachedTileIds.isNotEmpty()

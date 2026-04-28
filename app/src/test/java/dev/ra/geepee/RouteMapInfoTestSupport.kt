@@ -287,10 +287,14 @@ internal fun awaitRouteMapInfoNearbyWayRebuild(
 internal fun awaitRouteMapInfoRouteContextRebuild(
     coordinator: RouteContextCoordinator,
     routeModel: RouteModel,
+    tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
 ): List<RoutePoi> {
     val latch = CountDownLatch(1)
     var result: List<RoutePoi>? = null
-    coordinator.rebuildRouteContext(routeModel) { rebuilt ->
+    coordinator.rebuildRouteContext(
+        routeModel = routeModel,
+        tileDownloads = tileDownloads,
+    ) { rebuilt ->
         result = rebuilt
         latch.countDown()
     }

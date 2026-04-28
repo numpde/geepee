@@ -63,7 +63,7 @@ private fun DrawScope.drawTileCell(
     val topLeft = Offset(rect.left, rect.top)
     val size = Size(rect.width, rect.height)
     val cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx())
-    val state = tile.snapshot?.status
+    val state = tile.downloadState
 
     val showFills = visualStyle == TileGridVisualStyle.Preview
     val showProgress = visualStyle == TileGridVisualStyle.Preview
@@ -86,9 +86,10 @@ private fun DrawScope.drawTileCell(
         when {
             tile.selected -> colors.routeAhead.copy(alpha = 0.09f)
             else -> when (state) {
-                TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
-                TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.1f)
-                TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.1f)
+                TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
+                TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.1f)
+                TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.06f)
+                TileGridDownloadState.Error -> colors.offRoute.copy(alpha = 0.1f)
                 null -> Color.Transparent
             }
         }
@@ -107,9 +108,10 @@ private fun DrawScope.drawTileCell(
     val borderColor = when {
         tile.selected -> colors.routeAhead.copy(alpha = 0.72f)
         else -> when (state) {
-            TileDownloadStatus.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
-            TileDownloadStatus.Cached -> colors.onRoute.copy(alpha = 0.52f)
-            TileDownloadStatus.Error -> colors.offRoute.copy(alpha = 0.54f)
+            TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
+            TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.52f)
+            TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.36f)
+            TileGridDownloadState.Error -> colors.offRoute.copy(alpha = 0.54f)
             null -> if (tile.routeMetrics.intersectsRoute) {
                 colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.14f else 0.08f)
             } else {
@@ -142,7 +144,7 @@ private fun DrawScope.drawTileCell(
     )
 
     if (showProgress) {
-        tile.snapshot?.takeIf { it.status == TileDownloadStatus.Downloading }?.progressFraction?.let { fraction ->
+        tile.progressFraction?.takeIf { state == TileGridDownloadState.Downloading }?.let { fraction ->
         val inset = 5.dp.toPx()
         val progressHeight = 5.dp.toPx()
         drawRoundRect(

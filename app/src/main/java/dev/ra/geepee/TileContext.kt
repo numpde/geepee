@@ -76,6 +76,7 @@ internal data class TileContextConfig(
     val nearbyWayContinuationMeters: Double = DEFAULT_NEARBY_WAY_CONTINUATION_METERS,
     val poiHaloMeters: Double = DEFAULT_POI_HALO_METERS,
     val serviceHaloMeters: Double = DEFAULT_SERVICE_HALO_METERS,
+    val resolutionPolicy: TileResolutionPolicy = TileResolutionPolicy(),
 ) {
     val fetchHaloMeters: Double
         get() = max(wayHaloMeters, max(poiHaloMeters, serviceHaloMeters))
@@ -210,6 +211,13 @@ internal enum class TileGridOutlineStyle {
     ViewProxyDashed,
 }
 
+internal enum class TileGridDownloadState {
+    Downloading,
+    Cached,
+    Partial,
+    Error,
+}
+
 private val EmptyTileRouteMetrics = TileRouteMetrics(
     intersectsRoute = false,
     intersectingEdgeCount = 0,
@@ -221,7 +229,10 @@ internal data class TileGridDisplayTile(
     val screenRect: ScreenRect,
     val outlineStyle: TileGridOutlineStyle = TileGridOutlineStyle.Solid,
     val routeMetrics: TileRouteMetrics,
-    val snapshot: TileDownloadSnapshot?,
+    val downloadState: TileGridDownloadState?,
+    val progressFraction: Float?,
+    val cachedTileIds: Set<DownloadTileId>,
+    val downloadRequests: List<TileDownloadRequest>,
     val selected: Boolean,
     val estimatedBytes: Long,
     val label: String?,
@@ -246,11 +257,16 @@ internal data class TileGridRenderModel(
     }
 }
 
+internal data class TileDownloadRequest(
+    val tileId: DownloadTileId,
+    val estimatedBytes: Long,
+)
+
 private fun shouldDisplayTileInRouteView(
     routeMetrics: TileRouteMetrics,
-    snapshot: TileDownloadSnapshot?,
+    downloadState: TileGridDownloadState?,
 ): Boolean {
-    return routeMetrics.intersectsRoute || snapshot?.status == TileDownloadStatus.Cached
+    return routeMetrics.intersectsRoute || downloadState != null
 }
 
 internal fun normalizeOverpassTilePack(
@@ -386,7 +402,6 @@ internal fun tileContextPackFromJson(payload: String): TileContextPack {
 
 internal fun buildTileGridRenderModel(
     routeModel: RouteModel,
-    routeTileMetricsById: Map<DownloadTileId, TileRouteMetrics>,
     bounds: Bounds,
     canvasWidth: Float,
     canvasHeight: Float,
@@ -397,11 +412,29 @@ internal fun buildTileGridRenderModel(
     if (canvasWidth <= 0f || canvasHeight <= 0f) {
         return TileGridRenderModel(emptyList())
     }
-
+    val tileResolution = resolveTileResolution(
+        windowWidthMeters = max(1.0, bounds.maxX - bounds.minX),
+        policy = config.resolutionPolicy,
+    )
+    val displayRouteMetricsById = buildRouteTileMetricsIndex(
+        routeModel = routeModel,
+        config = config,
+        zoom = tileResolution.displayZoom,
+    )
+    val dataRouteMetricsById = buildRouteTileMetricsIndex(
+        routeModel = routeModel,
+        config = config,
+        zoom = tileResolution.dataZoom,
+    )
+    val dataTileRequestsByDisplayTileId = buildDisplayTileDownloadRequests(
+        routeTileMetricsById = dataRouteMetricsById,
+        displayZoom = tileResolution.displayZoom,
+        tileSnapshots = tileSnapshots,
+    )
     val visibleTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = bounds,
-        zoom = config.downloadZoom,
+        zoom = tileResolution.displayZoom,
     )
     val cachedAverageBytes = cachedAverageBytes(tileSnapshots)
     val tiles = visibleTileIds.mapNotNull { tileId ->
@@ -413,9 +446,20 @@ internal fun buildTileGridRenderModel(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
-        val routeMetrics = routeTileMetricsById[tileId] ?: EmptyTileRouteMetrics
-        val snapshot = tileSnapshots[tileId]
-        if (!shouldDisplayTileInRouteView(routeMetrics, snapshot)) {
+        val routeMetrics = displayRouteMetricsById[tileId] ?: EmptyTileRouteMetrics
+        val downloadRequests = mergeTileDownloadRequests(
+            primary = dataTileRequestsByDisplayTileId[tileId].orEmpty(),
+            secondary = visibleSnapshotRequestsForDisplayTile(
+                displayTileId = tileId,
+                displayZoom = tileResolution.displayZoom,
+                tileSnapshots = tileSnapshots,
+            ),
+        )
+        val downloadState = resolveDisplayTileDownloadState(
+            downloadRequests = downloadRequests,
+            tileSnapshots = tileSnapshots,
+        )
+        if (!shouldDisplayTileInRouteView(routeMetrics, downloadState.state)) {
             return@mapNotNull null
         }
         val (displayRect, outlineStyle) = resolveTileDisplayRect(
@@ -424,19 +468,31 @@ internal fun buildTileGridRenderModel(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
         )
-        val estimatedBytes = snapshot?.actualBytes
-            ?: estimateTileBytes(routeMetrics, cachedAverageBytes)
+        val estimatedBytes = if (downloadRequests.isNotEmpty()) {
+            downloadRequests.sumOf(TileDownloadRequest::estimatedBytes)
+        } else {
+            estimateTileBytes(routeMetrics, cachedAverageBytes)
+        }
+        val cachedTileIds = downloadRequests.mapNotNull { request ->
+            tileSnapshots[request.tileId]
+                ?.takeIf { snapshot -> snapshot.status == TileDownloadStatus.Cached }
+                ?.let { request.tileId }
+        }.toSet()
         TileGridDisplayTile(
             tileId = tileId,
             screenRect = displayRect,
             outlineStyle = outlineStyle,
             routeMetrics = routeMetrics,
-            snapshot = snapshot,
-            selected = tileId in selectedTileIds,
+            downloadState = downloadState.state,
+            progressFraction = downloadState.progressFraction,
+            cachedTileIds = cachedTileIds,
+            downloadRequests = downloadRequests,
+            selected = cachedTileIds.isNotEmpty() && cachedTileIds.all(selectedTileIds::contains),
             estimatedBytes = estimatedBytes,
             label = tileLabel(
                 routeMetrics = routeMetrics,
-                snapshot = snapshot,
+                downloadState = downloadState.state,
+                progressFraction = downloadState.progressFraction,
                 estimatedBytes = estimatedBytes,
                 minDimensionPx = min(displayRect.width, displayRect.height),
             ),
@@ -444,6 +500,36 @@ internal fun buildTileGridRenderModel(
     }
 
     return TileGridRenderModel(tiles)
+}
+
+private fun mergeTileDownloadRequests(
+    primary: List<TileDownloadRequest>,
+    secondary: List<TileDownloadRequest>,
+): List<TileDownloadRequest> {
+    if (secondary.isEmpty()) {
+        return primary
+    }
+    return (primary + secondary)
+        .associateBy(TileDownloadRequest::tileId)
+        .values
+        .sortedBy { request -> request.tileId.cacheKey }
+}
+
+private fun visibleSnapshotRequestsForDisplayTile(
+    displayTileId: DownloadTileId,
+    displayZoom: Int,
+    tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+): List<TileDownloadRequest> {
+    return tileSnapshots
+        .mapNotNull { (tileId, snapshot) ->
+            if (parentTileIdAtZoom(tileId, displayZoom) != displayTileId) {
+                return@mapNotNull null
+            }
+            TileDownloadRequest(
+                tileId = tileId,
+                estimatedBytes = snapshot.actualBytes ?: snapshot.estimatedBytes,
+            )
+        }
 }
 
 private fun resolveTileDisplayRect(
@@ -493,10 +579,11 @@ private fun buildViewportProxyTileRect(
 internal fun buildRouteTileMetricsIndex(
     routeModel: RouteModel,
     config: TileContextConfig,
+    zoom: Int = config.downloadZoom,
 ): Map<DownloadTileId, TileRouteMetrics> {
     val geoBounds = geoBoundsForProjectedBounds(routeModel.bounds, routeModel.projection)
     val expandedGeoBounds = expandGeoBoundsByMeters(geoBounds, config.fetchHaloMeters)
-    val candidates = tilesForGeoBounds(expandedGeoBounds, config.downloadZoom)
+    val candidates = tilesForGeoBounds(expandedGeoBounds, zoom)
     return buildMap(candidates.size) {
         candidates.forEach { tileId ->
             val metrics = tileRouteMetrics(
@@ -516,6 +603,99 @@ internal fun tilesForRoute(
     config: TileContextConfig,
 ): Set<DownloadTileId> {
     return buildRouteTileMetricsIndex(routeModel, config).keys
+}
+
+private data class ResolvedDisplayTileDownloadState(
+    val state: TileGridDownloadState?,
+    val progressFraction: Float?,
+)
+
+private fun buildDisplayTileDownloadRequests(
+    routeTileMetricsById: Map<DownloadTileId, TileRouteMetrics>,
+    displayZoom: Int,
+    tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+): Map<DownloadTileId, List<TileDownloadRequest>> {
+    val cachedAverageBytes = cachedAverageBytes(tileSnapshots)
+    return routeTileMetricsById.entries
+        .groupBy(
+            keySelector = { (tileId, _) -> parentTileIdAtZoom(tileId, displayZoom) },
+            valueTransform = { (tileId, routeMetrics) ->
+                TileDownloadRequest(
+                    tileId = tileId,
+                    estimatedBytes = tileSnapshots[tileId]?.actualBytes
+                        ?: estimateTileBytes(routeMetrics, cachedAverageBytes),
+                )
+            },
+        )
+        .mapValues { (_, requests) ->
+            requests.sortedBy { request -> request.tileId.cacheKey }
+        }
+}
+
+private fun resolveDisplayTileDownloadState(
+    downloadRequests: List<TileDownloadRequest>,
+    tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
+): ResolvedDisplayTileDownloadState {
+    if (downloadRequests.isEmpty()) {
+        return ResolvedDisplayTileDownloadState(
+            state = null,
+            progressFraction = null,
+        )
+    }
+    val snapshots = downloadRequests.mapNotNull { request ->
+        tileSnapshots[request.tileId]?.let { snapshot -> request to snapshot }
+    }
+    if (snapshots.isEmpty()) {
+        return ResolvedDisplayTileDownloadState(
+            state = null,
+            progressFraction = null,
+        )
+    }
+    val cachedCount = snapshots.count { (_, snapshot) -> snapshot.status == TileDownloadStatus.Cached }
+    val hasDownloading = snapshots.any { (_, snapshot) -> snapshot.status == TileDownloadStatus.Downloading }
+    val hasError = snapshots.any { (_, snapshot) -> snapshot.status == TileDownloadStatus.Error }
+    val state = when {
+        hasDownloading -> TileGridDownloadState.Downloading
+        cachedCount == downloadRequests.size -> TileGridDownloadState.Cached
+        cachedCount > 0 -> TileGridDownloadState.Partial
+        hasError -> TileGridDownloadState.Error
+        else -> null
+    }
+    val progressFraction = if (hasDownloading) {
+        val totalBytes = downloadRequests.sumOf { request -> request.estimatedBytes.coerceAtLeast(1L) }
+        val downloadedBytes = downloadRequests.sumOf { request ->
+            when (val snapshot = tileSnapshots[request.tileId]) {
+                null -> 0L
+                else -> when (snapshot.status) {
+                    TileDownloadStatus.Cached -> snapshot.actualBytes ?: request.estimatedBytes
+                    TileDownloadStatus.Downloading -> snapshot.downloadedBytes
+                    TileDownloadStatus.Error -> 0L
+                }
+            }
+        }
+        (downloadedBytes.toDouble() / totalBytes.toDouble()).coerceIn(0.0, 1.0).toFloat()
+    } else {
+        null
+    }
+    return ResolvedDisplayTileDownloadState(
+        state = state,
+        progressFraction = progressFraction,
+    )
+}
+
+private fun parentTileIdAtZoom(
+    tileId: DownloadTileId,
+    parentZoom: Int,
+): DownloadTileId {
+    if (tileId.zoom <= parentZoom) {
+        return tileId
+    }
+    val zoomDelta = tileId.zoom - parentZoom
+    return DownloadTileId(
+        zoom = parentZoom,
+        x = tileId.x shr zoomDelta,
+        y = tileId.y shr zoomDelta,
+    )
 }
 
 internal fun tileIdForGeoPoint(
@@ -579,6 +759,18 @@ internal fun tilesIntersectingProjectedBounds(
 ): List<DownloadTileId> {
     val geoBounds = geoBoundsForProjectedBounds(bounds, projection)
     return tilesForGeoBounds(geoBounds, zoom)
+}
+
+internal fun tileIntersectsProjectedBounds(
+    tileId: DownloadTileId,
+    projection: Projection,
+    bounds: Bounds,
+): Boolean {
+    val tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), projection)
+    return tileBounds.minX <= bounds.maxX &&
+        tileBounds.maxX >= bounds.minX &&
+        tileBounds.minY <= bounds.maxY &&
+        tileBounds.maxY >= bounds.minY
 }
 
 private fun normalizeOverpassElement(element: JsonObject): TileContextFeature? {
@@ -701,7 +893,7 @@ private fun projectedBoundsToScreenRect(
     )
 }
 
-private fun tileRouteMetrics(
+internal fun tileRouteMetrics(
     routeModel: RouteModel,
     tileBounds: Bounds,
     haloMeters: Double,
@@ -764,29 +956,36 @@ private fun estimateTileBytes(
 
 private fun tileLabel(
     routeMetrics: TileRouteMetrics,
-    snapshot: TileDownloadSnapshot?,
+    downloadState: TileGridDownloadState?,
+    progressFraction: Float?,
     estimatedBytes: Long,
     minDimensionPx: Float,
 ): String? {
-    return when (snapshot?.status) {
-        TileDownloadStatus.Downloading -> {
+    return when (downloadState) {
+        TileGridDownloadState.Downloading -> {
             if (minDimensionPx < 92f) {
                 return null
             }
-            val percent = ((snapshot.progressFraction ?: 0f) * 100f).roundToInt()
+            val percent = ((progressFraction ?: 0f) * 100f).roundToInt()
             "$percent%"
         }
-        TileDownloadStatus.Error -> {
+        TileGridDownloadState.Error -> {
             if (minDimensionPx < 92f) {
                 return null
             }
             "Error"
         }
-        TileDownloadStatus.Cached -> {
+        TileGridDownloadState.Cached -> {
             if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {
                 return null
             }
-            formatTileMegabytes(snapshot.actualBytes ?: estimatedBytes, approximate = false)
+            formatTileMegabytes(estimatedBytes, approximate = false)
+        }
+        TileGridDownloadState.Partial -> {
+            if (minDimensionPx < 92f) {
+                return null
+            }
+            "Partial"
         }
         null -> {
             if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {

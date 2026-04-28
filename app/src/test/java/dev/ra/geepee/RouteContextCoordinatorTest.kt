@@ -40,9 +40,13 @@ class RouteContextCoordinatorTest {
 
         assertEquals(analysis.nearestGeoPoint, resolved.focus.centerGeoPoint)
         assertEquals(200.0, resolved.focus.windowWidthMeters, 0.0)
+        val expectedResolution = resolveTileResolution(
+            windowWidthMeters = 200.0,
+            policy = DefaultTileContextConfig.resolutionPolicy,
+        )
         assertTrue(
             resolved.localTileIds.contains(
-                tileIdForGeoPoint(analysis.nearestGeoPoint, DefaultTileContextConfig.downloadZoom),
+                tileIdForGeoPoint(analysis.nearestGeoPoint, expectedResolution.dataZoom),
             ),
         )
         assertEquals(
@@ -101,9 +105,13 @@ class RouteContextCoordinatorTest {
 
         assertEquals(explicitFocus.centerGeoPoint, resolved.focus.centerGeoPoint)
         assertEquals(explicitFocus.windowWidthMeters, resolved.focus.windowWidthMeters, 0.0)
+        val expectedResolution = resolveTileResolution(
+            windowWidthMeters = explicitFocus.windowWidthMeters,
+            policy = DefaultTileContextConfig.resolutionPolicy,
+        )
         assertTrue(
             resolved.localTileIds.contains(
-                tileIdForGeoPoint(explicitFocus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
+                tileIdForGeoPoint(explicitFocus.centerGeoPoint, expectedResolution.dataZoom),
             ),
         )
     }
@@ -125,6 +133,8 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
+            expandedProjectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            dataZoom = DefaultTileContextConfig.downloadZoom,
         )
         val nearbyFocus = baseFocus.copy(
             focus = baseFocus.focus.copy(
@@ -143,7 +153,12 @@ class RouteContextCoordinatorTest {
             queryFocus = baseFocus,
             tileCoverage = NearbyWayTileCoverage(
                 localTileIds = emptySet(),
-                loadedTileRevisions = revisions,
+                loadedTileCoverages = revisions.map { revision ->
+                    NearbyWayLoadedTileCoverage(
+                        tileRevision = revision,
+                        coveredLocalTileIds = emptySet(),
+                    )
+                },
             ),
         )
         val nearbyKey = buildNearbyWayQueryCacheKey(
@@ -151,7 +166,12 @@ class RouteContextCoordinatorTest {
             queryFocus = nearbyFocus,
             tileCoverage = NearbyWayTileCoverage(
                 localTileIds = emptySet(),
-                loadedTileRevisions = revisions,
+                loadedTileCoverages = revisions.map { revision ->
+                    NearbyWayLoadedTileCoverage(
+                        tileRevision = revision,
+                        coveredLocalTileIds = emptySet(),
+                    )
+                },
             ),
         )
 
@@ -175,6 +195,8 @@ class RouteContextCoordinatorTest {
                 projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
             ),
             localTileIds = emptySet(),
+            expandedProjectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            dataZoom = DefaultTileContextConfig.downloadZoom,
         )
 
         val firstKey = buildNearbyWayQueryCacheKey(
@@ -182,10 +204,13 @@ class RouteContextCoordinatorTest {
             queryFocus = focus,
             tileCoverage = NearbyWayTileCoverage(
                 localTileIds = emptySet(),
-                loadedTileRevisions = listOf(
-                    NearbyWayLoadedTileRevision(
-                        tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
-                        updatedAtMillis = 123L,
+                loadedTileCoverages = listOf(
+                    NearbyWayLoadedTileCoverage(
+                        tileRevision = NearbyWayLoadedTileRevision(
+                            tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
+                            updatedAtMillis = 123L,
+                        ),
+                        coveredLocalTileIds = emptySet(),
                     ),
                 ),
             ),
@@ -195,10 +220,13 @@ class RouteContextCoordinatorTest {
             queryFocus = focus,
             tileCoverage = NearbyWayTileCoverage(
                 localTileIds = emptySet(),
-                loadedTileRevisions = listOf(
-                    NearbyWayLoadedTileRevision(
-                        tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
-                        updatedAtMillis = 456L,
+                loadedTileCoverages = listOf(
+                    NearbyWayLoadedTileCoverage(
+                        tileRevision = NearbyWayLoadedTileRevision(
+                            tileId = tileIdForGeoPoint(focus.focus.centerGeoPoint, DefaultTileContextConfig.downloadZoom),
+                            updatedAtMillis = 456L,
+                        ),
+                        coveredLocalTileIds = emptySet(),
                     ),
                 ),
             ),
@@ -251,6 +279,10 @@ class RouteContextCoordinatorTest {
             defaultFocusWindowWidthMeters = 200.0,
         )
 
+        val expectedResolution = resolveTileResolution(
+            windowWidthMeters = explicitFocus.windowWidthMeters,
+            policy = DefaultTileContextConfig.resolutionPolicy,
+        )
         assertEquals(projectedBounds, resolved.focus.projectedBounds)
         assertEquals(
             tilesIntersectingProjectedBounds(
@@ -259,7 +291,7 @@ class RouteContextCoordinatorTest {
                     projectedBounds,
                     DefaultTileContextConfig.wayHaloMeters + DefaultTileContextConfig.nearbyWayContinuationMeters,
                 ),
-                zoom = DefaultTileContextConfig.downloadZoom,
+                zoom = expectedResolution.dataZoom,
             ).toSet(),
             resolved.localTileIds,
         )
@@ -342,12 +374,40 @@ class RouteContextCoordinatorTest {
 
     @Test
     fun buildNearbyWayTileCoverage_keepsOnlyCachedTilesSortedByTileId() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0, 0.5),
+                ),
+            ),
+        )
         val tileA = DownloadTileId(zoom = 10, x = 10, y = 20)
         val tileB = DownloadTileId(zoom = 10, x = 9, y = 20)
         val tileC = DownloadTileId(zoom = 10, x = 11, y = 20)
+        val queryBounds = listOf(tileA, tileB, tileC)
+            .map { tileId -> projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection) }
+            .let { tileBounds ->
+                Bounds(
+                    minX = tileBounds.minOf(Bounds::minX),
+                    maxX = tileBounds.maxOf(Bounds::maxX),
+                    minY = tileBounds.minOf(Bounds::minY),
+                    maxY = tileBounds.maxOf(Bounds::maxY),
+                )
+            }
+        val queryFocus = NearbyWayQueryFocus(
+            focus = MapInfoFocus(
+                centerGeoPoint = GeoPoint(0.0, 0.0),
+                windowWidthMeters = 100.0,
+                projectedBounds = queryBounds,
+            ),
+            localTileIds = linkedSetOf(tileA, tileB, tileC),
+            expandedProjectedBounds = queryBounds,
+            dataZoom = 10,
+        )
 
         val coverage = buildNearbyWayTileCoverage(
-            localTileIds = linkedSetOf(tileA, tileB, tileC),
+            queryFocus = queryFocus,
             tileDownloads = mapOf(
                 tileA to TileDownloadSnapshot(
                     status = TileDownloadStatus.Cached,
@@ -374,16 +434,112 @@ class RouteContextCoordinatorTest {
     }
 
     @Test
+    fun buildNearbyWayTileCoverage_keepsIntersectingCoarserCachedTileForFinerQueryZoom() {
+        val routeModel = buildRouteModel(
+            rawSegments = listOf(
+                listOf(
+                    GeoPoint(0.0, 0.0),
+                    GeoPoint(0.0, 0.5),
+                ),
+            ),
+        )
+        val coarseTile = DownloadTileId(zoom = 10, x = 10, y = 20)
+        val queryBounds = projectedBoundsForGeoBounds(tileGeoBounds(coarseTile), routeModel.projection)
+        val fineLocalTileIds = buildSet {
+            for (x in (coarseTile.x shl 2) until ((coarseTile.x + 1) shl 2)) {
+                for (y in (coarseTile.y shl 2) until ((coarseTile.y + 1) shl 2)) {
+                    add(DownloadTileId(zoom = 12, x = x, y = y))
+                }
+            }
+        }
+        val queryFocus = NearbyWayQueryFocus(
+            focus = MapInfoFocus(
+                centerGeoPoint = GeoPoint(0.0, 0.0),
+                windowWidthMeters = 100.0,
+                projectedBounds = queryBounds,
+            ),
+            localTileIds = fineLocalTileIds,
+            expandedProjectedBounds = queryBounds,
+            dataZoom = 12,
+        )
+
+        val coverage = buildNearbyWayTileCoverage(
+            queryFocus = queryFocus,
+            tileDownloads = mapOf(
+                coarseTile to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 20L,
+                ),
+            ),
+        )
+
+        assertEquals(fineLocalTileIds, coverage.localTileIds)
+        assertEquals(listOf(coarseTile), coverage.loadedTileIds)
+        assertEquals(fineLocalTileIds.size, coverage.loadedLocalTileCount)
+    }
+
+    @Test
+    fun buildNearbyWayTileCoverage_prefersFinerCachedChildOverCoarserParent() {
+        val parentTile = DownloadTileId(zoom = 10, x = 10, y = 20)
+        val childTile = DownloadTileId(zoom = 12, x = (parentTile.x shl 2) + 1, y = (parentTile.y shl 2) + 2)
+        val fineLocalTileIds = buildSet {
+            for (x in (parentTile.x shl 2) until ((parentTile.x + 1) shl 2)) {
+                for (y in (parentTile.y shl 2) until ((parentTile.y + 1) shl 2)) {
+                    add(DownloadTileId(zoom = 12, x = x, y = y))
+                }
+            }
+        }
+        val queryFocus = NearbyWayQueryFocus(
+            focus = MapInfoFocus(
+                centerGeoPoint = GeoPoint(0.0, 0.0),
+                windowWidthMeters = 100.0,
+                projectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            ),
+            localTileIds = fineLocalTileIds,
+            expandedProjectedBounds = Bounds(-50.0, 50.0, -50.0, 50.0),
+            dataZoom = 12,
+        )
+
+        val coverage = buildNearbyWayTileCoverage(
+            queryFocus = queryFocus,
+            tileDownloads = mapOf(
+                parentTile to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 10L,
+                ),
+                childTile to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = 1L,
+                    updatedAtMillis = 20L,
+                ),
+            ),
+        )
+
+        assertEquals(listOf(parentTile, childTile).sortedBy(DownloadTileId::cacheKey), coverage.loadedTileIds)
+        assertEquals(fineLocalTileIds.size, coverage.loadedLocalTileCount)
+        assertEquals(setOf(childTile), coverage.loadedTileCoverages.single { it.tileRevision.tileId == childTile }.coveredLocalTileIds)
+        assertEquals(
+            fineLocalTileIds - childTile,
+            coverage.loadedTileCoverages.single { it.tileRevision.tileId == parentTile }.coveredLocalTileIds,
+        )
+    }
+
+    @Test
     fun nearbyWayTileCoverage_buildsConsistentStatusViews() {
         val coverage = NearbyWayTileCoverage(
             localTileIds = setOf(
                 DownloadTileId(zoom = 10, x = 1, y = 1),
                 DownloadTileId(zoom = 10, x = 2, y = 1),
             ),
-            loadedTileRevisions = listOf(
-                NearbyWayLoadedTileRevision(
-                    tileId = DownloadTileId(zoom = 10, x = 2, y = 1),
-                    updatedAtMillis = 123L,
+            loadedTileCoverages = listOf(
+                NearbyWayLoadedTileCoverage(
+                    tileRevision = NearbyWayLoadedTileRevision(
+                        tileId = DownloadTileId(zoom = 10, x = 2, y = 1),
+                        updatedAtMillis = 123L,
+                    ),
+                    coveredLocalTileIds = setOf(DownloadTileId(zoom = 10, x = 2, y = 1)),
                 ),
             ),
         )

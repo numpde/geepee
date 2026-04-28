@@ -8,6 +8,8 @@ import java.util.concurrent.Executors
 internal data class NearbyWayQueryFocus(
     val focus: MapInfoFocus,
     val localTileIds: Set<DownloadTileId>,
+    val expandedProjectedBounds: Bounds,
+    val dataZoom: Int,
 )
 
 internal data class NearbyWayLoadedTileRevision(
@@ -15,21 +17,35 @@ internal data class NearbyWayLoadedTileRevision(
     val updatedAtMillis: Long,
 )
 
+internal data class NearbyWayLoadedTileCoverage(
+    val tileRevision: NearbyWayLoadedTileRevision,
+    val coveredLocalTileIds: Set<DownloadTileId>,
+)
+
 internal data class NearbyWayTileCoverage(
     val localTileIds: Set<DownloadTileId>,
-    val loadedTileRevisions: List<NearbyWayLoadedTileRevision>,
+    val loadedTileCoverages: List<NearbyWayLoadedTileCoverage>,
 ) {
     val localTileCount: Int
         get() = localTileIds.size
 
     val loadedLocalTileCount: Int
-        get() = loadedTileRevisions.size
+        get() = loadedTileCoverages.sumOf { coverage -> coverage.coveredLocalTileIds.size }
 
     val loadedTileIds: List<DownloadTileId>
-        get() = loadedTileRevisions.map(NearbyWayLoadedTileRevision::tileId)
+        get() = loadedTileCoverages.map { coverage -> coverage.tileRevision.tileId }
+
+    val loadedTileRevisions: List<NearbyWayLoadedTileRevision>
+        get() = loadedTileCoverages.map(NearbyWayLoadedTileCoverage::tileRevision)
 
     fun resolvedOverlayTileCount(cachedOverlayTileIds: Set<DownloadTileId>): Int {
-        return loadedTileIds.count(cachedOverlayTileIds::contains)
+        return loadedTileCoverages.sumOf { coverage ->
+            if (coverage.tileRevision.tileId in cachedOverlayTileIds) {
+                coverage.coveredLocalTileIds.size
+            } else {
+                0
+            }
+        }
     }
 
     fun loadingStatus(existingNearbyWayCount: Int): LocalNearbyWayDebugStatus {
@@ -109,11 +125,16 @@ internal class RouteContextCoordinator(
 
     fun rebuildRouteContext(
         routeModel: RouteModel,
+        tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
         onResult: (List<RoutePoi>) -> Unit,
     ) {
         val requestId = ++routeContextRequestId
         routeContextExecutor.execute {
-            val routeTileIds = tilesForRoute(routeModel, tileContextConfig)
+            val routeTileIds = cachedRouteTileIds(
+                routeModel = routeModel,
+                tileIds = tileDownloads.keys,
+                config = tileContextConfig,
+            )
             val result = try {
                 val bundles = tileContextRepository.loadRouteTileOverlayBundles(
                     routeModel = routeModel,
@@ -193,7 +214,7 @@ internal class RouteContextCoordinator(
             defaultFocusWindowWidthMeters = defaultFocusWindowWidthMeters,
         )
         val tileCoverage = buildNearbyWayTileCoverage(
-            localTileIds = queryFocus.localTileIds,
+            queryFocus = queryFocus,
             tileDownloads = tileDownloads,
         )
         val cacheKey = buildNearbyWayQueryCacheKey(
@@ -309,34 +330,69 @@ internal fun resolveNearbyWayQueryFocus(
         focus = resolvedFocus,
         config = config,
     )
+    val tileResolution = resolveTileResolution(
+        windowWidthMeters = resolvedFocus.windowWidthMeters,
+        policy = config.resolutionPolicy,
+    )
     val localTileIds = tilesIntersectingProjectedBounds(
         projection = routeModel.projection,
         bounds = expandedProjectedBounds,
-        zoom = config.downloadZoom,
+        zoom = tileResolution.dataZoom,
     ).toSet()
     return NearbyWayQueryFocus(
         focus = resolvedFocus,
         localTileIds = localTileIds,
+        expandedProjectedBounds = expandedProjectedBounds,
+        dataZoom = tileResolution.dataZoom,
     )
 }
 
 internal fun buildNearbyWayTileCoverage(
-    localTileIds: Set<DownloadTileId>,
+    queryFocus: NearbyWayQueryFocus,
     tileDownloads: Map<DownloadTileId, TileDownloadSnapshot>,
 ): NearbyWayTileCoverage {
-    val loadedTileRevisions = localTileIds.mapNotNull { tileId ->
-        tileDownloads[tileId]
-            ?.takeIf { it.status == TileDownloadStatus.Cached }
-            ?.let { snapshot ->
-                NearbyWayLoadedTileRevision(
-                    tileId = tileId,
-                    updatedAtMillis = snapshot.updatedAtMillis,
-                )
+    val cachedTileRevisions = tileDownloads
+        .mapNotNull { (tileId, snapshot) ->
+            if (snapshot.status != TileDownloadStatus.Cached) {
+                return@mapNotNull null
             }
-    }.sortedBy { it.tileId.cacheKey }
+            if (tileId.zoom > queryFocus.dataZoom) {
+                return@mapNotNull null
+            }
+            NearbyWayLoadedTileRevision(
+                tileId = tileId,
+                updatedAtMillis = snapshot.updatedAtMillis,
+            )
+        }
+        .sortedWith(
+            compareByDescending<NearbyWayLoadedTileRevision> { revision -> revision.tileId.zoom }
+                .thenBy { revision -> revision.tileId.cacheKey },
+        )
+    val loadedCoverageByTileId = linkedMapOf<DownloadTileId, MutableSet<DownloadTileId>>()
+    queryFocus.localTileIds
+        .sortedBy(DownloadTileId::cacheKey)
+        .forEach { localTileId ->
+            val bestLoadedTileRevision = cachedTileRevisions.firstOrNull { loadedTileRevision ->
+                tileContainsTile(
+                    containerTileId = loadedTileRevision.tileId,
+                    childTileId = localTileId,
+                )
+            } ?: return@forEach
+            loadedCoverageByTileId
+                .getOrPut(bestLoadedTileRevision.tileId) { linkedSetOf() }
+                .add(localTileId)
+        }
+    val loadedTileCoverages = loadedCoverageByTileId.entries
+        .map { (tileId, coveredLocalTileIds) ->
+            NearbyWayLoadedTileCoverage(
+                tileRevision = cachedTileRevisions.first { revision -> revision.tileId == tileId },
+                coveredLocalTileIds = coveredLocalTileIds.toSet(),
+            )
+        }
+        .sortedBy { coverage -> coverage.tileRevision.tileId.cacheKey }
     return NearbyWayTileCoverage(
-        localTileIds = localTileIds,
-        loadedTileRevisions = loadedTileRevisions,
+        localTileIds = queryFocus.localTileIds,
+        loadedTileCoverages = loadedTileCoverages,
     )
 }
 
@@ -371,7 +427,11 @@ internal fun routeMapInfoWarmTileIds(
     if (cachedTileIds.isEmpty()) {
         return emptySet()
     }
-    val routeTiles = tilesForRoute(routeModel, config)
+    val routeTiles = cachedRouteTileIds(
+        routeModel = routeModel,
+        tileIds = cachedTileIds,
+        config = config,
+    )
     if (routeTiles.isEmpty()) {
         return emptySet()
     }
@@ -381,6 +441,34 @@ internal fun routeMapInfoWarmTileIds(
         }
     }
     return warmTileCandidates.intersect(cachedTileIds)
+}
+
+internal fun cachedRouteTileIds(
+    routeModel: RouteModel,
+    tileIds: Collection<DownloadTileId>,
+    config: TileContextConfig,
+): Set<DownloadTileId> {
+    return tileIds
+        .filter { tileId ->
+            tileRouteMetrics(
+                routeModel = routeModel,
+                tileBounds = projectedBoundsForGeoBounds(tileGeoBounds(tileId), routeModel.projection),
+                haloMeters = config.fetchHaloMeters,
+            ).intersectsRoute
+        }
+        .toSet()
+}
+
+internal fun tileContainsTile(
+    containerTileId: DownloadTileId,
+    childTileId: DownloadTileId,
+): Boolean {
+    if (containerTileId.zoom > childTileId.zoom) {
+        return false
+    }
+    val zoomDelta = childTileId.zoom - containerTileId.zoom
+    return (childTileId.x shr zoomDelta) == containerTileId.x &&
+        (childTileId.y shr zoomDelta) == containerTileId.y
 }
 
 private fun <K, V> accessOrderCache(maxEntries: Int): LinkedHashMap<K, V> {

@@ -5,6 +5,7 @@ import android.location.Location
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,9 +16,19 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 private const val LOG_TAG = "GeePee"
+private const val TILE_DOWNLOAD_PROGRESS_UI_MIN_INTERVAL_MILLIS = 150L
 
 internal class GeePeeViewModel(application: Application) : AndroidViewModel(application) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val uiInvalidationScheduler = object : UiInvalidationScheduler {
+        override fun postDelayed(task: Runnable, delayMillis: Long) {
+            mainHandler.postDelayed(task, delayMillis)
+        }
+
+        override fun removeCallbacks(task: Runnable) {
+            mainHandler.removeCallbacks(task)
+        }
+    }
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val appStateStore = AppStateStore(application)
     private val callbackExecutor = Executor(mainHandler::post)
@@ -62,10 +73,18 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     private var selectedRouteUri: Uri? = null
     private var selectedRouteBaseName: String? = null
     private var selectedRouteReversed: Boolean = false
-    private var tileDownloads: Map<DownloadTileId, TileDownloadSnapshot> = tileContextRepository.cachedTileSnapshots()
+    private val tileDownloads = linkedMapOf<DownloadTileId, TileDownloadSnapshot>().apply {
+        putAll(tileContextRepository.cachedTileSnapshots())
+    }
     private var routeContextState = RouteContextState()
     private var debugGpsEnabled = false
     private var liveContextFocus: MapInfoFocus? = null
+    private val tileDownloadUiInvalidationThrottle = UiInvalidationThrottle(
+        minIntervalMillis = TILE_DOWNLOAD_PROGRESS_UI_MIN_INTERVAL_MILLIS,
+        scheduler = uiInvalidationScheduler,
+        clockMillis = SystemClock::elapsedRealtime,
+        onInvalidate = ::flushUiState,
+    )
 
     var uiState by mutableStateOf(GeePeeUiState())
         private set
@@ -190,6 +209,15 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    fun downloadTiles(tileRequests: List<TileDownloadRequest>) {
+        tileRequests.forEach { request ->
+            downloadTile(
+                tileId = request.tileId,
+                estimatedBytes = request.estimatedBytes,
+            )
+        }
+    }
+
     fun downloadTile(tileId: DownloadTileId, estimatedBytes: Long) {
         when (tileDownloads[tileId]?.status) {
             TileDownloadStatus.Downloading -> {
@@ -204,11 +232,9 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             -> Unit
         }
 
-        tileDownloads = tileDownloads + (
-            tileId to TileDownloadSnapshot(
-                status = TileDownloadStatus.Downloading,
-                estimatedBytes = estimatedBytes,
-            )
+        tileDownloads[tileId] = TileDownloadSnapshot(
+            status = TileDownloadStatus.Downloading,
+            estimatedBytes = estimatedBytes,
         )
         recomputeUiState()
         tileDownloadCoordinator.startDownload(
@@ -228,7 +254,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             LOG_TAG,
             "Deleted ${result.deletedTileCount} tiles with mode=${plan.mode} and freed ${result.freedBytes} bytes",
         )
-        tileDownloads = tileContextRepository.cachedTileSnapshots()
+        replaceTileDownloads(tileContextRepository.cachedTileSnapshots())
         routeContextCoordinator.clear()
         rebuildNearbyWaysAsync(force = true)
         recomputeUiState()
@@ -312,6 +338,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
         ioExecutor.shutdownNow()
         tileDownloadCoordinator.shutdown()
         routeContextCoordinator.shutdown()
+        tileDownloadUiInvalidationThrottle.cancel()
         super.onCleared()
     }
 
@@ -474,6 +501,11 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
     }
 
     private fun recomputeUiState() {
+        tileDownloadUiInvalidationThrottle.cancel()
+        flushUiState()
+    }
+
+    private fun flushUiState() {
         uiState = buildGeePeeUiState(
             GeePeeUiProjectionInputs(
                 routeLoadState = routeLoadState,
@@ -486,7 +518,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 sessionState = sessionState,
                 appPreferences = appPreferences,
                 tileContextConfig = tileContextConfig,
-                tileDownloads = tileDownloads,
+                tileDownloads = tileDownloads.toMap(),
                 routeContextState = routeContextState,
                 debugGpsEnabled = debugGpsEnabled,
                 locationProvidersEnabled = liveTrackingController.hasEnabledProviders(),
@@ -535,7 +567,10 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             routeContextState = routeContextState.withPois(emptyList())
             return
         }
-        routeContextCoordinator.rebuildRouteContext(routeModel) { pois ->
+        routeContextCoordinator.rebuildRouteContext(
+            routeModel = routeModel,
+            tileDownloads = tileDownloads,
+        ) { pois ->
             routeContextState = routeContextState.withPois(pois)
             recomputeUiState()
         }
@@ -583,20 +618,22 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
             is TileDownloadUpdate.Progress -> {
                 val currentSnapshot = tileDownloads[tileId]
                 if (currentSnapshot?.status == TileDownloadStatus.Downloading) {
-                    tileDownloads = tileDownloads + (
-                        tileId to currentSnapshot.copy(
-                            downloadedBytes = update.downloadedBytes,
-                            actualBytes = update.actualBytes,
-                        )
+                    if (
+                        currentSnapshot.downloadedBytes == update.downloadedBytes &&
+                        currentSnapshot.actualBytes == update.actualBytes
+                    ) {
+                        return
+                    }
+                    tileDownloads[tileId] = currentSnapshot.copy(
+                        downloadedBytes = update.downloadedBytes,
+                        actualBytes = update.actualBytes,
                     )
-                    recomputeUiState()
+                    tileDownloadUiInvalidationThrottle.invalidateThrottled()
                 }
             }
 
             is TileDownloadUpdate.Success -> {
-                tileDownloads = tileDownloads + (
-                    tileId to update.snapshot
-                )
+                tileDownloads[tileId] = update.snapshot
                 routeRuntimeState.routeModel?.let { routeModel ->
                     routeContextCoordinator.warmNearbyWayOverlays(
                         routeModel = routeModel,
@@ -610,22 +647,25 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
 
             TileDownloadUpdate.Cancelled -> {
                 if (tileDownloads[tileId]?.status == TileDownloadStatus.Downloading) {
-                    tileDownloads = tileDownloads - tileId
+                    tileDownloads.remove(tileId)
                     recomputeUiState()
                 }
             }
 
             is TileDownloadUpdate.Error -> {
                 val estimatedBytes = tileDownloads[tileId]?.estimatedBytes ?: 0L
-                tileDownloads = tileDownloads + (
-                    tileId to TileDownloadSnapshot(
-                        status = TileDownloadStatus.Error,
-                        estimatedBytes = estimatedBytes,
-                        errorMessage = update.message,
-                    )
+                tileDownloads[tileId] = TileDownloadSnapshot(
+                    status = TileDownloadStatus.Error,
+                    estimatedBytes = estimatedBytes,
+                    errorMessage = update.message,
                 )
                 recomputeUiState()
             }
         }
+    }
+
+    private fun replaceTileDownloads(snapshots: Map<DownloadTileId, TileDownloadSnapshot>) {
+        tileDownloads.clear()
+        tileDownloads.putAll(snapshots)
     }
 }

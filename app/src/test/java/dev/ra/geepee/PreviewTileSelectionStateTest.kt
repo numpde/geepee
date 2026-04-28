@@ -138,8 +138,7 @@ class PreviewTileSelectionStateTest {
         assertEquals(PreviewTileSelectionState(), result.selectionState)
         assertEquals(
             PreviewTileDownloadRequest(
-                tileId = uncachedTile.tileId,
-                estimatedBytes = uncachedTile.estimatedBytes,
+                tileRequests = uncachedTile.downloadRequests,
             ),
             result.downloadRequest,
         )
@@ -158,8 +157,14 @@ class PreviewTileSelectionStateTest {
 
         val initialState = PreviewTileSelectionState(setOf(firstTile.tileId))
         val tileSnapshots = mapOf(
-            firstTile.tileId to requireNotNull(firstTile.snapshot),
-            secondTile.tileId to requireNotNull(secondTile.snapshot),
+            firstTile.tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = firstTile.estimatedBytes,
+            ),
+            secondTile.tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = secondTile.estimatedBytes,
+            ),
         )
 
         val secondTileResult = initialState
@@ -193,7 +198,10 @@ class PreviewTileSelectionStateTest {
         val result = PreviewTileSelectionState(setOf(cachedTile.tileId))
             .resolve(
                 mapOf(
-                cachedTile.tileId to requireNotNull(cachedTile.snapshot),
+                cachedTile.tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = cachedTile.estimatedBytes,
+                ),
                 ),
             )
             .onTap(uncachedTile)
@@ -248,8 +256,7 @@ class PreviewTileSelectionStateTest {
         assertEquals(PreviewTileSelectionState(), result.selectionState)
         assertEquals(
             PreviewTileDownloadRequest(
-                tileId = uncachedTile.tileId,
-                estimatedBytes = uncachedTile.estimatedBytes,
+                tileRequests = uncachedTile.downloadRequests,
             ),
             result.downloadRequest,
         )
@@ -261,6 +268,12 @@ private fun previewTile(
     status: TileDownloadStatus?,
     estimatedBytes: Long = 180_000L,
 ): TileGridDisplayTile {
+    val downloadRequests = listOf(
+        TileDownloadRequest(
+            tileId = tileId,
+            estimatedBytes = estimatedBytes,
+        ),
+    )
     return TileGridDisplayTile(
         tileId = tileId,
         screenRect = ScreenRect(0f, 0f, 10f, 10f),
@@ -269,12 +282,15 @@ private fun previewTile(
             intersectingEdgeCount = 1,
             intersectingRouteMeters = 100.0,
         ),
-        snapshot = status?.let {
-            TileDownloadSnapshot(
-                status = it,
-                estimatedBytes = estimatedBytes,
-            )
+        downloadState = when (status) {
+            TileDownloadStatus.Downloading -> TileGridDownloadState.Downloading
+            TileDownloadStatus.Cached -> TileGridDownloadState.Cached
+            TileDownloadStatus.Error -> TileGridDownloadState.Error
+            null -> null
         },
+        progressFraction = null,
+        cachedTileIds = if (status == TileDownloadStatus.Cached) setOf(tileId) else emptySet(),
+        downloadRequests = downloadRequests,
         selected = false,
         estimatedBytes = estimatedBytes,
         label = null,

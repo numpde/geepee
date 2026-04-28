@@ -77,7 +77,7 @@ internal fun GeePeeApp(
             onToggleBatterySaver = {
                 viewModel.setBatterySaverEnabled(!state.batterySaverEnabled)
             },
-            onDownloadTile = viewModel::downloadTile,
+            onDownloadTiles = viewModel::downloadTiles,
             onBuildTileDeletePlan = viewModel::buildTileDeletePlan,
             onExecuteTileDeletePlan = viewModel::executeTileDeletePlan,
             onRequestScreenPinning = {
@@ -118,7 +118,7 @@ private fun GeePeeScreen(
     onReverseRoute: () -> Unit,
     onStartMonitoring: () -> Unit,
     onToggleBatterySaver: () -> Unit,
-    onDownloadTile: (DownloadTileId, Long) -> Unit,
+    onDownloadTiles: (List<TileDownloadRequest>) -> Unit,
     onBuildTileDeletePlan: (Set<DownloadTileId>) -> TileDeletePlan,
     onExecuteTileDeletePlan: (TileDeletePlan) -> Unit,
     onRequestScreenPinning: () -> Unit,
@@ -208,21 +208,10 @@ private fun GeePeeScreen(
                 onUpdateLiveContextFocus(focus)
             }
         }
-        val routeTileMetricsById = if (tileGridRouteModel != null) {
-            remember(tileGridRouteModel, state.tileContextConfig) {
-                buildRouteTileMetricsIndex(
-                    routeModel = tileGridRouteModel,
-                    config = state.tileContextConfig,
-                )
-            }
-        } else {
-            null
-        }
         val tileGridBounds = movementViewState.tileGridBounds
         val tileGridModel = if (tileGridRouteModel != null && tileGridBounds != null) {
             remember(
                 tileGridRouteModel,
-                routeTileMetricsById,
                 tileGridBounds,
                 viewportWidthPx,
                 viewportHeightPx,
@@ -232,7 +221,6 @@ private fun GeePeeScreen(
             ) {
                 buildTileGridRenderModel(
                     routeModel = tileGridRouteModel,
-                    routeTileMetricsById = routeTileMetricsById ?: emptyMap(),
                     bounds = tileGridBounds,
                     canvasWidth = viewportWidthPx,
                     canvasHeight = viewportHeightPx,
@@ -269,7 +257,7 @@ private fun GeePeeScreen(
                                 )
                                 previewTileUiState = tapTransition.uiState
                                 tapTransition.downloadRequest?.let { request ->
-                                    onDownloadTile(request.tileId, request.estimatedBytes)
+                                    onDownloadTiles(request.tileRequests)
                                 }
                             } else if (movementMode) {
                                 val routeModel = requireNotNull(state.routeModel)

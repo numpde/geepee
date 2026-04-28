@@ -137,14 +137,17 @@ private fun deleteUnusedProtectedTileIds(
             config = config,
         )
         currentMapInfoFocus?.let { focus ->
-            protectedTileIds += tilesIntersectingProjectedBounds(
-                projection = routeModel.projection,
-                bounds = expandedNearbyWayMapInfoBounds(
-                    focus = focus,
-                    config = config,
-                ),
-                zoom = config.downloadZoom,
+            val focusBounds = expandedNearbyWayMapInfoBounds(
+                focus = focus,
+                config = config,
             )
+            protectedTileIds += cachedTileIds.filter { tileId ->
+                tileIntersectsProjectedBounds(
+                    tileId = tileId,
+                    projection = routeModel.projection,
+                    bounds = focusBounds,
+                )
+            }
         }
     }
 

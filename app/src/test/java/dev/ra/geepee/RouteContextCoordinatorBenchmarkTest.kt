@@ -8,6 +8,13 @@ class RouteContextCoordinatorBenchmarkTest {
         requireBenchmarkOptIn()
         val sourcePack = loadRouteMapInfoTileFixture("tile-context/10-571-356-local.json")
         val routeModel = loadRouteMapInfoRouteModel()
+        val tileDownloads = mapOf(
+            sourcePack.tileId to TileDownloadSnapshot(
+                status = TileDownloadStatus.Cached,
+                estimatedBytes = 1L,
+                actualBytes = 1L,
+            ),
+        )
 
         val coldRouteContextNanos = benchmarkNanos(iterations = 5) {
             withSeededTileContextRepository(
@@ -21,7 +28,7 @@ class RouteContextCoordinatorBenchmarkTest {
                     logTag = "RouteContextCoordinatorBenchmarkTest",
                 )
                 try {
-                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
+                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel, tileDownloads)
                 } finally {
                     coordinator.shutdown()
                 }
@@ -39,9 +46,9 @@ class RouteContextCoordinatorBenchmarkTest {
                 logTag = "RouteContextCoordinatorBenchmarkTest",
             )
             try {
-                awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
+                awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel, tileDownloads)
                 benchmarkNanos(iterations = 100) {
-                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel)
+                    awaitRouteMapInfoRouteContextRebuild(coordinator, routeModel, tileDownloads)
                 }
             } finally {
                 coordinator.shutdown()
