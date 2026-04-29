@@ -62,7 +62,7 @@ class PreviewTileSelectionStateTest {
             ),
         ).resolve(emptyMap()).dismissDelete()
 
-        assertEquals(setOf(tileId), dismissedState.selectionState.selectedTileIds)
+        assertEquals(emptySet<DownloadTileId>(), dismissedState.selectionState.selectedTileIds)
         assertNull(dismissedState.pendingDeletePlan)
     }
 
