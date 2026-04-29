@@ -394,7 +394,8 @@ internal data class TileGridRenderModel(
     ): TileGridRenderModel {
         return TileGridRenderModel(
             tiles = tiles.filter { tile ->
-                tile.screenRect.isFullyWithin(width = width, height = height)
+                tile.outlineStyle == TileGridOutlineStyle.Solid &&
+                    tile.screenRect.isFullyWithin(width = width, height = height)
             },
         )
     }

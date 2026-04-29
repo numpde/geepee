@@ -275,7 +275,7 @@ class TileContextTest {
     }
 
     @Test
-    fun tileGridRenderModelCanFilterToFullyVisibleTiles() {
+    fun tileGridRenderModelCanFilterToFullyVisibleRealTiles() {
         val metrics = TileRouteMetrics(
             intersectsRoute = false,
             intersectingEdgeCount = 0,
@@ -297,6 +297,18 @@ class TileContextTest {
                 TileGridDisplayTile(
                     tileId = DownloadTileId(zoom = 10, x = 1, y = 2),
                     screenRect = ScreenRect(left = -5f, top = 20f, right = 95f, bottom = 120f),
+                    routeMetrics = metrics,
+                    downloadState = null,
+                    progressFraction = null,
+                    representedCoverage = TileGridRepresentedCoverage(emptyList()),
+                    downloadRequests = emptyList(),
+                    estimatedBytes = 0L,
+                    label = null,
+                ),
+                TileGridDisplayTile(
+                    tileId = DownloadTileId(zoom = 10, x = 1, y = 3),
+                    screenRect = ScreenRect(left = 10f, top = 20f, right = 110f, bottom = 120f),
+                    outlineStyle = TileGridOutlineStyle.ViewProxyDashed,
                     routeMetrics = metrics,
                     downloadState = null,
                     progressFraction = null,
