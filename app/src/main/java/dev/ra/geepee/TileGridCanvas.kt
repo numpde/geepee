@@ -19,19 +19,22 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-internal enum class TileGridVisualStyle {
-    Preview,
-    LiveOverlay,
+internal enum class TileGridVisualStyle(
+    val showsFills: Boolean,
+    val showsProgress: Boolean,
+    val showsLabels: Boolean,
+) {
+    Preview(
+        showsFills = true,
+        showsProgress = true,
+        showsLabels = true,
+    ),
+    LiveOverlay(
+        showsFills = false,
+        showsProgress = false,
+        showsLabels = false,
+    ),
 }
-
-private val TileGridVisualStyle.showsFills: Boolean
-    get() = this == TileGridVisualStyle.Preview
-
-private val TileGridVisualStyle.showsProgress: Boolean
-    get() = this == TileGridVisualStyle.Preview
-
-private val TileGridVisualStyle.showsLabels: Boolean
-    get() = this == TileGridVisualStyle.Preview
 
 @Composable
 internal fun TileGridCanvas(

@@ -110,7 +110,6 @@ internal fun GeePeeApp(
 }
 
 private data class RouteCanvasTapContext(
-    val showTileOverview: Boolean,
     val previewTileUiState: PreviewTileUiState,
     val tileGridModel: TileGridRenderModel?,
     val movementMode: Boolean,
@@ -125,7 +124,10 @@ private data class RouteCanvasTapContext(
     val viewportHeightPx: Float,
     val boundsOverride: Bounds?,
     val tileResolutionPolicy: TileResolutionPolicy,
-)
+) {
+    val showTileOverview: Boolean
+        get() = !movementMode
+}
 
 @Composable
 private fun GeePeeScreen(
@@ -185,7 +187,6 @@ private fun GeePeeScreen(
         } else {
             null
         }
-        val showTileOverview = !movementMode
         val tileGridRouteModel = state.routeModel
         val movementViewState = remember(
             movementMode,
@@ -265,7 +266,6 @@ private fun GeePeeScreen(
         }
         val currentTapContext by rememberUpdatedState(
             RouteCanvasTapContext(
-                showTileOverview = showTileOverview,
                 previewTileUiState = resolvedPreviewTileUiState,
                 tileGridModel = tileGridModel,
                 movementMode = movementMode,
@@ -348,7 +348,7 @@ private fun GeePeeScreen(
                             pan = Offset(pan.x, pan.y),
                             zoom = zoom,
                         )
-                        movementViewportController?.handleTransform?.invoke(
+                        currentMovementViewportController?.handleTransform?.invoke(
                             ScreenPoint(centroid.x, centroid.y),
                             ScreenPoint(pan.x, pan.y),
                             zoom,
