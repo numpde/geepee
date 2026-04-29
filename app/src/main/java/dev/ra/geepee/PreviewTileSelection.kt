@@ -116,14 +116,11 @@ internal data class ResolvedPreviewTileUiState(
 
     fun dismissDelete(): PreviewTileUiState = uiState.copy(pendingDeletePlan = null)
 
-    fun confirmDelete(): PreviewTileDeleteConfirmation? {
-        val plan = uiState.pendingDeletePlan ?: return null
-        return PreviewTileDeleteConfirmation(
-            plan = plan,
-            nextState = uiState.copy(
-                selectionState = uiState.selectionState.clear(),
-                pendingDeletePlan = null,
-            ),
+    fun confirmDelete(): PreviewTileUiState? {
+        uiState.pendingDeletePlan ?: return null
+        return uiState.copy(
+            selectionState = uiState.selectionState.clear(),
+            pendingDeletePlan = null,
         )
     }
 }
@@ -136,11 +133,6 @@ internal data class PreviewTileTapResult(
 internal data class PreviewTileTapTransition(
     val uiState: PreviewTileUiState,
     val downloadRequest: PreviewTileDownloadRequest? = null,
-)
-
-internal data class PreviewTileDeleteConfirmation(
-    val plan: TileDeletePlan,
-    val nextState: PreviewTileUiState,
 )
 
 internal data class PreviewTileDownloadRequest(

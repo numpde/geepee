@@ -460,9 +460,9 @@ private fun GeePeeScreen(
             TileDeleteDialog(
                 plan = plan,
                 onConfirm = {
-                    resolvedPreviewTileUiState.confirmDelete()?.let { confirmation ->
-                        onExecuteTileDeletePlan(confirmation.plan)
-                        previewTileUiState = confirmation.nextState
+                    resolvedPreviewTileUiState.confirmDelete()?.let { nextState ->
+                        onExecuteTileDeletePlan(plan)
+                        previewTileUiState = nextState
                     }
                 },
                 onDismiss = { previewTileUiState = resolvedPreviewTileUiState.dismissDelete() },

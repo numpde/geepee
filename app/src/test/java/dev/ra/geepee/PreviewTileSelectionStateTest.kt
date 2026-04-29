@@ -35,7 +35,7 @@ class PreviewTileSelectionStateTest {
     @Test
     fun resolvedPreviewTileUiStateConfirmDeleteClearsSelectionAndPlan() {
         val tileId = DownloadTileId(zoom = 10, x = 1, y = 2)
-        val confirmation = requireNotNull(
+        val nextState = requireNotNull(
             PreviewTileUiState(
                 selectionState = PreviewTileSelectionState(setOf(tileId)),
                 pendingDeletePlan = TileDeletePlan(
@@ -46,9 +46,8 @@ class PreviewTileSelectionStateTest {
             ).resolve(emptyMap()).confirmDelete(),
         )
 
-        assertEquals(setOf(tileId), confirmation.plan.tileIds)
-        assertEquals(emptySet<DownloadTileId>(), confirmation.nextState.selectionState.selectedTileIds)
-        assertNull(confirmation.nextState.pendingDeletePlan)
+        assertEquals(emptySet<DownloadTileId>(), nextState.selectionState.selectedTileIds)
+        assertNull(nextState.pendingDeletePlan)
     }
 
     @Test
