@@ -2,15 +2,19 @@ package dev.ra.geepee
 
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.max
 
 internal data class RouteMatcherConfig(
-    val observationWindowSize: Int = 4,
+    val beliefConfig: RouteBeliefConfig = RouteBeliefConfig(),
     val maxCandidatesPerFix: Int = 12,
     val maxStateHypotheses: Int = 4,
-    val minSigmaMeters: Double = 8.0,
+    val initialRouteProbability: Double = 0.5,
+    val routeExitPenalty: Double = 1.6,
+    val routeReentryPenalty: Double = 1.2,
+    val offRouteStayPenalty: Double = 0.0,
+    val routeRelocalizationPenalty: Double = 4.0,
     val backwardAllowanceMeters: Double = 10.0,
     val emissionWeight: Double = 1.0,
     val transitionWeight: Double = 1.0,
@@ -24,33 +28,42 @@ internal data class RouteMatcherConfig(
     val baseTransitionToleranceMeters: Double = 6.0,
     val transitionToleranceAccuracyMultiplier: Double = 1.5,
     val transitionPenaltyOffsetMeters: Double = 12.0,
-    val continuityBreakDistanceMeters: Double = 24.0,
-    val continuityBreakGapMeters: Double = 12.0,
-    val continuityBreakNearestMeters: Double = 12.0,
-    val continuityBreakAccuracyMultiplier: Double = 2.5,
     val hypothesisScoreMargin: Double = 1.2,
     val hypothesisRouteSeparationMeters: Double = 20.0,
-)
-
-private data class RouteMatchObservation(
-    val fix: LocationFix,
-    val projectedFix: ProjectedPoint,
-    val candidates: List<RouteAnalysis>,
-)
+) {
+    init {
+        require(maxCandidatesPerFix > 0) { "At least one candidate is required." }
+        require(maxStateHypotheses > 0) { "At least one state hypothesis is required." }
+        require(initialRouteProbability in 0.0..1.0) { "Initial route probability must be a probability." }
+    }
+}
 
 private data class RouteMatcherState(
-    val hypotheses: List<RouteMatchHypothesis>,
+    val hypotheses: List<RouteMatchHypothesis> = emptyList(),
+    val offRouteLogProbability: Double = ln(0.5),
+    val lastFix: LocationFix? = null,
+    val lastProjectedFix: ProjectedPoint? = null,
 )
 
 private data class RouteMatchHypothesis(
     val nearestEdgeIndex: Int?,
     val routeMeters: Double,
-    val score: Double,
+    val nearestPoint: ProjectedPoint,
+    val logProbability: Double,
 )
 
 private data class ScoredRouteCandidate(
     val analysis: RouteAnalysis,
-    val score: Double,
+    val logProbability: Double,
+    val posteriorProbability: Double,
+)
+
+private data class RouteBeliefUpdate(
+    val sigmaMeters: Double,
+    val routeProbability: Double,
+    val offRouteProbability: Double,
+    val offRouteLogProbability: Double,
+    val rankedCandidates: List<ScoredRouteCandidate>,
 )
 
 internal data class RouteMatchDisplayHypothesis(
@@ -62,22 +75,21 @@ internal data class RouteMatchDisplayHypothesis(
 internal data class RouteMatchResult(
     val analysis: RouteAnalysis,
     val hypotheses: List<RouteMatchDisplayHypothesis>,
+    val belief: RouteBelief,
 )
 
 internal class RouteMatcher(
     private val routeModel: RouteModel,
     private val config: RouteMatcherConfig = RouteMatcherConfig(),
 ) {
-    private val observations = ArrayDeque<RouteMatchObservation>()
-    private var state = RouteMatcherState(hypotheses = emptyList())
+    private var state = RouteMatcherState()
 
     fun reset() {
-        observations.clear()
-        state = RouteMatcherState(hypotheses = emptyList())
+        state = RouteMatcherState()
     }
 
     fun match(fix: LocationFix): RouteMatchResult {
-        val lastTimestamp = observations.lastOrNull()?.fix?.timestampMillis
+        val lastTimestamp = state.lastFix?.timestampMillis
         if (lastTimestamp != null && fix.timestampMillis <= lastTimestamp) {
             reset()
         }
@@ -99,50 +111,64 @@ internal class RouteMatcher(
         )
 
         if (candidates.isEmpty()) {
+            val sigmaMeters = observationSigmaMeters(fix, config.beliefConfig)
+            val analysis = emptyRouteAnalysis(projectedFix)
             return RouteMatchResult(
-                analysis = emptyRouteAnalysis(projectedFix),
+                analysis = analysis,
                 hypotheses = emptyList(),
+                belief = RouteBelief(
+                    fix = fix,
+                    sigmaMeters = sigmaMeters,
+                    routeProbability = 0.0,
+                    offRouteProbability = 1.0,
+                    adherence = RouteAdherence.OffRoute,
+                    primaryRouteAnalysis = null,
+                    routeCandidates = emptyList(),
+                ),
             )
         }
 
-        observations += RouteMatchObservation(
+        val beliefUpdate = scoreCurrentBelief(
             fix = fix,
             projectedFix = projectedFix,
             candidates = candidates,
         )
-        while (observations.size > config.observationWindowSize) {
-            observations.removeFirst()
-        }
-
-        val rankedCandidates = solveBestCurrentMatches(observations.toList())
-        val matched = rankedCandidates.firstOrNull()?.analysis ?: candidates.minBy { it.offRouteMeters }
-        val nearest = nearestCandidate ?: candidates.minBy { it.offRouteMeters }
-        val finalRankedCandidates = if (shouldBreakContinuity(matched, nearest, fix)) {
-            observations.clear()
-            observations += RouteMatchObservation(
-                fix = fix,
-                projectedFix = projectedFix,
-                candidates = candidates,
-            )
-            solveBestCurrentMatches(observations.toList())
-                .ifEmpty { listOf(ScoredRouteCandidate(analysis = nearest, score = 0.0)) }
-        } else {
-            rankedCandidates.ifEmpty { listOf(ScoredRouteCandidate(analysis = matched, score = 0.0)) }
-        }
-        val selectedCandidates = selectPlausibleCandidates(finalRankedCandidates)
-        val finalMatch = selectedCandidates.first().analysis.withProgress(routeModel, fix)
+        val selectedCandidates = selectPlausibleCandidates(beliefUpdate.rankedCandidates)
+        val routeCandidateBeliefs = buildRouteCandidateBeliefs(selectedCandidates, fix)
+        val finalMatch = routeCandidateBeliefs.firstOrNull()?.analysis
+            ?: nearestCandidate?.withProgress(routeModel, fix)
+            ?: candidates.minBy { it.offRouteMeters }.withProgress(routeModel, fix)
+        val adherence = classifyRouteAdherence(
+            routeProbability = beliefUpdate.routeProbability,
+            offRouteProbability = beliefUpdate.offRouteProbability,
+            config = config.beliefConfig,
+        )
         state = RouteMatcherState(
             hypotheses = selectedCandidates.map { candidate ->
                 RouteMatchHypothesis(
                     nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
                     routeMeters = candidate.analysis.routeMeters,
-                    score = candidate.score,
+                    nearestPoint = candidate.analysis.nearestPoint,
+                    logProbability = candidate.logProbability,
                 )
             },
+            offRouteLogProbability = beliefUpdate.offRouteLogProbability,
+            lastFix = fix,
+            lastProjectedFix = projectedFix,
+        )
+        val belief = RouteBelief(
+            fix = fix,
+            sigmaMeters = beliefUpdate.sigmaMeters,
+            routeProbability = beliefUpdate.routeProbability,
+            offRouteProbability = beliefUpdate.offRouteProbability,
+            adherence = adherence,
+            primaryRouteAnalysis = finalMatch,
+            routeCandidates = routeCandidateBeliefs,
         )
         return RouteMatchResult(
             analysis = finalMatch,
-            hypotheses = buildDisplayHypotheses(selectedCandidates, fix),
+            hypotheses = buildDisplayHypotheses(routeCandidateBeliefs),
+            belief = belief,
         )
     }
 
@@ -178,62 +204,103 @@ internal class RouteMatcher(
         fix: LocationFix,
         previousHypotheses: List<RouteMatchHypothesis>,
     ): Double {
-        val emission = (candidate.offRouteMeters / effectiveSigmaMeters(fix)) * config.emissionWeight
+        val emission = (candidate.offRouteMeters / observationSigmaMeters(fix, config.beliefConfig)) *
+            config.emissionWeight
         val continuity = if (previousHypotheses.isEmpty()) {
             0.0
         } else {
-            val bestHypothesisScore = previousHypotheses.minOf { it.score }
+            val bestLogProbability = previousHypotheses.maxOf { it.logProbability }
             previousHypotheses.minOf { hypothesis ->
                 abs(candidate.routeMeters - hypothesis.routeMeters) / config.preliminaryContinuityScaleMeters +
-                    max(0.0, hypothesis.score - bestHypothesisScore)
+                    max(0.0, bestLogProbability - hypothesis.logProbability)
             }
         }
         return emission + continuity
     }
 
-    private fun solveBestCurrentMatches(observations: List<RouteMatchObservation>): List<ScoredRouteCandidate> {
-        if (observations.isEmpty()) {
-            return emptyList()
+    private fun scoreCurrentBelief(
+        fix: LocationFix,
+        projectedFix: ProjectedPoint,
+        candidates: List<RouteAnalysis>,
+    ): RouteBeliefUpdate {
+        val sigmaMeters = observationSigmaMeters(fix, config.beliefConfig)
+        val routeLogProbabilities = candidates.map { candidate ->
+            routeTransitionLogProbability(
+                fix = fix,
+                projectedFix = projectedFix,
+                candidate = candidate,
+                candidateCount = candidates.size,
+            ) - candidateCost(
+                fix = fix,
+                candidate = candidate,
+                sigmaMeters = sigmaMeters,
+            )
+        }
+        val offRouteLogProbability = offRouteTransitionLogProbability() -
+            offRouteObservationCost(
+                sigmaMeters = sigmaMeters,
+                config = config.beliefConfig,
+            )
+        val normalizer = logSumExp(routeLogProbabilities + offRouteLogProbability)
+        val rankedCandidates = candidates.zip(routeLogProbabilities).map { (candidate, logProbability) ->
+            ScoredRouteCandidate(
+                analysis = candidate,
+                logProbability = logProbability - normalizer,
+                posteriorProbability = kotlin.math.exp(logProbability - normalizer),
+            )
+        }.sortedByDescending { it.logProbability }
+        val normalizedOffRouteLogProbability = offRouteLogProbability - normalizer
+        val offRouteProbability = kotlin.math.exp(normalizedOffRouteLogProbability)
+        val routeProbability = rankedCandidates.sumOf { it.posteriorProbability }.coerceIn(0.0, 1.0)
+        return RouteBeliefUpdate(
+            sigmaMeters = sigmaMeters,
+            routeProbability = routeProbability,
+            offRouteProbability = offRouteProbability,
+            offRouteLogProbability = normalizedOffRouteLogProbability,
+            rankedCandidates = rankedCandidates,
+        )
+    }
+
+    private fun routeTransitionLogProbability(
+        fix: LocationFix,
+        projectedFix: ProjectedPoint,
+        candidate: RouteAnalysis,
+        candidateCount: Int,
+    ): Double {
+        val previousFix = state.lastFix
+        val previousProjectedFix = state.lastProjectedFix
+        val candidateCountPenalty = ln(candidateCount.toDouble())
+        if (previousFix == null || previousProjectedFix == null) {
+            return ln(config.initialRouteProbability.coerceAtLeast(Double.MIN_VALUE)) - candidateCountPenalty
         }
 
-        var previousScores = DoubleArray(observations.first().candidates.size) { candidateIndex ->
-            candidateCost(observations.first(), observations.first().candidates[candidateIndex])
+        val previousRouteContributions = state.hypotheses.map { previousHypothesis ->
+            previousHypothesis.logProbability - transitionCost(
+                previousFix = previousFix,
+                previousProjectedFix = previousProjectedFix,
+                previousRouteMeters = previousHypothesis.routeMeters,
+                previousNearestPoint = previousHypothesis.nearestPoint,
+                currentFix = fix,
+                currentProjectedFix = projectedFix,
+                currentRouteMeters = candidate.routeMeters,
+                currentNearestPoint = candidate.nearestPoint,
+            )
         }
+        val offRouteContribution = state.offRouteLogProbability -
+            config.routeReentryPenalty -
+            candidateCountPenalty
+        return logSumExp(previousRouteContributions + offRouteContribution)
+    }
 
-        for (observationIndex in 1 until observations.size) {
-            val previousObservation = observations[observationIndex - 1]
-            val currentObservation = observations[observationIndex]
-            val currentScores = DoubleArray(currentObservation.candidates.size) { Double.POSITIVE_INFINITY }
-
-            currentObservation.candidates.forEachIndexed { currentIndex, currentCandidate ->
-                val currentCost = candidateCost(currentObservation, currentCandidate)
-                previousObservation.candidates.forEachIndexed { previousIndex, previousCandidate ->
-                    val score = previousScores[previousIndex] +
-                        transitionCost(
-                            previousObservation = previousObservation,
-                            previousCandidate = previousCandidate,
-                            currentObservation = currentObservation,
-                            currentCandidate = currentCandidate,
-                        ) +
-                        currentCost
-                    if (score < currentScores[currentIndex]) {
-                        currentScores[currentIndex] = score
-                    }
-                }
-            }
-
-            previousScores = currentScores
+    private fun offRouteTransitionLogProbability(): Double {
+        if (state.lastFix == null) {
+            return ln((1.0 - config.initialRouteProbability).coerceAtLeast(Double.MIN_VALUE))
         }
-
-        val finalObservation = observations.last()
-        return previousScores.indices
-            .map { candidateIndex ->
-                ScoredRouteCandidate(
-                    analysis = finalObservation.candidates[candidateIndex],
-                    score = previousScores[candidateIndex],
-                )
-            }
-            .sortedBy { it.score }
+        val routeExitContributions = state.hypotheses.map { hypothesis ->
+            hypothesis.logProbability - config.routeExitPenalty
+        }
+        val offRouteStayContribution = state.offRouteLogProbability - config.offRouteStayPenalty
+        return logSumExp(routeExitContributions + offRouteStayContribution)
     }
 
     private fun selectPlausibleCandidates(
@@ -243,10 +310,10 @@ internal class RouteMatcher(
             return emptyList()
         }
 
-        val bestScore = rankedCandidates.first().score
+        val bestLogProbability = rankedCandidates.first().logProbability
         val selected = mutableListOf<ScoredRouteCandidate>()
         for (candidate in rankedCandidates) {
-            if (candidate.score - bestScore > config.hypothesisScoreMargin) {
+            if (bestLogProbability - candidate.logProbability > config.hypothesisScoreMargin) {
                 break
             }
             if (selected.any { existing ->
@@ -265,62 +332,79 @@ internal class RouteMatcher(
         }
     }
 
-    private fun buildDisplayHypotheses(
+    private fun buildRouteCandidateBeliefs(
         selectedCandidates: List<ScoredRouteCandidate>,
         fix: LocationFix,
-    ): List<RouteMatchDisplayHypothesis> {
+    ): List<RouteCandidateBelief> {
         if (selectedCandidates.isEmpty()) {
             return emptyList()
         }
 
-        val bestScore = selectedCandidates.first().score
-        val rawWeights = selectedCandidates.map { candidate ->
-            exp(-(candidate.score - bestScore))
-        }
-        val totalWeight = rawWeights.sum().takeIf { it > 0.0 } ?: 1.0
-        return selectedCandidates.zip(rawWeights).mapIndexed { index, (candidate, weight) ->
-            RouteMatchDisplayHypothesis(
+        val selectedRouteProbability = selectedCandidates.sumOf { it.posteriorProbability }
+            .takeIf { it > 0.0 }
+            ?: 1.0
+        return selectedCandidates.mapIndexed { index, candidate ->
+            RouteCandidateBelief(
                 analysis = candidate.analysis.withProgress(routeModel, fix),
-                confidence = (weight / totalWeight).toFloat(),
+                posteriorProbability = candidate.posteriorProbability,
+                routeConditionalProbability = candidate.posteriorProbability / selectedRouteProbability,
                 isPrimary = index == 0,
             )
         }
     }
 
+    private fun buildDisplayHypotheses(
+        selectedCandidates: List<RouteCandidateBelief>,
+    ): List<RouteMatchDisplayHypothesis> {
+        return selectedCandidates.map { candidate ->
+            RouteMatchDisplayHypothesis(
+                analysis = candidate.analysis,
+                confidence = candidate.routeConditionalProbability.toFloat(),
+                isPrimary = candidate.isPrimary,
+            )
+        }
+    }
+
     private fun candidateCost(
-        observation: RouteMatchObservation,
+        fix: LocationFix,
         candidate: RouteAnalysis,
+        sigmaMeters: Double,
     ): Double {
-        val sigma = effectiveSigmaMeters(observation.fix)
-        val emission = (candidate.offRouteMeters * candidate.offRouteMeters) / (2.0 * sigma * sigma)
-        return emission * config.emissionWeight + headingPenalty(observation.fix, candidate)
+        return routeObservationCost(
+            offRouteMeters = candidate.offRouteMeters,
+            sigmaMeters = sigmaMeters,
+        ) * config.emissionWeight + headingPenalty(fix, candidate)
     }
 
     private fun transitionCost(
-        previousObservation: RouteMatchObservation,
-        previousCandidate: RouteAnalysis,
-        currentObservation: RouteMatchObservation,
-        currentCandidate: RouteAnalysis,
+        previousFix: LocationFix,
+        previousProjectedFix: ProjectedPoint,
+        previousRouteMeters: Double,
+        previousNearestPoint: ProjectedPoint,
+        currentFix: LocationFix,
+        currentProjectedFix: ProjectedPoint,
+        currentRouteMeters: Double,
+        currentNearestPoint: ProjectedPoint,
     ): Double {
-        val routeDelta = currentCandidate.routeMeters - previousCandidate.routeMeters
+        val routeDelta = currentRouteMeters - previousRouteMeters
         val dtSeconds = max(
             config.minTransitionDtSeconds,
-            (currentObservation.fix.timestampMillis - previousObservation.fix.timestampMillis).toDouble() / 1_000.0,
+            (currentFix.timestampMillis - previousFix.timestampMillis).toDouble() / 1_000.0,
         )
         val observedTravelMeters = hypot(
-            currentObservation.projectedFix.x - previousObservation.projectedFix.x,
-            currentObservation.projectedFix.y - previousObservation.projectedFix.y,
+            currentProjectedFix.x - previousProjectedFix.x,
+            currentProjectedFix.y - previousProjectedFix.y,
         )
         val speedTravelMeters = listOfNotNull(
-            previousObservation.fix.speedMetersPerSecond?.toDouble(),
-            currentObservation.fix.speedMetersPerSecond?.toDouble(),
+            previousFix.speedMetersPerSecond?.toDouble(),
+            currentFix.speedMetersPerSecond?.toDouble(),
         ).averageOrNull()?.times(dtSeconds)
         val expectedTravelMeters = max(observedTravelMeters, speedTravelMeters ?: 0.0)
         val toleranceMeters = max(
             config.baseTransitionToleranceMeters,
             max(
-                previousObservation.fix.accuracyMeters?.toDouble() ?: 0.0,
-                currentObservation.fix.accuracyMeters?.toDouble() ?: 0.0,
+                observationSigmaMeters(previousFix, config.beliefConfig),
+                observationSigmaMeters(currentFix, config.beliefConfig),
             ) * config.transitionToleranceAccuracyMultiplier,
         )
         val distancePenalty = abs(routeDelta - expectedTravelMeters) /
@@ -330,7 +414,15 @@ internal class RouteMatcher(
         } else {
             0.0
         }
-        return distancePenalty * config.transitionWeight + reversePenalty
+        val progressCost = distancePenalty * config.transitionWeight + reversePenalty
+        val routeSpatialTravelMeters = hypot(
+            currentNearestPoint.x - previousNearestPoint.x,
+            currentNearestPoint.y - previousNearestPoint.y,
+        )
+        val relocalizationCost = config.routeRelocalizationPenalty +
+            abs(routeSpatialTravelMeters - expectedTravelMeters) /
+            (toleranceMeters + config.transitionPenaltyOffsetMeters)
+        return minOf(progressCost, relocalizationCost)
     }
 
     private fun headingPenalty(
@@ -352,32 +444,6 @@ internal class RouteMatcher(
         )
         val headingDelta = abs(normalizeSignedHeadingDegrees(routeHeading - fix.headingDegrees))
         return (headingDelta / 90.0) * config.headingPenaltyWeight
-    }
-
-    private fun effectiveSigmaMeters(fix: LocationFix): Double {
-        return max(config.minSigmaMeters, fix.accuracyMeters?.toDouble() ?: config.minSigmaMeters)
-    }
-
-    private fun shouldBreakContinuity(
-        matched: RouteAnalysis,
-        nearest: RouteAnalysis,
-        fix: LocationFix,
-    ): Boolean {
-        if (matched.nearestEdgeIndex == nearest.nearestEdgeIndex) {
-            return false
-        }
-
-        val breakDistanceThreshold = max(
-            config.continuityBreakDistanceMeters,
-            effectiveSigmaMeters(fix) * config.continuityBreakAccuracyMultiplier,
-        )
-        if (matched.offRouteMeters < breakDistanceThreshold) {
-            return false
-        }
-        if (nearest.offRouteMeters > config.continuityBreakNearestMeters) {
-            return false
-        }
-        return matched.offRouteMeters - nearest.offRouteMeters >= config.continuityBreakGapMeters
     }
 }
 

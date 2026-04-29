@@ -15,6 +15,130 @@ private const val TISZA_START_HAIRPIN_RETURN_INDEX = 50
 
 class RouteMatcherTest {
     @Test
+    fun matcherReportsHighRouteProbabilityForAccurateOnRouteFix() {
+        val route = straightNorthRoute()
+        val matcher = RouteMatcher(route)
+
+        val match = matcher.match(
+            LocationFix(
+                lat = 0.0005,
+                lon = 0.0,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+
+        assertEquals(RouteAdherence.OnRoute, match.belief.adherence)
+        assertTrue(match.belief.routeProbability > 0.8)
+        assertTrue(match.belief.offRouteProbability < 0.2)
+    }
+
+    @Test
+    fun matcherReportsHighOffRouteProbabilityForAccurateFarFix() {
+        val route = straightNorthRoute()
+        val matcher = RouteMatcher(route)
+
+        val match = matcher.match(
+            LocationFix(
+                lat = 0.0005,
+                lon = 0.0010,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+
+        assertEquals(RouteAdherence.OffRoute, match.belief.adherence)
+        assertTrue(match.belief.routeProbability < 0.2)
+        assertTrue(match.belief.offRouteProbability > 0.8)
+    }
+
+    @Test
+    fun matcherKeepsRouteCandidateConfidenceSeparateFromRouteAdherence() {
+        val route = straightNorthRoute()
+        val matcher = RouteMatcher(route)
+
+        val match = matcher.match(
+            LocationFix(
+                lat = 0.0005,
+                lon = 0.0010,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+
+        assertEquals(1.0f, match.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertTrue(match.belief.routeProbability < 0.2)
+    }
+
+    @Test
+    fun matcherTreatsPoorAccuracyFarFixAsUncertain() {
+        val route = straightNorthRoute()
+        val matcher = RouteMatcher(route)
+
+        val match = matcher.match(
+            LocationFix(
+                lat = 0.0005,
+                lon = 0.00055,
+                accuracyMeters = 120f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+
+        assertEquals(RouteAdherence.Uncertain, match.belief.adherence)
+        assertTrue(match.belief.routeProbability in 0.2..0.8)
+        assertTrue(match.belief.offRouteProbability in 0.2..0.8)
+    }
+
+    @Test
+    fun matcherReacquiresRouteAfterAccurateOffRouteFix() {
+        val route = straightNorthRoute()
+        val matcher = RouteMatcher(route)
+
+        matcher.match(
+            LocationFix(
+                lat = 0.0002,
+                lon = 0.0,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+        val offRoute = matcher.match(
+            LocationFix(
+                lat = 0.0004,
+                lon = 0.0010,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 3_000L,
+            ),
+        )
+        val reacquired = matcher.match(
+            LocationFix(
+                lat = 0.0006,
+                lon = 0.0,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 5_000L,
+            ),
+        )
+
+        assertEquals(RouteAdherence.OffRoute, offRoute.belief.adherence)
+        assertEquals(RouteAdherence.OnRoute, reacquired.belief.adherence)
+        assertTrue(reacquired.belief.routeProbability > 0.8)
+    }
+
+    @Test
     fun matcherKeepsHairpinProgressOnCurrentLegDespiteNearerReturnLeg() {
         val route = buildRouteModel(
             listOf(
@@ -221,12 +345,8 @@ class RouteMatcherTest {
             route,
             config = RouteMatcherConfig(
                 maxCandidatesPerFix = 3,
-                minSigmaMeters = 1.0,
+                beliefConfig = RouteBeliefConfig(minObservationSigmaMeters = 1.0),
                 preliminaryContinuityScaleMeters = 1.0,
-                continuityBreakDistanceMeters = 2.5,
-                continuityBreakGapMeters = 0.3,
-                continuityBreakNearestMeters = 0.8,
-                continuityBreakAccuracyMultiplier = 1.0,
             ),
         )
 
@@ -418,6 +538,17 @@ class RouteMatcherTest {
             message = "Matcher should not jump backward materially even with outlier hairpin fixes.",
         )
     }
+}
+
+private fun straightNorthRoute(): RouteModel {
+    return buildRouteModel(
+        listOf(
+            listOf(
+                GeoPoint(lat = 0.0, lon = 0.0),
+                GeoPoint(lat = 0.0010, lon = 0.0),
+            ),
+        ),
+    )
 }
 
 private data class HairpinRun(
