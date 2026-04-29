@@ -30,6 +30,8 @@ private const val DOWNLOADING_COVERAGE_FILL_ALPHA = 0.1f
 private const val CACHED_COVERAGE_FILL_ALPHA = 0.075f
 private const val SELECTED_COVERAGE_FILL_ALPHA = 0.12f
 private const val PARTIALLY_SELECTED_COVERAGE_FILL_ALPHA = 0.1f
+private const val CACHED_COVERAGE_BORDER_ALPHA = 0.22f
+private const val SELECTED_COVERAGE_BORDER_ALPHA = 0.42f
 private const val SELECTED_TILE_BORDER_ALPHA = 0.76f
 private const val PARTIALLY_SELECTED_TILE_BORDER_ALPHA = 0.58f
 private const val DOWNLOADING_TILE_BORDER_ALPHA = 0.48f
@@ -66,6 +68,8 @@ internal data class TileGridCellPaint(
     val stateFill: Color,
     val cachedCoverageFill: Color,
     val selectedCoverageFill: Color,
+    val cachedCoverageBorderColor: Color,
+    val cachedCoverageBorderWidthDp: Float,
     val borderColor: Color,
     val borderWidthDp: Float,
 )
@@ -151,6 +155,16 @@ private fun DrawScope.drawTileCell(
                 )
             }
         }
+        if (paint.cachedCoverageBorderColor.alpha > 0f) {
+            tile.cachedCoverageRects.forEach { coverageRect ->
+                drawRect(
+                    color = paint.cachedCoverageBorderColor,
+                    topLeft = Offset(coverageRect.left, coverageRect.top),
+                    size = Size(coverageRect.width, coverageRect.height),
+                    style = Stroke(width = paint.cachedCoverageBorderWidthDp.dp.toPx()),
+                )
+            }
+        }
     }
 
     drawRoundRect(
@@ -217,6 +231,14 @@ internal fun tileGridCellPaint(
         selectedCoverageFill = selectedCoverageFill(
             selectionState = selectionState,
             colors = colors,
+            visualStyle = visualStyle,
+        ),
+        cachedCoverageBorderColor = cachedCoverageBorderColor(
+            selectionState = selectionState,
+            colors = colors,
+            visualStyle = visualStyle,
+        ),
+        cachedCoverageBorderWidthDp = cachedCoverageBorderWidthDp(
             visualStyle = visualStyle,
         ),
         borderColor = tileBorderColor(
@@ -299,6 +321,31 @@ private fun selectedCoverageFill(
             alpha = PARTIALLY_SELECTED_COVERAGE_FILL_ALPHA,
         )
         TileGridSelectionState.Unselected -> Color.Transparent
+    }
+}
+
+private fun cachedCoverageBorderColor(
+    selectionState: TileGridSelectionState,
+    colors: GeePeeColors,
+    visualStyle: TileGridVisualStyle,
+): Color {
+    if (!visualStyle.showsFills) {
+        return Color.Transparent
+    }
+    return when (selectionState) {
+        TileGridSelectionState.FullySelected,
+        TileGridSelectionState.PartiallySelected,
+        -> colors.nearbyWay.copy(alpha = SELECTED_COVERAGE_BORDER_ALPHA)
+        TileGridSelectionState.Unselected -> colors.onRoute.copy(alpha = CACHED_COVERAGE_BORDER_ALPHA)
+    }
+}
+
+private fun cachedCoverageBorderWidthDp(
+    visualStyle: TileGridVisualStyle,
+): Float {
+    return when (visualStyle) {
+        TileGridVisualStyle.Preview -> 0.85f
+        TileGridVisualStyle.LiveOverlay -> 0f
     }
 }
 

@@ -19,8 +19,11 @@ class TileGridCanvasTest {
 
         assertEquals(0.045f, paint.stateFill.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(0.075f, paint.cachedCoverageFill.alpha, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0.22f, paint.cachedCoverageBorderColor.alpha, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0.85f, paint.cachedCoverageBorderWidthDp, 0.0001f)
         assertEquals(0.32f, paint.borderColor.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(1.15f, paint.borderWidthDp, 0.0001f)
+        assertTrue(paint.cachedCoverageBorderColor.alpha > paint.cachedCoverageFill.alpha)
         assertTrue(paint.borderColor.alpha > paint.cachedCoverageFill.alpha)
     }
 
@@ -37,8 +40,10 @@ class TileGridCanvasTest {
 
         assertEquals(0.028f, paint.stateFill.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(0.075f, paint.cachedCoverageFill.alpha, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0.22f, paint.cachedCoverageBorderColor.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(0.24f, paint.borderColor.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(1.05f, paint.borderWidthDp, 0.0001f)
+        assertTrue(paint.cachedCoverageBorderColor.alpha > paint.cachedCoverageFill.alpha)
         assertTrue(paint.borderColor.alpha > paint.cachedCoverageFill.alpha)
     }
 
@@ -56,17 +61,40 @@ class TileGridCanvasTest {
         assertEquals(0f, paint.routeFill.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(0f, paint.stateFill.alpha, COLOR_ALPHA_TOLERANCE)
         assertEquals(0f, paint.cachedCoverageFill.alpha, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0f, paint.cachedCoverageBorderColor.alpha, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0f, paint.cachedCoverageBorderWidthDp, 0.0001f)
         assertEquals(0.22f, paint.borderColor.alpha, COLOR_ALPHA_TOLERANCE)
+    }
+
+    @Test
+    fun selectedCoverageBorderUsesSelectionColor() {
+        val tileId = DownloadTileId(zoom = 12, x = 100, y = 200)
+        val screenRect = ScreenRect(left = 0f, top = 0f, right = 100f, bottom = 100f)
+        val paint = tileGridCellPaint(
+            tile = displayTile(
+                downloadState = TileGridDownloadState.Cached,
+                hasCachedCoverage = true,
+                coverageTileId = tileId,
+                selectedTileIds = setOf(tileId),
+                screenRect = screenRect,
+            ),
+            colors = TestColors,
+            visualStyle = TileGridVisualStyle.Preview,
+        )
+
+        assertEquals(TestColors.nearbyWay.red, paint.cachedCoverageBorderColor.red, COLOR_ALPHA_TOLERANCE)
+        assertEquals(0.42f, paint.cachedCoverageBorderColor.alpha, COLOR_ALPHA_TOLERANCE)
     }
 
     private fun displayTile(
         downloadState: TileGridDownloadState?,
         hasCachedCoverage: Boolean = false,
+        coverageTileId: DownloadTileId = DownloadTileId(zoom = 12, x = 100, y = 200),
+        selectedTileIds: Set<DownloadTileId> = emptySet(),
+        screenRect: ScreenRect = ScreenRect(left = 0f, top = 0f, right = 100f, bottom = 100f),
     ): TileGridDisplayTile {
-        val tileId = DownloadTileId(zoom = 12, x = 100, y = 200)
-        val screenRect = ScreenRect(left = 0f, top = 0f, right = 100f, bottom = 100f)
         return TileGridDisplayTile(
-            tileId = tileId,
+            tileId = coverageTileId,
             screenRect = screenRect,
             routeMetrics = TileRouteMetrics(
                 intersectsRoute = false,
@@ -77,10 +105,11 @@ class TileGridCanvasTest {
             progressFraction = null,
             representedCoverage = TileGridRepresentedCoverage(
                 coverageTiles = if (hasCachedCoverage) {
-                    listOf(TileCoverageRect(tileId = tileId, screenRect = screenRect))
+                    listOf(TileCoverageRect(tileId = coverageTileId, screenRect = screenRect))
                 } else {
                     emptyList()
                 },
+                selectedTileIds = selectedTileIds,
             ),
             downloadRequests = emptyList(),
             estimatedBytes = 0L,
