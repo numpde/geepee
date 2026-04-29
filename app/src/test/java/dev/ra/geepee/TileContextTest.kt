@@ -555,6 +555,38 @@ class TileContextTest {
     }
 
     @Test
+    fun tileResolutionPolicyUsesNarrowestBandBelowConfiguredThresholds() {
+        val policy = TileResolutionPolicy(
+            displayZoomBands = listOf(
+                TileDisplayZoomBand(minimumWindowWidthMeters = 500.0, displayZoom = 9),
+                TileDisplayZoomBand(minimumWindowWidthMeters = 100.0, displayZoom = 10),
+            ),
+            minimumDataZoom = 0,
+            maximumDataZoom = 20,
+        )
+
+        assertEquals(TileResolution(displayZoom = 10, dataZoom = 11), resolveTileResolution(50.0, policy))
+    }
+
+    @Test
+    fun tileResolutionPolicyRejectsInvalidBandConfiguration() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TileResolutionPolicy(displayZoomBands = emptyList())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TileResolutionPolicy(
+                displayZoomBands = listOf(TileDisplayZoomBand(minimumWindowWidthMeters = Double.NaN, displayZoom = 10)),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TileResolutionPolicy(
+                minimumDataZoom = 17,
+                maximumDataZoom = 16,
+            )
+        }
+    }
+
+    @Test
     fun tileResolutionPolicyFindsNextFinerDataTileViewportWidth() {
         val policy = TileResolutionPolicy()
 

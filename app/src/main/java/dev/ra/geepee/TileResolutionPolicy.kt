@@ -10,7 +10,23 @@ internal data class TileResolutionPolicy(
     val minimumDataZoom: Int = 12,
     val dataZoomOffsetFromDisplay: Int = 1,
     val maximumDataZoom: Int = 16,
-)
+) {
+    init {
+        require(displayZoomBands.isNotEmpty()) { "Tile resolution policy must define at least one display zoom band." }
+        require(displayZoomBands.all { band -> band.minimumWindowWidthMeters.isFinite() }) {
+            "Tile resolution policy display zoom bands must have finite window widths."
+        }
+        require(displayZoomBands.all { band -> band.minimumWindowWidthMeters >= 0.0 }) {
+            "Tile resolution policy display zoom bands must have non-negative window widths."
+        }
+        require(minimumDataZoom <= maximumDataZoom) {
+            "Tile resolution policy minimum data zoom must not exceed maximum data zoom."
+        }
+    }
+
+    val displayZoomBandsByDescendingWindowWidth: List<TileDisplayZoomBand> =
+        displayZoomBands.sortedByDescending(TileDisplayZoomBand::minimumWindowWidthMeters)
+}
 
 internal data class TileResolution(
     val displayZoom: Int,
@@ -21,11 +37,10 @@ internal fun resolveTileResolution(
     windowWidthMeters: Double,
     policy: TileResolutionPolicy,
 ): TileResolution {
-    val resolvedDisplayZoom = policy.displayZoomBands
-        .sortedByDescending(TileDisplayZoomBand::minimumWindowWidthMeters)
+    val resolvedDisplayZoom = policy.displayZoomBandsByDescendingWindowWidth
         .firstOrNull { band -> windowWidthMeters >= band.minimumWindowWidthMeters }
         ?.displayZoom
-        ?: policy.displayZoomBands.minOf(TileDisplayZoomBand::displayZoom)
+        ?: policy.displayZoomBandsByDescendingWindowWidth.last().displayZoom
     val resolvedDataZoom = maxOf(
         policy.minimumDataZoom,
         resolvedDisplayZoom + policy.dataZoomOffsetFromDisplay,
@@ -44,7 +59,7 @@ internal fun nextFinerDataTileWindowWidthMeters(
     if (currentDataZoom >= policy.maximumDataZoom) {
         return null
     }
-    val bands = policy.displayZoomBands.sortedByDescending(TileDisplayZoomBand::minimumWindowWidthMeters)
+    val bands = policy.displayZoomBandsByDescendingWindowWidth
     return bands
         .asSequence()
         .mapIndexedNotNull { index, _ ->
