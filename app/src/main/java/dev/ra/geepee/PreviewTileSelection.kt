@@ -3,15 +3,25 @@ package dev.ra.geepee
 internal data class PreviewTileUiState(
     val selectionState: PreviewTileSelectionState = PreviewTileSelectionState(),
     val pendingDeletePlan: TileDeletePlan? = null,
+    val consumedTooLargeRequestKeys: Set<PreviewTileRequestKey> = emptySet(),
 ) {
     fun resolve(
         tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>,
     ): PreviewTileUiState {
         val resolvedSelectionState = selectionState.resolve(tileSnapshots)
-        return if (resolvedSelectionState == selectionState) {
+        val resolvedTooLargeRequestKeys = consumedTooLargeRequestKeys.filterTo(linkedSetOf()) { requestKey ->
+            requestKey.isStillTooLarge(tileSnapshots)
+        }
+        return if (
+            resolvedSelectionState == selectionState &&
+            resolvedTooLargeRequestKeys == consumedTooLargeRequestKeys
+        ) {
             this
         } else {
-            copy(selectionState = resolvedSelectionState)
+            copy(
+                selectionState = resolvedSelectionState,
+                consumedTooLargeRequestKeys = resolvedTooLargeRequestKeys,
+            )
         }
     }
 
@@ -22,11 +32,31 @@ internal data class PreviewTileUiState(
         get() = selectionState.deleteTilesActionLabel
 
     fun onTap(tile: TileGridDisplayTile?): PreviewTileTapOutcome<PreviewTileUiState> {
+        if (!selectionState.selectionModeActive && tile?.downloadState == TileGridDownloadState.TooLarge) {
+            return onTooLargeTileTap(tile)
+        }
         val tapResult = selectionState.onTap(tile)
         return PreviewTileTapOutcome(
             state = copy(selectionState = tapResult.state),
             downloadRequest = tapResult.downloadRequest,
         )
+    }
+
+    private fun onTooLargeTileTap(tile: TileGridDisplayTile): PreviewTileTapOutcome<PreviewTileUiState> {
+        val requestKey = tile.toRequestKey() ?: return PreviewTileTapOutcome(this)
+        return if (requestKey in consumedTooLargeRequestKeys) {
+            PreviewTileTapOutcome(
+                state = this,
+                downloadRequest = PreviewTileDownloadRequest(
+                    tileRequests = tile.downloadRequests,
+                ),
+            )
+        } else {
+            PreviewTileTapOutcome(
+                state = copy(consumedTooLargeRequestKeys = consumedTooLargeRequestKeys + requestKey),
+                zoomRequest = PreviewTileZoomRequest,
+            )
+        }
     }
 
     fun onLongPress(tile: TileGridDisplayTile?): PreviewTileUiState {
@@ -102,11 +132,6 @@ internal data class PreviewTileSelectionState(
             PreviewTileTapOutcome(toggleCachedTile(tile))
         } else if (tile.hasCachedCoverage) {
             PreviewTileTapOutcome(this)
-        } else if (tile.downloadState == TileGridDownloadState.TooLarge) {
-            PreviewTileTapOutcome(
-                state = this,
-                zoomRequest = PreviewTileZoomRequest,
-            )
         } else if (tile.downloadRequests.isEmpty()) {
             PreviewTileTapOutcome(this)
         } else {
@@ -135,3 +160,21 @@ internal data class PreviewTileDownloadRequest(
 )
 
 internal data object PreviewTileZoomRequest
+
+internal data class PreviewTileRequestKey(
+    val tileIds: Set<DownloadTileId>,
+) {
+    fun isStillTooLarge(tileSnapshots: Map<DownloadTileId, TileDownloadSnapshot>): Boolean {
+        return tileIds.isNotEmpty() && tileIds.all { tileId ->
+            tileSnapshots[tileId]?.isTooLarge == true
+        }
+    }
+}
+
+private fun TileGridDisplayTile.toRequestKey(): PreviewTileRequestKey? {
+    val requestTileIds = downloadRequests
+        .mapTo(linkedSetOf()) { request -> request.tileId }
+    return requestTileIds
+        .takeIf(Set<DownloadTileId>::isNotEmpty)
+        ?.let(::PreviewTileRequestKey)
+}

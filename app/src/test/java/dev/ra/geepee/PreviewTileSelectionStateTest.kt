@@ -144,18 +144,71 @@ class PreviewTileSelectionStateTest {
     }
 
     @Test
-    fun onTapOnTooLargeTileRequestsZoomInsteadOfRetryingDownload() {
+    fun previewUiStateTapOnTooLargeTileRequestsZoomOnceThenRetriesDownload() {
         val tooLargeTile = previewTile(
             tileId = DownloadTileId(zoom = 10, x = 3, y = 4),
             status = TileDownloadStatus.TooLarge,
             estimatedBytes = 123_000L,
         )
 
-        val result = PreviewTileSelectionState()
-            .resolve(emptyMap())
+        val zoomResult = PreviewTileUiState()
+            .onTap(tooLargeTile)
+        val retryResult = zoomResult.state
             .onTap(tooLargeTile)
 
-        assertEquals(PreviewTileSelectionState(), result.state)
+        assertEquals(PreviewTileSelectionState(), zoomResult.state.selectionState)
+        assertEquals(PreviewTileZoomRequest, zoomResult.zoomRequest)
+        assertEquals(null, zoomResult.downloadRequest)
+        assertEquals(
+            PreviewTileDownloadRequest(
+                tileRequests = tooLargeTile.downloadRequests,
+            ),
+            retryResult.downloadRequest,
+        )
+        assertEquals(null, retryResult.zoomRequest)
+    }
+
+    @Test
+    fun previewUiStateTapOnDifferentTooLargeTileGetsItsOwnZoomHint() {
+        val firstTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 3, y = 4),
+            status = TileDownloadStatus.TooLarge,
+        )
+        val secondTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 5, y = 6),
+            status = TileDownloadStatus.TooLarge,
+        )
+
+        val afterFirstZoom = PreviewTileUiState()
+            .onTap(firstTile)
+            .state
+        val secondResult = afterFirstZoom.onTap(secondTile)
+
+        assertEquals(PreviewTileZoomRequest, secondResult.zoomRequest)
+        assertEquals(null, secondResult.downloadRequest)
+    }
+
+    @Test
+    fun previewUiStateResolveDropsConsumedTooLargeHintAfterStatusChanges() {
+        val tileId = DownloadTileId(zoom = 10, x = 3, y = 4)
+        val tooLargeTile = previewTile(
+            tileId = tileId,
+            status = TileDownloadStatus.TooLarge,
+        )
+        val consumedState = PreviewTileUiState()
+            .onTap(tooLargeTile)
+            .state
+
+        val resolvedState = consumedState.resolve(
+            tileSnapshots = mapOf(
+                tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Error,
+                    estimatedBytes = 123_000L,
+                ),
+            ),
+        )
+        val result = resolvedState.onTap(tooLargeTile)
+
         assertEquals(PreviewTileZoomRequest, result.zoomRequest)
         assertEquals(null, result.downloadRequest)
     }
