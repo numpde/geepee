@@ -555,6 +555,34 @@ class TileContextTest {
     }
 
     @Test
+    fun tileResolutionPolicyFindsNextFinerDataTileViewportWidth() {
+        val policy = TileResolutionPolicy()
+
+        val fromFarOut = requireNotNull(
+            nextFinerDataTileWindowWidthMeters(
+                windowWidthMeters = 3_000.0,
+                policy = policy,
+            ),
+        )
+        val fromDisplayZ12 = requireNotNull(
+            nextFinerDataTileWindowWidthMeters(
+                windowWidthMeters = 600.0,
+                policy = policy,
+            ),
+        )
+
+        assertEquals(TileResolution(displayZoom = 12, dataZoom = 13), resolveTileResolution(fromFarOut, policy))
+        assertEquals(TileResolution(displayZoom = 13, dataZoom = 14), resolveTileResolution(fromDisplayZ12, policy))
+        assertEquals(
+            null,
+            nextFinerDataTileWindowWidthMeters(
+                windowWidthMeters = 60.0,
+                policy = policy,
+            ),
+        )
+    }
+
+    @Test
     fun tileGridRenderModelDownloadsFinerDataChildrenThanDisplayedMacroTile() {
         val route = buildRouteModel(
             listOf(

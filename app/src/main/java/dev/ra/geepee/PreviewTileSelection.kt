@@ -102,6 +102,11 @@ internal data class PreviewTileSelectionState(
             PreviewTileTapOutcome(toggleCachedTile(tile))
         } else if (tile.hasCachedCoverage) {
             PreviewTileTapOutcome(this)
+        } else if (tile.downloadState == TileGridDownloadState.TooLarge) {
+            PreviewTileTapOutcome(
+                state = this,
+                zoomRequest = PreviewTileZoomRequest,
+            )
         } else if (tile.downloadRequests.isEmpty()) {
             PreviewTileTapOutcome(this)
         } else {
@@ -122,8 +127,11 @@ internal data class PreviewTileSelectionState(
 internal data class PreviewTileTapOutcome<T>(
     val state: T,
     val downloadRequest: PreviewTileDownloadRequest? = null,
+    val zoomRequest: PreviewTileZoomRequest? = null,
 )
 
 internal data class PreviewTileDownloadRequest(
     val tileRequests: List<TileDownloadRequest>,
 )
+
+internal data object PreviewTileZoomRequest

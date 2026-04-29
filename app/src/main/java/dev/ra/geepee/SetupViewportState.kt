@@ -236,6 +236,16 @@ internal class RouteViewportState(
         )
     }
 
+    fun zoomInToNextDataTileResolution(policy: TileResolutionPolicy): Boolean {
+        val currentViewport = viewport ?: fittedViewport() ?: return false
+        val nextWindowWidthMeters = nextFinerDataTileWindowWidthMeters(
+            windowWidthMeters = currentViewport.widthMeters,
+            policy = policy,
+        ) ?: return false
+        setWidthMeters(nextWindowWidthMeters)
+        return true
+    }
+
     fun recenterOn(
         point: ProjectedPoint,
         preserveWidthMeters: Boolean = true,

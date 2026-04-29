@@ -36,6 +36,34 @@ internal fun resolveTileResolution(
     )
 }
 
+internal fun nextFinerDataTileWindowWidthMeters(
+    windowWidthMeters: Double,
+    policy: TileResolutionPolicy,
+): Double? {
+    val currentDataZoom = resolveTileResolution(windowWidthMeters, policy).dataZoom
+    if (currentDataZoom >= policy.maximumDataZoom) {
+        return null
+    }
+    val bands = policy.displayZoomBands.sortedByDescending(TileDisplayZoomBand::minimumWindowWidthMeters)
+    return bands
+        .asSequence()
+        .mapIndexedNotNull { index, _ ->
+            val upperWindowWidthMeters = bands.getOrNull(index - 1)?.minimumWindowWidthMeters
+                ?: return@mapIndexedNotNull null
+            val candidateWidth = upperWindowWidthMeters - maxOf(1.0, upperWindowWidthMeters * 0.02)
+            if (candidateWidth <= 0.0 || candidateWidth >= windowWidthMeters) {
+                return@mapIndexedNotNull null
+            }
+            val candidateResolution = resolveTileResolution(candidateWidth, policy)
+            if (candidateResolution.dataZoom > currentDataZoom) {
+                candidateWidth
+            } else {
+                null
+            }
+        }
+        .maxOrNull()
+}
+
 private fun defaultTileDisplayZoomBands(): List<TileDisplayZoomBand> {
     return listOf(
         TileDisplayZoomBand(minimumWindowWidthMeters = 2_500.0, displayZoom = 10),

@@ -144,6 +144,23 @@ class PreviewTileSelectionStateTest {
     }
 
     @Test
+    fun onTapOnTooLargeTileRequestsZoomInsteadOfRetryingDownload() {
+        val tooLargeTile = previewTile(
+            tileId = DownloadTileId(zoom = 10, x = 3, y = 4),
+            status = TileDownloadStatus.TooLarge,
+            estimatedBytes = 123_000L,
+        )
+
+        val result = PreviewTileSelectionState()
+            .resolve(emptyMap())
+            .onTap(tooLargeTile)
+
+        assertEquals(PreviewTileSelectionState(), result.state)
+        assertEquals(PreviewTileZoomRequest, result.zoomRequest)
+        assertEquals(null, result.downloadRequest)
+    }
+
+    @Test
     fun onTapTogglesCachedTilesWhileSelectionModeIsActive() {
         val firstTile = previewTile(
             tileId = DownloadTileId(zoom = 10, x = 1, y = 2),

@@ -259,6 +259,11 @@ private fun GeePeeScreen(
                                 tapTransition.downloadRequest?.let { request ->
                                     onDownloadTiles(request.tileRequests)
                                 }
+                                tapTransition.zoomRequest?.let {
+                                    activeViewportState.zoomInToNextDataTileResolution(
+                                        policy = state.tileContextConfig.resolutionPolicy,
+                                    )
+                                }
                             } else if (movementMode) {
                                 val routeModel = requireNotNull(state.routeModel)
                                 routePoiUiState = routePoiUiState.onCanvasTap(
