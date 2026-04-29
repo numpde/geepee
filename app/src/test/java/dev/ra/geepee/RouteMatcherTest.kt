@@ -72,7 +72,7 @@ class RouteMatcherTest {
             ),
         )
 
-        assertEquals(1.0f, match.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertEquals(1.0f, match.hypotheses.sumOf { it.routeConditionalConfidence.toDouble() }.toFloat(), 0.001f)
         assertTrue(match.belief.routeProbability < 0.2)
     }
 
@@ -95,6 +95,55 @@ class RouteMatcherTest {
         assertEquals(RouteAdherence.Uncertain, match.belief.adherence)
         assertTrue(match.belief.routeProbability in 0.2..0.8)
         assertTrue(match.belief.offRouteProbability in 0.2..0.8)
+    }
+
+    @Test
+    fun routeCandidateMultiplicityDoesNotManufactureAdherenceConfidence() {
+        val singleRouteProbability = routeProbabilityAfterAmbiguousFix(straightNorthRoute())
+        val duplicateRouteProbability = routeProbabilityAfterAmbiguousFix(
+            duplicatedStraightNorthRoute(copies = 10),
+        )
+
+        assertTrue(
+            "Duplicate route candidates should not materially increase route adherence probability.",
+            duplicateRouteProbability <= singleRouteProbability + 0.10,
+        )
+    }
+
+    @Test
+    fun matcherKeepsBeliefNormalizedAfterTruncatingAmbiguousCandidates() {
+        val matcher = RouteMatcher(
+            routeModel = duplicatedStraightNorthRoute(copies = 10),
+            config = RouteMatcherConfig(maxStateHypotheses = 3),
+        )
+
+        matcher.match(
+            LocationFix(
+                lat = 0.0002,
+                lon = 0.0,
+                accuracyMeters = 4f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 1_000L,
+            ),
+        )
+        val match = matcher.match(
+            LocationFix(
+                lat = 0.0005,
+                lon = 0.00055,
+                accuracyMeters = 120f,
+                headingDegrees = null,
+                speedMetersPerSecond = null,
+                timestampMillis = 3_000L,
+            ),
+        )
+
+        assertBeliefNormalized(match.belief)
+        assertTrue(match.belief.routeCandidates.size <= 3)
+        assertTrue(
+            match.belief.routeCandidates.sumOf { it.posteriorProbability } <=
+                match.belief.routeProbability + 0.000001,
+        )
     }
 
     @Test
@@ -184,7 +233,7 @@ class RouteMatcherTest {
         assertTrue(matched.nearestEdgeIndex <= firstMatch.nearestEdgeIndex)
         assertTrue(matched.routeMeters > firstMatch.routeMeters)
         assertTrue(matched.routeMeters < rawNearest.routeMeters)
-        assertEquals(1.0f, matchedResult.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertEquals(1.0f, matchedResult.hypotheses.sumOf { it.routeConditionalConfidence.toDouble() }.toFloat(), 0.001f)
     }
 
     @Test
@@ -430,7 +479,7 @@ class RouteMatcherTest {
         val secondForwardMatch = matcher.match(secondForwardFix)
 
         assertTrue(startMatch.analysis.offRouteMeters < 1.0)
-        assertEquals(1.0f, startMatch.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertEquals(1.0f, startMatch.hypotheses.sumOf { it.routeConditionalConfidence.toDouble() }.toFloat(), 0.001f)
         assertTrue(firstForwardMatch.analysis.offRouteMeters < 2.0)
         assertTrue(secondForwardMatch.analysis.offRouteMeters < 2.0)
         assertTrue(firstForwardMatch.analysis.routeMeters < route.totalLengthMeters / 2.0)
@@ -465,7 +514,7 @@ class RouteMatcherTest {
 
         assertTrue(match.analysis.offRouteMeters < 1.0)
         assertTrue(match.hypotheses.size > 1)
-        assertEquals(1.0f, match.hypotheses.sumOf { it.confidence.toDouble() }.toFloat(), 0.001f)
+        assertEquals(1.0f, match.hypotheses.sumOf { it.routeConditionalConfidence.toDouble() }.toFloat(), 0.001f)
     }
 
     @Test
@@ -549,6 +598,47 @@ private fun straightNorthRoute(): RouteModel {
             ),
         ),
     )
+}
+
+private fun duplicatedStraightNorthRoute(copies: Int): RouteModel {
+    return buildRouteModel(
+        List(copies) {
+            listOf(
+                GeoPoint(lat = 0.0, lon = 0.0),
+                GeoPoint(lat = 0.0010, lon = 0.0),
+            )
+        },
+    )
+}
+
+private fun routeProbabilityAfterAmbiguousFix(route: RouteModel): Double {
+    val matcher = RouteMatcher(route)
+    matcher.match(
+        LocationFix(
+            lat = 0.0002,
+            lon = 0.0,
+            accuracyMeters = 4f,
+            headingDegrees = null,
+            speedMetersPerSecond = null,
+            timestampMillis = 1_000L,
+        ),
+    )
+    return matcher.match(
+        LocationFix(
+            lat = 0.0005,
+            lon = 0.00055,
+            accuracyMeters = 120f,
+            headingDegrees = null,
+            speedMetersPerSecond = null,
+            timestampMillis = 3_000L,
+        ),
+    ).belief.routeProbability
+}
+
+private fun assertBeliefNormalized(belief: RouteBelief) {
+    assertEquals(1.0, belief.routeProbability + belief.offRouteProbability, 0.000001)
+    assertTrue(belief.routeProbability in 0.0..1.0)
+    assertTrue(belief.offRouteProbability in 0.0..1.0)
 }
 
 private data class HairpinRun(

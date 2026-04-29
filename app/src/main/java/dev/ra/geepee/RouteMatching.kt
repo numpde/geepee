@@ -2,6 +2,7 @@ package dev.ra.geepee
 
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.ln
 import kotlin.math.max
@@ -58,6 +59,11 @@ private data class ScoredRouteCandidate(
     val posteriorProbability: Double,
 )
 
+private data class RouteTransitionPrior(
+    val routeLogProbabilities: List<Double>,
+    val offRouteLogProbability: Double,
+)
+
 private data class RouteBeliefUpdate(
     val sigmaMeters: Double,
     val routeProbability: Double,
@@ -68,7 +74,7 @@ private data class RouteBeliefUpdate(
 
 internal data class RouteMatchDisplayHypothesis(
     val analysis: RouteAnalysis,
-    val confidence: Float,
+    val routeConditionalConfidence: Float,
     val isPrimary: Boolean,
 )
 
@@ -143,16 +149,20 @@ internal class RouteMatcher(
             offRouteProbability = beliefUpdate.offRouteProbability,
             config = config.beliefConfig,
         )
-        state = RouteMatcherState(
-            hypotheses = selectedCandidates.map { candidate ->
-                RouteMatchHypothesis(
-                    nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
-                    routeMeters = candidate.analysis.routeMeters,
-                    nearestPoint = candidate.analysis.nearestPoint,
-                    logProbability = candidate.logProbability,
-                )
-            },
+        val stateOffRouteLogProbability = stateOffRouteLogProbability(
+            selectedCandidates = selectedCandidates,
+            rankedCandidates = beliefUpdate.rankedCandidates,
             offRouteLogProbability = beliefUpdate.offRouteLogProbability,
+        )
+        val stateNormalizer = logSumExp(
+            selectedCandidates.map { candidate -> candidate.logProbability } + stateOffRouteLogProbability,
+        )
+        state = RouteMatcherState(
+            hypotheses = normalizedStateHypotheses(
+                selectedCandidates = selectedCandidates,
+                stateNormalizer = stateNormalizer,
+            ),
+            offRouteLogProbability = stateOffRouteLogProbability - stateNormalizer,
             lastFix = fix,
             lastProjectedFix = projectedFix,
         )
@@ -224,19 +234,19 @@ internal class RouteMatcher(
         candidates: List<RouteAnalysis>,
     ): RouteBeliefUpdate {
         val sigmaMeters = observationSigmaMeters(fix, config.beliefConfig)
-        val routeLogProbabilities = candidates.map { candidate ->
-            routeTransitionLogProbability(
-                fix = fix,
-                projectedFix = projectedFix,
-                candidate = candidate,
-                candidateCount = candidates.size,
-            ) - candidateCost(
+        val transitionPrior = transitionPrior(
+            fix = fix,
+            projectedFix = projectedFix,
+            candidates = candidates,
+        )
+        val routeLogProbabilities = candidates.zip(transitionPrior.routeLogProbabilities).map { (candidate, prior) ->
+            prior - candidateCost(
                 fix = fix,
                 candidate = candidate,
                 sigmaMeters = sigmaMeters,
             )
         }
-        val offRouteLogProbability = offRouteTransitionLogProbability() -
+        val offRouteLogProbability = transitionPrior.offRouteLogProbability -
             offRouteObservationCost(
                 sigmaMeters = sigmaMeters,
                 config = config.beliefConfig,
@@ -246,11 +256,11 @@ internal class RouteMatcher(
             ScoredRouteCandidate(
                 analysis = candidate,
                 logProbability = logProbability - normalizer,
-                posteriorProbability = kotlin.math.exp(logProbability - normalizer),
+                posteriorProbability = exp(logProbability - normalizer),
             )
         }.sortedByDescending { it.logProbability }
         val normalizedOffRouteLogProbability = offRouteLogProbability - normalizer
-        val offRouteProbability = kotlin.math.exp(normalizedOffRouteLogProbability)
+        val offRouteProbability = exp(normalizedOffRouteLogProbability)
         val routeProbability = rankedCandidates.sumOf { it.posteriorProbability }.coerceIn(0.0, 1.0)
         return RouteBeliefUpdate(
             sigmaMeters = sigmaMeters,
@@ -261,46 +271,103 @@ internal class RouteMatcher(
         )
     }
 
-    private fun routeTransitionLogProbability(
+    private fun transitionPrior(
         fix: LocationFix,
         projectedFix: ProjectedPoint,
-        candidate: RouteAnalysis,
-        candidateCount: Int,
-    ): Double {
+        candidates: List<RouteAnalysis>,
+    ): RouteTransitionPrior {
         val previousFix = state.lastFix
         val previousProjectedFix = state.lastProjectedFix
-        val candidateCountPenalty = ln(candidateCount.toDouble())
+        val candidateCountPenalty = ln(candidates.size.toDouble())
         if (previousFix == null || previousProjectedFix == null) {
-            return ln(config.initialRouteProbability.coerceAtLeast(Double.MIN_VALUE)) - candidateCountPenalty
-        }
-
-        val previousRouteContributions = state.hypotheses.map { previousHypothesis ->
-            previousHypothesis.logProbability - transitionCost(
-                previousFix = previousFix,
-                previousProjectedFix = previousProjectedFix,
-                previousRouteMeters = previousHypothesis.routeMeters,
-                previousNearestPoint = previousHypothesis.nearestPoint,
-                currentFix = fix,
-                currentProjectedFix = projectedFix,
-                currentRouteMeters = candidate.routeMeters,
-                currentNearestPoint = candidate.nearestPoint,
+            return RouteTransitionPrior(
+                routeLogProbabilities = candidates.map {
+                    ln(config.initialRouteProbability.coerceAtLeast(Double.MIN_VALUE)) - candidateCountPenalty
+                },
+                offRouteLogProbability = ln((1.0 - config.initialRouteProbability).coerceAtLeast(Double.MIN_VALUE)),
             )
         }
-        val offRouteContribution = state.offRouteLogProbability -
-            config.routeReentryPenalty -
-            candidateCountPenalty
-        return logSumExp(previousRouteContributions + offRouteContribution)
+
+        val routeContributions = candidates.map { mutableListOf<Double>() }
+        val offRouteContributions = mutableListOf<Double>()
+
+        state.hypotheses.forEach { previousHypothesis ->
+            val routeTransitionLogits = candidates.map { candidate ->
+                -transitionCost(
+                    previousFix = previousFix,
+                    previousProjectedFix = previousProjectedFix,
+                    previousRouteMeters = previousHypothesis.routeMeters,
+                    previousNearestPoint = previousHypothesis.nearestPoint,
+                    currentFix = fix,
+                    currentProjectedFix = projectedFix,
+                    currentRouteMeters = candidate.routeMeters,
+                    currentNearestPoint = candidate.nearestPoint,
+                )
+            }
+            val destinationLogits = routeTransitionLogits + listOf(-config.routeExitPenalty)
+            val destinationNormalizer = logSumExp(destinationLogits)
+            routeTransitionLogits.forEachIndexed { index, transitionLogit ->
+                routeContributions[index] += previousHypothesis.logProbability +
+                    transitionLogit -
+                    destinationNormalizer
+            }
+            offRouteContributions += previousHypothesis.logProbability -
+                config.routeExitPenalty -
+                destinationNormalizer
+        }
+
+        val offRouteRouteLogit = -config.routeReentryPenalty - candidateCountPenalty
+        val offRouteDestinationLogits = List(candidates.size) { offRouteRouteLogit } +
+            listOf(-config.offRouteStayPenalty)
+        val offRouteDestinationNormalizer = logSumExp(offRouteDestinationLogits)
+        candidates.indices.forEach { index ->
+            routeContributions[index] += state.offRouteLogProbability +
+                offRouteRouteLogit -
+                offRouteDestinationNormalizer
+        }
+        offRouteContributions += state.offRouteLogProbability -
+            config.offRouteStayPenalty -
+            offRouteDestinationNormalizer
+
+        return RouteTransitionPrior(
+            routeLogProbabilities = routeContributions.map { contributions ->
+                logSumExp(contributions)
+            },
+            offRouteLogProbability = logSumExp(offRouteContributions),
+        )
     }
 
-    private fun offRouteTransitionLogProbability(): Double {
-        if (state.lastFix == null) {
-            return ln((1.0 - config.initialRouteProbability).coerceAtLeast(Double.MIN_VALUE))
+    private fun stateOffRouteLogProbability(
+        selectedCandidates: List<ScoredRouteCandidate>,
+        rankedCandidates: List<ScoredRouteCandidate>,
+        offRouteLogProbability: Double,
+    ): Double {
+        val selectedEdges = selectedCandidates.mapTo(mutableSetOf()) { candidate ->
+            candidate.analysis.nearestEdgeIndex
         }
-        val routeExitContributions = state.hypotheses.map { hypothesis ->
-            hypothesis.logProbability - config.routeExitPenalty
+        val discardedRouteLogProbabilities = rankedCandidates.mapNotNull { candidate ->
+            candidate.logProbability.takeIf {
+                candidate.analysis.nearestEdgeIndex !in selectedEdges
+            }
         }
-        val offRouteStayContribution = state.offRouteLogProbability - config.offRouteStayPenalty
-        return logSumExp(routeExitContributions + offRouteStayContribution)
+        return logSumExp(discardedRouteLogProbabilities + offRouteLogProbability)
+    }
+
+    private fun normalizedStateHypotheses(
+        selectedCandidates: List<ScoredRouteCandidate>,
+        stateNormalizer: Double,
+    ): List<RouteMatchHypothesis> {
+        if (selectedCandidates.isEmpty()) {
+            return emptyList()
+        }
+        return selectedCandidates.map { candidate ->
+            RouteMatchHypothesis(
+                nearestEdgeIndex = candidate.analysis.nearestEdgeIndex.takeIf { it >= 0 },
+                routeMeters = candidate.analysis.routeMeters,
+                nearestPoint = candidate.analysis.nearestPoint,
+                logProbability = candidate.logProbability - stateNormalizer,
+            )
+        }
     }
 
     private fun selectPlausibleCandidates(
@@ -359,7 +426,7 @@ internal class RouteMatcher(
         return selectedCandidates.map { candidate ->
             RouteMatchDisplayHypothesis(
                 analysis = candidate.analysis,
-                confidence = candidate.routeConditionalProbability.toFloat(),
+                routeConditionalConfidence = candidate.routeConditionalProbability.toFloat(),
                 isPrimary = candidate.isPrimary,
             )
         }

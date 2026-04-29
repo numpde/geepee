@@ -539,8 +539,8 @@ class RouteMathTest {
             routeModel = route,
             analysis = primary,
             matchHypotheses = listOf(
-                RouteMatchDisplayHypothesis(primary, confidence = 0.65f, isPrimary = true),
-                RouteMatchDisplayHypothesis(alternate, confidence = 0.35f, isPrimary = false),
+                RouteMatchDisplayHypothesis(primary, routeConditionalConfidence = 0.65f, isPrimary = true),
+                RouteMatchDisplayHypothesis(alternate, routeConditionalConfidence = 0.35f, isPrimary = false),
             ),
             localWindowWidthMeters = 600.0,
             canvasWidth = 1000f,
@@ -585,8 +585,8 @@ class RouteMathTest {
             routeModel = route,
             analysis = primary,
             matchHypotheses = listOf(
-                RouteMatchDisplayHypothesis(primary, confidence = 0.88f, isPrimary = true),
-                RouteMatchDisplayHypothesis(nearlySame, confidence = 0.12f, isPrimary = false),
+                RouteMatchDisplayHypothesis(primary, routeConditionalConfidence = 0.88f, isPrimary = true),
+                RouteMatchDisplayHypothesis(nearlySame, routeConditionalConfidence = 0.12f, isPrimary = false),
             ),
             localWindowWidthMeters = 600.0,
             canvasWidth = 1000f,

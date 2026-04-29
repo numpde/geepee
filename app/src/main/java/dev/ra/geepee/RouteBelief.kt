@@ -1,8 +1,11 @@
 package dev.ra.geepee
 
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
+
+private const val PROBABILITY_SUM_TOLERANCE = 0.001
 
 internal data class RouteBeliefConfig(
     val minObservationSigmaMeters: Double = 8.0,
@@ -35,7 +38,14 @@ internal data class RouteCandidateBelief(
     val posteriorProbability: Double,
     val routeConditionalProbability: Double,
     val isPrimary: Boolean,
-)
+) {
+    init {
+        require(posteriorProbability in 0.0..1.0) { "Candidate posterior must be a probability." }
+        require(routeConditionalProbability in 0.0..1.0) {
+            "Route-conditional candidate probability must be a probability."
+        }
+    }
+}
 
 internal data class RouteBelief(
     val fix: LocationFix,
@@ -45,7 +55,16 @@ internal data class RouteBelief(
     val adherence: RouteAdherence,
     val primaryRouteAnalysis: RouteAnalysis?,
     val routeCandidates: List<RouteCandidateBelief>,
-)
+) {
+    init {
+        require(sigmaMeters > 0.0) { "Belief sigma must be positive." }
+        require(routeProbability in 0.0..1.0) { "Route probability must be a probability." }
+        require(offRouteProbability in 0.0..1.0) { "Off-route probability must be a probability." }
+        require(abs((routeProbability + offRouteProbability) - 1.0) <= PROBABILITY_SUM_TOLERANCE) {
+            "Route and off-route probabilities must sum to one."
+        }
+    }
+}
 
 internal fun observationSigmaMeters(
     fix: LocationFix,

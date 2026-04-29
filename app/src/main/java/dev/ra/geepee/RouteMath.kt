@@ -532,9 +532,13 @@ internal fun buildRouteRenderModel(
                     ?.let { visiblePoint ->
                     RouteHypothesisScreenPoint(
                         point = visiblePoint,
-                        confidence = hypothesis.confidence,
+                        confidence = hypothesis.routeConditionalConfidence,
                         isPrimary = hypothesis.isPrimary,
-                        secondaryConfidenceContribution = if (hypothesis.isPrimary) 0f else hypothesis.confidence,
+                        secondaryConfidenceContribution = if (hypothesis.isPrimary) {
+                            0f
+                        } else {
+                            hypothesis.routeConditionalConfidence
+                        },
                     )
                 }
             },
