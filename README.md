@@ -58,6 +58,15 @@ Test:
 ./gradlew testDebugUnitTest
 ```
 
+Publish a GitHub Release:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The `Release APK` workflow builds and uploads `geepee-vX.Y.Z-debug.apk`.
+
 Replay a checked-in GPX route to a phone:
 
 ```bash
@@ -102,17 +111,6 @@ Example:
 ```
 
 See [scripts/OSM_CONTEXT.md](scripts/OSM_CONTEXT.md).
-
-## Release APK
-
-Push a tag or run the `Release APK` workflow:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow uploads `geepee-vX.Y.Z-debug.apk` to the matching GitHub Release.
 
 ## Repo Layout
 
