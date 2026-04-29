@@ -118,7 +118,7 @@ class PreviewTileSelectionStateTest {
             .resolve(emptyMap())
             .onTap(cachedTile)
 
-        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertEquals(PreviewTileSelectionState(), result.state)
         assertNull(result.downloadRequest)
     }
 
@@ -134,7 +134,7 @@ class PreviewTileSelectionStateTest {
             .resolve(emptyMap())
             .onTap(uncachedTile)
 
-        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertEquals(PreviewTileSelectionState(), result.state)
         assertEquals(
             PreviewTileDownloadRequest(
                 tileRequests = uncachedTile.downloadRequests,
@@ -171,14 +171,14 @@ class PreviewTileSelectionStateTest {
             .onTap(secondTile)
         assertEquals(
             setOf(firstTile.tileId, secondTile.tileId),
-            secondTileResult.selectionState.selectedTileIds,
+            secondTileResult.state.selectedTileIds,
         )
         assertNull(secondTileResult.downloadRequest)
 
-        val deselectResult = secondTileResult.selectionState
+        val deselectResult = secondTileResult.state
             .resolve(tileSnapshots)
             .onTap(firstTile)
-        assertEquals(setOf(secondTile.tileId), deselectResult.selectionState.selectedTileIds)
+        assertEquals(setOf(secondTile.tileId), deselectResult.state.selectedTileIds)
         assertNull(deselectResult.downloadRequest)
     }
 
@@ -215,12 +215,12 @@ class PreviewTileSelectionStateTest {
         val fullySelected = PreviewTileSelectionState(setOf(firstTileId))
             .resolve(tileSnapshots)
             .onTap(tile)
-        assertEquals(setOf(firstTileId, secondTileId), fullySelected.selectionState.selectedTileIds)
+        assertEquals(setOf(firstTileId, secondTileId), fullySelected.state.selectedTileIds)
 
-        val cleared = fullySelected.selectionState
+        val cleared = fullySelected.state
             .resolve(tileSnapshots)
             .onTap(tile)
-        assertEquals(emptySet<DownloadTileId>(), cleared.selectionState.selectedTileIds)
+        assertEquals(emptySet<DownloadTileId>(), cleared.state.selectedTileIds)
     }
 
     @Test
@@ -246,7 +246,7 @@ class PreviewTileSelectionStateTest {
             )
             .onTap(uncachedTile)
 
-        assertEquals(setOf(cachedTile.tileId), result.selectionState.selectedTileIds)
+        assertEquals(setOf(cachedTile.tileId), result.state.selectedTileIds)
         assertNull(result.downloadRequest)
     }
 
@@ -293,7 +293,7 @@ class PreviewTileSelectionStateTest {
             )
             .onTap(uncachedTile)
 
-        assertEquals(PreviewTileSelectionState(), result.selectionState)
+        assertEquals(PreviewTileSelectionState(), result.state)
         assertEquals(
             PreviewTileDownloadRequest(
                 tileRequests = uncachedTile.downloadRequests,

@@ -54,19 +54,19 @@ internal data class PreviewTileSelectionState(
         return copy(selectedTileIds = tile.toggledSelection(selectedTileIds))
     }
 
-    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapResult {
+    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapOutcome<PreviewTileSelectionState> {
         if (tile == null) {
-            return PreviewTileTapResult(this)
+            return PreviewTileTapOutcome(this)
         }
         return if (selectionModeActive) {
-            PreviewTileTapResult(toggleCachedTile(tile))
+            PreviewTileTapOutcome(toggleCachedTile(tile))
         } else if (tile.hasCachedCoverage) {
-            PreviewTileTapResult(this)
+            PreviewTileTapOutcome(this)
         } else if (tile.downloadRequests.isEmpty()) {
-            PreviewTileTapResult(this)
+            PreviewTileTapOutcome(this)
         } else {
-            PreviewTileTapResult(
-                selectionState = this,
+            PreviewTileTapOutcome(
+                state = this,
                 downloadRequest = PreviewTileDownloadRequest(
                     tileRequests = tile.downloadRequests,
                 ),
@@ -92,10 +92,10 @@ internal data class ResolvedPreviewTileUiState(
     val pendingDeletePlan: TileDeletePlan?
         get() = uiState.pendingDeletePlan
 
-    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapTransition {
+    fun onTap(tile: TileGridDisplayTile?): PreviewTileTapOutcome<PreviewTileUiState> {
         val tapResult = selectionState.onTap(tile)
-        return PreviewTileTapTransition(
-            uiState = uiState.copy(selectionState = tapResult.selectionState),
+        return PreviewTileTapOutcome(
+            state = uiState.copy(selectionState = tapResult.state),
             downloadRequest = tapResult.downloadRequest,
         )
     }
@@ -125,13 +125,8 @@ internal data class ResolvedPreviewTileUiState(
     }
 }
 
-internal data class PreviewTileTapResult(
-    val selectionState: PreviewTileSelectionState,
-    val downloadRequest: PreviewTileDownloadRequest? = null,
-)
-
-internal data class PreviewTileTapTransition(
-    val uiState: PreviewTileUiState,
+internal data class PreviewTileTapOutcome<T>(
+    val state: T,
     val downloadRequest: PreviewTileDownloadRequest? = null,
 )
 

@@ -255,7 +255,7 @@ private fun GeePeeScreen(
                                 val tapTransition = resolvedPreviewTileUiState.onTap(
                                     tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
                                 )
-                                previewTileUiState = tapTransition.uiState
+                                previewTileUiState = tapTransition.state
                                 tapTransition.downloadRequest?.let { request ->
                                     onDownloadTiles(request.tileRequests)
                                 }
