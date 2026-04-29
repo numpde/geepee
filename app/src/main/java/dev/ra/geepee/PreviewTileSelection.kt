@@ -43,17 +43,15 @@ internal data class PreviewTileUiState(
     }
 
     private fun onTooLargeTileTap(tile: TileGridDisplayTile): PreviewTileTapOutcome<PreviewTileUiState> {
-        val requestKey = tile.toRequestKey() ?: return PreviewTileTapOutcome(this)
-        return if (requestKey in consumedTooLargeRequestKeys) {
+        val requestSet = tile.toRequestSet() ?: return PreviewTileTapOutcome(this)
+        return if (requestSet.key in consumedTooLargeRequestKeys) {
             PreviewTileTapOutcome(
                 state = this,
-                downloadRequest = PreviewTileDownloadRequest(
-                    tileRequests = tile.downloadRequests,
-                ),
+                downloadRequest = requestSet.downloadRequest,
             )
         } else {
             PreviewTileTapOutcome(
-                state = copy(consumedTooLargeRequestKeys = consumedTooLargeRequestKeys + requestKey),
+                state = copy(consumedTooLargeRequestKeys = consumedTooLargeRequestKeys + requestSet.key),
                 zoomRequest = PreviewTileZoomRequest,
             )
         }
@@ -128,18 +126,17 @@ internal data class PreviewTileSelectionState(
         if (tile == null) {
             return PreviewTileTapOutcome(this)
         }
+        val downloadRequest = tile.toDownloadRequest()
         return if (selectionModeActive) {
             PreviewTileTapOutcome(toggleCachedTile(tile))
         } else if (tile.hasCachedCoverage) {
             PreviewTileTapOutcome(this)
-        } else if (tile.downloadRequests.isEmpty()) {
+        } else if (downloadRequest == null) {
             PreviewTileTapOutcome(this)
         } else {
             PreviewTileTapOutcome(
                 state = this,
-                downloadRequest = PreviewTileDownloadRequest(
-                    tileRequests = tile.downloadRequests,
-                ),
+                downloadRequest = downloadRequest,
             )
         }
     }
@@ -157,7 +154,14 @@ internal data class PreviewTileTapOutcome<T>(
 
 internal data class PreviewTileDownloadRequest(
     val tileRequests: List<TileDownloadRequest>,
-)
+) {
+    companion object {
+        fun from(tileRequests: List<TileDownloadRequest>): PreviewTileDownloadRequest? =
+            tileRequests
+                .takeIf(List<TileDownloadRequest>::isNotEmpty)
+                ?.let(::PreviewTileDownloadRequest)
+    }
+}
 
 internal data object PreviewTileZoomRequest
 
@@ -171,10 +175,24 @@ internal data class PreviewTileRequestKey(
     }
 }
 
-private fun TileGridDisplayTile.toRequestKey(): PreviewTileRequestKey? {
-    val requestTileIds = downloadRequests
-        .mapTo(linkedSetOf()) { request -> request.tileId }
-    return requestTileIds
-        .takeIf(Set<DownloadTileId>::isNotEmpty)
-        ?.let(::PreviewTileRequestKey)
+private class PreviewTileRequestSet private constructor(
+    val key: PreviewTileRequestKey,
+    val downloadRequest: PreviewTileDownloadRequest,
+) {
+    companion object {
+        fun from(requests: List<TileDownloadRequest>): PreviewTileRequestSet? {
+            val downloadRequest = PreviewTileDownloadRequest.from(requests) ?: return null
+            val tileIds = downloadRequest.tileRequests.mapTo(linkedSetOf()) { request -> request.tileId }
+            return PreviewTileRequestSet(
+                key = PreviewTileRequestKey(tileIds),
+                downloadRequest = downloadRequest,
+            )
+        }
+    }
 }
+
+private fun TileGridDisplayTile.toDownloadRequest(): PreviewTileDownloadRequest? =
+    PreviewTileDownloadRequest.from(downloadRequests)
+
+private fun TileGridDisplayTile.toRequestSet(): PreviewTileRequestSet? =
+    PreviewTileRequestSet.from(downloadRequests)
