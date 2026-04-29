@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,6 +108,24 @@ internal fun GeePeeApp(
         )
     }
 }
+
+private data class RouteCanvasTapContext(
+    val showTileOverview: Boolean,
+    val previewTileUiState: PreviewTileUiState,
+    val tileGridModel: TileGridRenderModel?,
+    val movementMode: Boolean,
+    val routeModel: RouteModel?,
+    val analysis: RouteAnalysis?,
+    val orientationMode: OrientationMode,
+    val headingDegrees: Double?,
+    val currentReferenceGeoPoint: GeoPoint?,
+    val pois: List<RoutePoi>,
+    val windowWidthMeters: Double,
+    val viewportWidthPx: Float,
+    val viewportHeightPx: Float,
+    val boundsOverride: Bounds?,
+    val tileResolutionPolicy: TileResolutionPolicy,
+)
 
 @Composable
 private fun GeePeeScreen(
@@ -244,56 +263,80 @@ private fun GeePeeScreen(
             !movementMode -> setupViewportState
             else -> movementViewportController!!.activeViewportState
         }
+        val currentTapContext by rememberUpdatedState(
+            RouteCanvasTapContext(
+                showTileOverview = showTileOverview,
+                previewTileUiState = resolvedPreviewTileUiState,
+                tileGridModel = tileGridModel,
+                movementMode = movementMode,
+                routeModel = state.routeModel,
+                analysis = state.analysis,
+                orientationMode = state.orientationMode,
+                headingDegrees = state.compass?.headingDegrees,
+                currentReferenceGeoPoint = state.currentReferenceGeoPoint,
+                pois = state.mapInfo.pois,
+                windowWidthMeters = movementViewState.windowWidthMeters,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx,
+                boundsOverride = movementViewState.viewportFocus?.projectedBounds,
+                tileResolutionPolicy = state.tileContextConfig.resolutionPolicy,
+            ),
+        )
+        val currentMovementViewportController by rememberUpdatedState(movementViewportController)
+        val currentOnDownloadTiles by rememberUpdatedState(onDownloadTiles)
         val routeCanvasModifier = if (activeViewportState.isReady) {
             Modifier
                 .fillMaxSize()
-                .pointerInput(activeViewportState, tileGridModel, showTileOverview, routeCanvasTapPolicy) {
+                .pointerInput(activeViewportState, routeCanvasTapPolicy) {
                     detectRouteCanvasTapGestures(
                         policy = routeCanvasTapPolicy,
                         onTap = { point ->
-                            if (showTileOverview) {
-                                val tapTransition = resolvedPreviewTileUiState.onTap(
-                                    tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                            val tapContext = currentTapContext
+                            if (tapContext.showTileOverview) {
+                                val tapTransition = tapContext.previewTileUiState.onTap(
+                                    tile = tapContext.tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
                                 )
                                 previewTileUiState = tapTransition.state
                                 tapTransition.downloadRequest?.let { request ->
-                                    onDownloadTiles(request.tileRequests)
+                                    currentOnDownloadTiles(request.tileRequests)
                                 }
                                 tapTransition.zoomRequest?.let {
                                     activeViewportState.zoomInToNextDataTileResolution(
-                                        policy = state.tileContextConfig.resolutionPolicy,
+                                        policy = tapContext.tileResolutionPolicy,
                                     )
                                 }
-                            } else if (movementMode) {
-                                val routeModel = requireNotNull(state.routeModel)
-                                routePoiUiState = routePoiUiState.onCanvasTap(
-                                    routeModel = routeModel,
-                                    analysis = state.analysis,
-                                    orientationMode = state.orientationMode,
-                                    headingDegrees = state.compass?.headingDegrees,
-                                    currentReferenceGeoPoint = state.currentReferenceGeoPoint,
-                                    pois = state.mapInfo.pois,
-                                    screenPoint = ScreenPoint(point.x, point.y),
-                                    maxDistancePx = poiTapRadiusPx,
-                                    windowWidthMeters = movementViewState.windowWidthMeters,
-                                    canvasWidth = viewportWidthPx,
-                                    canvasHeight = viewportHeightPx,
-                                    boundsOverride = movementViewState.viewportFocus?.projectedBounds,
-                                )
+                            } else if (tapContext.movementMode) {
+                                tapContext.routeModel?.let { routeModel ->
+                                    routePoiUiState = routePoiUiState.onCanvasTap(
+                                        routeModel = routeModel,
+                                        analysis = tapContext.analysis,
+                                        orientationMode = tapContext.orientationMode,
+                                        headingDegrees = tapContext.headingDegrees,
+                                        currentReferenceGeoPoint = tapContext.currentReferenceGeoPoint,
+                                        pois = tapContext.pois,
+                                        screenPoint = ScreenPoint(point.x, point.y),
+                                        maxDistancePx = poiTapRadiusPx,
+                                        windowWidthMeters = tapContext.windowWidthMeters,
+                                        canvasWidth = tapContext.viewportWidthPx,
+                                        canvasHeight = tapContext.viewportHeightPx,
+                                        boundsOverride = tapContext.boundsOverride,
+                                    )
+                                }
                             }
                         },
                         onDoubleTap = {
                             routePoiUiState = routePoiUiState.clear()
-                            if (movementMode) {
-                                movementViewportController?.handleDoubleTap?.invoke()
+                            if (currentTapContext.movementMode) {
+                                currentMovementViewportController?.handleDoubleTap?.invoke()
                             } else {
                                 activeViewportState.reset()
                             }
                         },
                         onLongPress = { point ->
-                            if (showTileOverview) {
-                                previewTileUiState = resolvedPreviewTileUiState.onLongPress(
-                                    tile = tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
+                            val tapContext = currentTapContext
+                            if (tapContext.showTileOverview) {
+                                previewTileUiState = tapContext.previewTileUiState.onLongPress(
+                                    tile = tapContext.tileGridModel?.tileAt(ScreenPoint(point.x, point.y)),
                                 )
                             }
                         },
