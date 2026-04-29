@@ -23,6 +23,10 @@ internal sealed interface TileDownloadUpdate {
         val message: String,
     ) : TileDownloadUpdate
 
+    data class TooLarge(
+        val message: String,
+    ) : TileDownloadUpdate
+
     data object Cancelled : TileDownloadUpdate
 }
 
@@ -98,8 +102,18 @@ internal class TileDownloadCoordinator(
                 )
             } catch (_: TileDownloadCancelledException) {
                 // Cancellation is handled synchronously by cancelDownload().
+            } catch (error: TileDownloadTooLargeException) {
+                logDownloadTooLarge(tileId, error)
+                dispatchTerminalIfActive(
+                    tileId = tileId,
+                    requestId = requestId,
+                    update = TileDownloadUpdate.TooLarge(
+                        message = error.message ?: "Zoom in to download smaller tiles",
+                    ),
+                    onUpdate = onUpdate,
+                )
             } catch (error: Exception) {
-                Log.e(logTag, "Tile context download failed for $tileId", error)
+                logDownloadError(tileId, error)
                 dispatchTerminalIfActive(
                     tileId = tileId,
                     requestId = requestId,
@@ -179,6 +193,24 @@ internal class TileDownloadCoordinator(
             if (removeIfActive(tileId, requestId)) {
                 onUpdate(update)
             }
+        }
+    }
+
+    private fun logDownloadTooLarge(
+        tileId: DownloadTileId,
+        error: TileDownloadTooLargeException,
+    ) {
+        runCatching {
+            Log.w(logTag, "Tile context download too large for $tileId: ${error.message}")
+        }
+    }
+
+    private fun logDownloadError(
+        tileId: DownloadTileId,
+        error: Exception,
+    ) {
+        runCatching {
+            Log.e(logTag, "Tile context download failed for $tileId", error)
         }
     }
 

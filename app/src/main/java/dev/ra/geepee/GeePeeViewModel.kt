@@ -227,6 +227,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 return
             }
             TileDownloadStatus.Cached -> return
+            TileDownloadStatus.TooLarge,
             TileDownloadStatus.Error,
             null,
             -> Unit
@@ -656,6 +657,16 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 val estimatedBytes = tileDownloads[tileId]?.estimatedBytes ?: 0L
                 tileDownloads[tileId] = TileDownloadSnapshot(
                     status = TileDownloadStatus.Error,
+                    estimatedBytes = estimatedBytes,
+                    errorMessage = update.message,
+                )
+                recomputeUiState()
+            }
+
+            is TileDownloadUpdate.TooLarge -> {
+                val estimatedBytes = tileDownloads[tileId]?.estimatedBytes ?: 0L
+                tileDownloads[tileId] = TileDownloadSnapshot(
+                    status = TileDownloadStatus.TooLarge,
                     estimatedBytes = estimatedBytes,
                     errorMessage = update.message,
                 )

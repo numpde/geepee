@@ -325,6 +325,7 @@ private fun previewTile(
         downloadState = when (status) {
             TileDownloadStatus.Downloading -> TileGridDownloadState.Downloading
             TileDownloadStatus.Cached -> TileGridDownloadState.Cached
+            TileDownloadStatus.TooLarge -> TileGridDownloadState.TooLarge
             TileDownloadStatus.Error -> TileGridDownloadState.Error
             null -> null
         },

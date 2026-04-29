@@ -114,6 +114,7 @@ internal data class DownloadTileId(
 internal enum class TileDownloadStatus {
     Downloading,
     Cached,
+    TooLarge,
     Error,
 }
 
@@ -144,6 +145,9 @@ internal val TileDownloadSnapshot.isCached: Boolean
 
 internal val TileDownloadSnapshot.isError: Boolean
     get() = status == TileDownloadStatus.Error
+
+internal val TileDownloadSnapshot.isTooLarge: Boolean
+    get() = status == TileDownloadStatus.TooLarge
 
 internal fun Map<DownloadTileId, TileDownloadSnapshot>.tileIdsWithStatus(
     status: TileDownloadStatus,
@@ -273,6 +277,7 @@ internal enum class TileGridDownloadState {
     Downloading,
     Cached,
     Partial,
+    TooLarge,
     Error,
 }
 
@@ -847,12 +852,14 @@ private fun resolveDisplayTileDownloadState(
     }
     val cachedCount = snapshots.count { (_, snapshot) -> snapshot.isCached }
     val hasDownloading = snapshots.any { (_, snapshot) -> snapshot.isDownloading }
+    val hasTooLarge = snapshots.any { (_, snapshot) -> snapshot.isTooLarge }
     val hasError = snapshots.any { (_, snapshot) -> snapshot.isError }
     val state = when {
         hasDownloading -> TileGridDownloadState.Downloading
         cachedCount == downloadRequests.size -> TileGridDownloadState.Cached
         cachedCount > 0 -> TileGridDownloadState.Partial
         hasCachedCoverage -> TileGridDownloadState.Partial
+        hasTooLarge -> TileGridDownloadState.TooLarge
         hasError -> TileGridDownloadState.Error
         else -> null
     }
@@ -864,6 +871,7 @@ private fun resolveDisplayTileDownloadState(
                 else -> when (snapshot.status) {
                     TileDownloadStatus.Cached -> snapshot.actualBytes ?: request.estimatedBytes
                     TileDownloadStatus.Downloading -> snapshot.downloadedBytes
+                    TileDownloadStatus.TooLarge -> 0L
                     TileDownloadStatus.Error -> 0L
                 }
             }
@@ -1260,6 +1268,13 @@ private fun tileLabel(
                 return null
             }
             "Error"
+        }
+        TileGridDownloadState.TooLarge -> {
+            when {
+                minDimensionPx >= 360f -> "Zoom in to download smaller tiles"
+                minDimensionPx >= 92f -> "Zoom in"
+                else -> null
+            }
         }
         TileGridDownloadState.Cached -> {
             if (!routeMetrics.intersectsRoute || minDimensionPx < 118f) {

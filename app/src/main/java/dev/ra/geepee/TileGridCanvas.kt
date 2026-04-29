@@ -91,6 +91,7 @@ private fun DrawScope.drawTileCell(
                 TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.12f)
                 TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.1f)
                 TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.06f)
+                TileGridDownloadState.TooLarge -> colors.routeAhead.copy(alpha = 0.055f)
                 TileGridDownloadState.Error -> colors.offRoute.copy(alpha = 0.1f)
                 null -> Color.Transparent
             }
@@ -143,6 +144,7 @@ private fun DrawScope.drawTileCell(
             TileGridDownloadState.Downloading -> colors.routeAhead.copy(alpha = 0.48f)
             TileGridDownloadState.Cached -> colors.onRoute.copy(alpha = 0.52f)
             TileGridDownloadState.Partial -> colors.onRoute.copy(alpha = 0.36f)
+            TileGridDownloadState.TooLarge -> colors.routeAhead.copy(alpha = 0.56f)
             TileGridDownloadState.Error -> colors.offRoute.copy(alpha = 0.54f)
             null -> if (tile.routeMetrics.intersectsRoute) {
                 colors.ink.copy(alpha = if (visualStyle == TileGridVisualStyle.Preview) 0.14f else 0.08f)

@@ -109,4 +109,33 @@ class TileDownloadCoordinatorTest {
             coordinator.shutdown()
         }
     }
+
+    @Test
+    fun startDownloadReportsTooLargeSeparatelyFromGenericErrors() {
+        val tileId = DownloadTileId(zoom = 10, x = 512, y = 512)
+        val terminalLatch = CountDownLatch(1)
+        val updates = mutableListOf<TileDownloadUpdate>()
+        val coordinator = TileDownloadCoordinator(
+            downloadWorker = TileDownloadWorker { _, _, _ ->
+                throw TileDownloadTooLargeException("Tile response too large")
+            },
+            callbackExecutor = Runnable::run,
+            logTag = "TileDownloadCoordinatorTest",
+        )
+
+        try {
+            coordinator.startDownload(tileId, estimatedBytes = 120L) { update ->
+                updates += update
+                if (update is TileDownloadUpdate.TooLarge) {
+                    terminalLatch.countDown()
+                }
+            }
+
+            assertTrue(terminalLatch.await(2, TimeUnit.SECONDS))
+            assertEquals(1, updates.count { it is TileDownloadUpdate.TooLarge })
+            assertEquals(0, updates.count { it is TileDownloadUpdate.Error })
+        } finally {
+            coordinator.shutdown()
+        }
+    }
 }

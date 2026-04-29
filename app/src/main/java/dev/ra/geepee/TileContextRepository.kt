@@ -30,6 +30,10 @@ private const val TILE_RUNTIME_MEMORY_CACHE_LIMIT = 32
 private const val ROUTE_TILE_OVERLAY_MEMORY_CACHE_LIMIT = 96
 private const val TILE_ACCESS_TOUCH_INTERVAL_MILLIS = 15L * 60L * 1000L
 
+internal class TileDownloadTooLargeException(
+    message: String,
+) : IOException(message)
+
 private enum class RouteTileOverlayLoadMode {
     CachedOnly,
     BuildIfMissing,
@@ -699,7 +703,7 @@ internal fun ensureTileDownloadWithinSizeLimit(
         return
     }
     if (byteCount > limitBytes) {
-        throw IOException(
+        throw TileDownloadTooLargeException(
             "Tile response too large (${formatTileDownloadMegabytes(byteCount)} > ${formatTileDownloadMegabytes(limitBytes)})",
         )
     }

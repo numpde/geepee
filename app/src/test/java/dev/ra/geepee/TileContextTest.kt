@@ -406,6 +406,102 @@ class TileContextTest {
     }
 
     @Test
+    fun tileGridRenderModelMarksOversizedDownloadsAsTooLarge() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val baseModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val oversizedTile = baseModel.tiles.first { it.downloadRequests.isNotEmpty() }
+        val oversizedRequest = oversizedTile.downloadRequests.first()
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = mapOf(
+                oversizedRequest.tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.TooLarge,
+                    estimatedBytes = oversizedRequest.estimatedBytes,
+                    errorMessage = "Zoom in to download smaller tiles",
+                ),
+            ),
+        )
+
+        val renderedTile = renderModel.tiles.first { it.tileId == oversizedTile.tileId }
+        assertEquals(TileGridDownloadState.TooLarge, renderedTile.downloadState)
+        assertTrue(renderedTile.cachedTileIds.isEmpty())
+        assertEquals(TileGridSelectionState.Unselected, renderedTile.selectionState)
+        assertTrue(renderedTile.label?.contains("Zoom in") == true)
+    }
+
+    @Test
+    fun oversizedDownloadsDoNotPoisonPartialCoverageOrSelection() {
+        val route = buildRouteModel(
+            listOf(
+                listOf(
+                    GeoPoint(lat = 0.0, lon = 0.0),
+                    GeoPoint(lat = 0.0, lon = 0.5),
+                ),
+            ),
+        )
+        val config = TileContextConfig(downloadZoom = 10)
+        val baseModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = emptyMap(),
+        )
+        val partialTile = baseModel.tiles.first { it.downloadRequests.size >= 2 }
+        val cachedRequest = partialTile.downloadRequests.first()
+        val oversizedRequest = partialTile.downloadRequests.drop(1).first()
+
+        val renderModel = buildTileGridRenderModel(
+            routeModel = route,
+            bounds = route.bounds,
+            canvasWidth = 1200f,
+            canvasHeight = 800f,
+            config = config,
+            tileSnapshots = mapOf(
+                cachedRequest.tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.Cached,
+                    estimatedBytes = cachedRequest.estimatedBytes,
+                    actualBytes = cachedRequest.estimatedBytes,
+                ),
+                oversizedRequest.tileId to TileDownloadSnapshot(
+                    status = TileDownloadStatus.TooLarge,
+                    estimatedBytes = oversizedRequest.estimatedBytes,
+                    errorMessage = "Zoom in to download smaller tiles",
+                ),
+            ),
+            selectedTileIds = setOf(cachedRequest.tileId, oversizedRequest.tileId),
+        )
+
+        val renderedTile = renderModel.tiles.first { it.tileId == partialTile.tileId }
+        assertEquals(TileGridDownloadState.Partial, renderedTile.downloadState)
+        assertEquals(setOf(cachedRequest.tileId), renderedTile.cachedTileIds)
+        assertEquals(setOf(cachedRequest.tileId), renderedTile.selectedCachedTileIds)
+        assertEquals(TileGridSelectionState.FullySelected, renderedTile.selectionState)
+        assertEquals(1, renderedTile.cachedCoverageRects.size)
+    }
+
+    @Test
     fun representedCoverageIgnoresNonRepresentedSelectedTileIds() {
         val coveredTileId = DownloadTileId(zoom = 12, x = 100, y = 200)
         val unrelatedTileId = DownloadTileId(zoom = 12, x = 999, y = 999)
@@ -777,7 +873,7 @@ class TileContextTest {
             limitBytes = 2048L,
         )
 
-        assertThrows(java.io.IOException::class.java) {
+        assertThrows(TileDownloadTooLargeException::class.java) {
             ensureTileDownloadWithinSizeLimit(
                 byteCount = 2049L,
                 limitBytes = 2048L,
