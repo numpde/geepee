@@ -115,9 +115,11 @@ See [scripts/OSM_CONTEXT.md](scripts/OSM_CONTEXT.md).
 ## Repo Layout
 
 - `app/`: Android app
+- `docs/`: screenshots and design notes
 - `routes/`: checked-in GPX fixtures
 - `scripts/`: development and replay tooling
 - `AUDIT.md`: side-effect boundaries, storage model, and review notes
+- [docs/SELF_AUDIT.md](docs/SELF_AUDIT.md): resource self-audit design
 
 ## Privacy / Scope
 
