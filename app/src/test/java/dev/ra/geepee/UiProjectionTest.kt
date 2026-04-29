@@ -14,6 +14,7 @@ class UiProjectionTest {
                 routeModel = null,
                 currentFix = null,
                 analysis = null,
+                belief = null,
                 routeMatchHypotheses = emptyList(),
                 locationHistoryPoints = emptyList(),
                 compass = null,
@@ -74,6 +75,15 @@ class UiProjectionTest {
                 timestampMillis = 42L,
             ),
         )
+        val belief = RouteBelief(
+            fix = fix,
+            sigmaMeters = 8.0,
+            routeProbability = 0.1,
+            offRouteProbability = 0.9,
+            adherence = RouteAdherence.OffRoute,
+            primaryRouteAnalysis = analysis,
+            routeCandidates = emptyList(),
+        )
 
         val uiState = buildGeePeeUiState(
             GeePeeUiProjectionInputs(
@@ -81,6 +91,7 @@ class UiProjectionTest {
                 routeModel = routeModel,
                 currentFix = fix,
                 analysis = analysis,
+                belief = belief,
                 routeMatchHypotheses = emptyList(),
                 locationHistoryPoints = emptyList(),
                 compass = null,
@@ -97,6 +108,7 @@ class UiProjectionTest {
 
         assertNotNull(uiState.currentReferenceGeoPoint)
         assertEquals(analysis.nearestGeoPoint, uiState.currentReferenceGeoPoint)
+        assertEquals(RouteAdherence.OffRoute, uiState.routeAdherence)
     }
 
     @Test
@@ -181,6 +193,7 @@ class UiProjectionTest {
                 routeModel = routeModel,
                 currentFix = null,
                 analysis = null,
+                belief = null,
                 routeMatchHypotheses = emptyList(),
                 locationHistoryPoints = emptyList(),
                 compass = null,

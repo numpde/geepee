@@ -1,9 +1,10 @@
 package dev.ra.geepee
 
-import android.location.Location
 import kotlin.math.abs
-import kotlin.math.max
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 internal data class RouteStatusInputs(
     val routeLoading: Boolean,
@@ -15,6 +16,7 @@ internal data class RouteStatusInputs(
     val locationProvidersEnabled: Boolean,
     val currentFix: LocationFix?,
     val currentAnalysis: RouteAnalysis?,
+    val currentBelief: RouteBelief?,
     val headingDegrees: Double?,
 )
 
@@ -91,9 +93,17 @@ internal fun buildRouteStatus(inputs: RouteStatusInputs): RouteStatus {
         )
     }
 
+    val currentBelief = inputs.currentBelief ?: return RouteStatus(
+        tone = RouteTone.Ready,
+        badge = "Locating",
+        headline = "Estimating route confidence",
+        detail = inputs.issueMessage ?: "Keep the app open until route confidence is available.",
+    )
+
     return routeStatusForAnalysis(
         fix = inputs.currentFix,
         analysis = inputs.currentAnalysis,
+        belief = currentBelief,
         headingDegrees = inputs.headingDegrees,
     )
 }
@@ -101,21 +111,20 @@ internal fun buildRouteStatus(inputs: RouteStatusInputs): RouteStatus {
 internal fun routeStatusForAnalysis(
     fix: LocationFix,
     analysis: RouteAnalysis,
+    belief: RouteBelief,
     headingDegrees: Double?,
 ): RouteStatus {
-    val onThreshold = max(12.0, analysis.accuracyMeters?.toDouble() ?: 0.0)
-    val driftingThreshold = max(35.0, onThreshold * 2.0)
     val offRoute = analysis.offRouteMeters
-    val tone = when {
-        offRoute <= onThreshold -> RouteTone.OnRoute
-        offRoute <= driftingThreshold -> RouteTone.Drifting
-        else -> RouteTone.OffRoute
+    val tone = when (belief.adherence) {
+        RouteAdherence.OnRoute -> RouteTone.OnRoute
+        RouteAdherence.Uncertain -> RouteTone.Drifting
+        RouteAdherence.OffRoute -> RouteTone.OffRoute
     }
 
-    val headline = if (tone == RouteTone.OnRoute) {
-        "On route"
-    } else {
-        "${formatDistance(offRoute)} back to route"
+    val headline = when (belief.adherence) {
+        RouteAdherence.OnRoute -> "On route"
+        RouteAdherence.Uncertain -> "Position uncertain"
+        RouteAdherence.OffRoute -> "${formatDistance(offRoute)} back to route"
     }
 
     val routeBearing = routeBearingDegrees(fix, analysis.nearestGeoPoint)
@@ -127,13 +136,10 @@ internal fun routeStatusForAnalysis(
 
     return RouteStatus(
         tone = tone,
-        badge = when (tone) {
-            RouteTone.OnRoute -> "On route"
-            RouteTone.Drifting -> "Drifting"
-            RouteTone.OffRoute -> "Off route"
-            RouteTone.Warning -> "Warning"
-            RouteTone.Ready -> "Ready"
-            RouteTone.Idle -> "Idle"
+        badge = when (belief.adherence) {
+            RouteAdherence.OnRoute -> "On route"
+            RouteAdherence.Uncertain -> "Uncertain"
+            RouteAdherence.OffRoute -> "Off route"
         },
         headline = headline,
         detail = detailBits.joinToString(" · "),
@@ -156,9 +162,12 @@ internal fun routeDirectionCue(absoluteBearing: Double, headingDegrees: Double?)
 }
 
 internal fun routeBearingDegrees(fix: LocationFix, nearestGeoPoint: GeoPoint): Double {
-    val results = FloatArray(3)
-    Location.distanceBetween(fix.lat, fix.lon, nearestGeoPoint.lat, nearestGeoPoint.lon, results)
-    return normalizeHeadingDegrees(results.getOrNull(1)?.toDouble() ?: 0.0)
+    val startLat = Math.toRadians(fix.lat)
+    val endLat = Math.toRadians(nearestGeoPoint.lat)
+    val deltaLon = Math.toRadians(nearestGeoPoint.lon - fix.lon)
+    val y = sin(deltaLon) * cos(endLat)
+    val x = cos(startLat) * sin(endLat) - sin(startLat) * cos(endLat) * cos(deltaLon)
+    return normalizeHeadingDegrees(Math.toDegrees(atan2(y, x)))
 }
 
 internal fun compassDirection(value: Double): String {

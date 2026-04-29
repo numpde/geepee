@@ -27,6 +27,7 @@ class RouteStatusFormatterTest {
                 locationProvidersEnabled = false,
                 currentFix = null,
                 currentAnalysis = null,
+                currentBelief = null,
                 headingDegrees = null,
             ),
         )
@@ -80,6 +81,18 @@ class RouteStatusFormatterTest {
                     timestampMillis = 1_000L,
                 ),
                 currentAnalysis = analysis,
+                currentBelief = routeBelief(
+                    fix = LocationFix(
+                        lat = 0.0,
+                        lon = 0.0,
+                        accuracyMeters = 24f,
+                        headingDegrees = 0f,
+                        speedMetersPerSecond = 1f,
+                        timestampMillis = 1_000L,
+                    ),
+                    analysis = analysis,
+                    adherence = RouteAdherence.OnRoute,
+                ),
                 headingDegrees = 0.0,
             ),
         )
@@ -96,4 +109,82 @@ class RouteStatusFormatterTest {
         assertEquals("Route 90° left", routeDirectionCue(270.0, 0.0))
         assertEquals("Route SW", routeDirectionCue(225.0, null))
     }
+
+    @Test
+    fun routeStatusUsesBeliefAdherenceInsteadOfDistanceThresholds() {
+        val fix = LocationFix(
+            lat = 0.0,
+            lon = 0.0,
+            accuracyMeters = 80f,
+            headingDegrees = null,
+            speedMetersPerSecond = null,
+            timestampMillis = 1_000L,
+        )
+        val analysis = routeAnalysis(
+            offRouteMeters = 5.0,
+            accuracyMeters = 80f,
+        )
+
+        val status = routeStatusForAnalysis(
+            fix = fix,
+            analysis = analysis,
+            belief = routeBelief(
+                fix = fix,
+                analysis = analysis,
+                adherence = RouteAdherence.Uncertain,
+                routeProbability = 0.5,
+                offRouteProbability = 0.5,
+            ),
+            headingDegrees = null,
+        )
+
+        assertEquals(RouteTone.Drifting, status.tone)
+        assertEquals("Uncertain", status.badge)
+        assertEquals("Position uncertain", status.headline)
+    }
+}
+
+private fun routeAnalysis(
+    offRouteMeters: Double = 0.0,
+    accuracyMeters: Float? = 4f,
+): RouteAnalysis {
+    return RouteAnalysis(
+        point = ProjectedPoint(0.0, 0.0),
+        nearestPoint = ProjectedPoint(0.0, 0.0),
+        nearestGeoPoint = GeoPoint(0.0, 0.0),
+        routeTangentX = 1.0,
+        routeTangentY = 0.0,
+        offRouteMeters = offRouteMeters,
+        routeMeters = 0.0,
+        progressMeters = 0.0,
+        remainingMeters = 100.0,
+        progressRatio = 0.0,
+        accuracyMeters = accuracyMeters,
+        nearestEdgeIndex = 0,
+    )
+}
+
+private fun routeBelief(
+    fix: LocationFix,
+    analysis: RouteAnalysis,
+    adherence: RouteAdherence,
+    routeProbability: Double = 1.0,
+    offRouteProbability: Double = 0.0,
+): RouteBelief {
+    return RouteBelief(
+        fix = fix,
+        sigmaMeters = 8.0,
+        routeProbability = routeProbability,
+        offRouteProbability = offRouteProbability,
+        adherence = adherence,
+        primaryRouteAnalysis = analysis,
+        routeCandidates = listOf(
+            RouteCandidateBelief(
+                analysis = analysis,
+                posteriorProbability = routeProbability,
+                routeConditionalProbability = 1.0,
+                isPrimary = true,
+            ),
+        ),
+    )
 }

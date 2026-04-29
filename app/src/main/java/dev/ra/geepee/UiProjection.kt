@@ -5,6 +5,7 @@ internal data class GeePeeUiProjectionInputs(
     val routeModel: RouteModel?,
     val currentFix: LocationFix?,
     val analysis: RouteAnalysis?,
+    val belief: RouteBelief?,
     val routeMatchHypotheses: List<RouteMatchDisplayHypothesis>,
     val locationHistoryPoints: List<ProjectedPoint>,
     val compass: CompassState?,
@@ -30,6 +31,7 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
             locationProvidersEnabled = inputs.locationProvidersEnabled,
             currentFix = inputs.currentFix,
             currentAnalysis = inputs.analysis,
+            currentBelief = inputs.belief,
             headingDegrees = inputs.headingDegrees,
         ),
     )
@@ -37,6 +39,7 @@ internal fun buildGeePeeUiState(inputs: GeePeeUiProjectionInputs): GeePeeUiState
         routeName = inputs.routeLoadState.routeName,
         routeModel = inputs.routeModel,
         analysis = inputs.analysis,
+        routeAdherence = inputs.belief?.adherence,
         currentReferenceGeoPoint = inputs.analysis?.nearestGeoPoint ?: inputs.currentFix?.let { fix ->
             GeoPoint(lat = fix.lat, lon = fix.lon)
         },

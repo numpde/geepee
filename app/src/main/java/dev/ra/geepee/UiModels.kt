@@ -36,6 +36,7 @@ internal data class GeePeeUiState(
     val routeName: String? = null,
     val routeModel: RouteModel? = null,
     val analysis: RouteAnalysis? = null,
+    val routeAdherence: RouteAdherence? = null,
     val currentReferenceGeoPoint: GeoPoint? = null,
     val routeMatchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList(),
     val locationHistoryPoints: List<ProjectedPoint> = emptyList(),

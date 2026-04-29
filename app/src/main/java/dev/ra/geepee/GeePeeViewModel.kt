@@ -513,6 +513,7 @@ internal class GeePeeViewModel(application: Application) : AndroidViewModel(appl
                 routeModel = routeRuntimeState.routeModel,
                 currentFix = routeRuntimeState.currentFix,
                 analysis = routeRuntimeState.currentAnalysis,
+                belief = routeRuntimeState.currentBelief,
                 routeMatchHypotheses = routeRuntimeState.currentMatchHypotheses,
                 locationHistoryPoints = routeRuntimeState.locationHistoryPoints,
                 compass = buildCompassState(),

@@ -19,6 +19,8 @@ internal class RouteRuntimeState {
         private set
     var currentAnalysis: RouteAnalysis? = null
         private set
+    var currentBelief: RouteBelief? = null
+        private set
     var currentMatchHypotheses: List<RouteMatchDisplayHypothesis> = emptyList()
         private set
     var locationHistoryPoints: List<ProjectedPoint> = emptyList()
@@ -138,15 +140,18 @@ internal class RouteRuntimeState {
                     fix = fix,
                     previousNearestEdgeIndex = currentAnalysis?.nearestEdgeIndex?.takeIf { it >= 0 },
                 )
+            currentBelief = matchResult?.belief
             currentMatchHypotheses = matchResult?.hypotheses.orEmpty()
         } else {
             currentAnalysis = null
+            currentBelief = null
             currentMatchHypotheses = emptyList()
         }
     }
 
     private fun clearRouteProjection() {
         currentAnalysis = null
+        currentBelief = null
         currentMatchHypotheses = emptyList()
         locationHistoryPoints = emptyList()
     }
