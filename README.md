@@ -20,6 +20,23 @@ Tile management:
 - delete selected tiles from the menu
 - use `Delete unused tiles` to prune idle cached tiles
 
+## Installation
+
+Download the latest `geepee-vX.Y.Z-debug.apk` from the GitHub Releases page and install it on an Android phone.
+
+With `adb`:
+
+```bash
+adb install -r geepee-vX.Y.Z-debug.apk
+adb shell am start -n dev.ra.geepee/.MainActivity
+```
+
+On the phone:
+
+- allow installation from the app that opens the APK
+- grant location permission when starting monitoring
+- enable GPS or network location
+
 ## Development
 
 - JDK 21
