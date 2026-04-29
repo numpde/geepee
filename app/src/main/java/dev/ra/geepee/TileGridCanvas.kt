@@ -24,6 +24,15 @@ internal enum class TileGridVisualStyle {
     LiveOverlay,
 }
 
+private val TileGridVisualStyle.showsFills: Boolean
+    get() = this == TileGridVisualStyle.Preview
+
+private val TileGridVisualStyle.showsProgress: Boolean
+    get() = this == TileGridVisualStyle.Preview
+
+private val TileGridVisualStyle.showsLabels: Boolean
+    get() = this == TileGridVisualStyle.Preview
+
 @Composable
 internal fun TileGridCanvas(
     model: TileGridRenderModel,
@@ -66,10 +75,7 @@ private fun DrawScope.drawTileCell(
     val state = tile.downloadState
     val selectionState = tile.selectionState
 
-    val showFills = visualStyle == TileGridVisualStyle.Preview
-    val showProgress = visualStyle == TileGridVisualStyle.Preview
-
-    val routeFill = if (showFills && tile.routeMetrics.intersectsRoute) {
+    val routeFill = if (visualStyle.showsFills && tile.routeMetrics.intersectsRoute) {
         colors.ink.copy(alpha = 0.025f)
     } else {
         Color.Transparent
@@ -83,7 +89,7 @@ private fun DrawScope.drawTileCell(
         )
     }
 
-    val stateFill = if (showFills) {
+    val stateFill = if (visualStyle.showsFills) {
         when (selectionState) {
             TileGridSelectionState.FullySelected -> colors.nearbyWay.copy(alpha = 0.06f)
             TileGridSelectionState.PartiallySelected -> colors.nearbyWay.copy(alpha = 0.035f)
@@ -108,7 +114,7 @@ private fun DrawScope.drawTileCell(
         )
     }
 
-    if (showFills && tile.cachedCoverageRects.isNotEmpty()) {
+    if (visualStyle.showsFills && tile.cachedCoverageRects.isNotEmpty()) {
         val coverageFill = if (state == TileGridDownloadState.Downloading) {
             colors.onRoute.copy(alpha = 0.18f)
         } else {
@@ -178,27 +184,27 @@ private fun DrawScope.drawTileCell(
         ),
     )
 
-    if (showProgress) {
+    if (visualStyle.showsProgress) {
         tile.progressFraction?.takeIf { state == TileGridDownloadState.Downloading }?.let { fraction ->
-        val inset = 5.dp.toPx()
-        val progressHeight = 5.dp.toPx()
-        drawRoundRect(
-            color = colors.routeAhead.copy(alpha = 0.92f),
-            topLeft = Offset(rect.left + inset, rect.bottom - inset - progressHeight),
-            size = Size((rect.width - inset * 2f) * fraction.coerceIn(0f, 1f), progressHeight),
-            cornerRadius = CornerRadius(progressHeight, progressHeight),
-        )
+            val inset = 5.dp.toPx()
+            val progressHeight = 5.dp.toPx()
+            drawRoundRect(
+                color = colors.routeAhead.copy(alpha = 0.92f),
+                topLeft = Offset(rect.left + inset, rect.bottom - inset - progressHeight),
+                size = Size((rect.width - inset * 2f) * fraction.coerceIn(0f, 1f), progressHeight),
+                cornerRadius = CornerRadius(progressHeight, progressHeight),
+            )
         }
     }
 
-    if (visualStyle == TileGridVisualStyle.Preview) {
+    if (visualStyle.showsLabels) {
         tile.label?.let { label ->
-        drawContext.canvas.nativeCanvas.drawText(
-            label,
-            rect.left + rect.width / 2f,
-            rect.top + rect.height / 2f + labelPaint.textSize * 0.35f,
-            labelPaint,
-        )
+            drawContext.canvas.nativeCanvas.drawText(
+                label,
+                rect.left + rect.width / 2f,
+                rect.top + rect.height / 2f + labelPaint.textSize * 0.35f,
+                labelPaint,
+            )
         }
     }
 }
